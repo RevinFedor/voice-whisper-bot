@@ -1,0 +1,15 @@
+{
+    "name": "your-project-name",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "nodemon index.js"
+    },
+    "dependencies": {
+        "dotenv": "^16.5.0",
+        "node-fetch": "^3.3.2",
+        "openai": "^4.95.1",
+        "telegraf": "^4.16.3",
+        "uuid": "^11.1.0"
+    }
+}
