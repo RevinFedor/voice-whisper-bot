@@ -297,7 +297,7 @@ bot.command('mode', (ctx) => {
 });
 
 // Команда для удаления голосового сообщения и расшифровки
-bot.command('d', async (ctx) => {
+async function handleDelete(ctx) {
     // Проверяем, является ли это ответом на сообщение бота с расшифровкой
     if (ctx.message.reply_to_message && ctx.message.reply_to_message.from?.is_bot) {
         const botMessage = ctx.message.reply_to_message;
@@ -333,7 +333,10 @@ bot.command('d', async (ctx) => {
     } catch (error) {
         console.error('Error deleting command message:', error);
     }
-});
+}
+
+bot.command('d', handleDelete);
+bot.command('del', handleDelete);
 
 bot.on('voice', async (ctx) => {
     try {
@@ -393,6 +396,7 @@ bot.telegram.setMyCommands([
     { command: 'toggle', description: 'Переключить режим' },
     { command: 'mode', description: 'Текущий режим' },
     { command: 'd', description: 'Удалить сообщения 🗑️' },
+    { command: 'del', description: 'Удалить сообщения 🗑️' },
     { command: 'help', description: 'Справка по командам' },
 ]);
 
