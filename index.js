@@ -1,10 +1,11 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import { writeFile } from 'fs/promises';
 import { createReadStream } from 'fs';
 import fetch from 'node-fetch';
 import { OpenAI } from 'openai';
 import { v4 as uuid } from 'uuid';
 import dotenv from 'dotenv';
+import axios from 'axios';
 
 // Загружаем переменные из файла .env
 dotenv.config();
@@ -13,6 +14,13 @@ dotenv.config();
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 const TIME_DELAY = 400_000;
+
+// Конфигурация Obsidian API
+const OBSIDIAN_API_KEY = process.env.OBSIDIAN_API_KEY || '';
+const OBSIDIAN_HOST = process.env.OBSIDIAN_HOST || '127.0.0.1';
+const OBSIDIAN_PORT = process.env.OBSIDIAN_PORT || '27123';
+const OBSIDIAN_URL = `http://${OBSIDIAN_HOST}:${OBSIDIAN_PORT}`;
+const OBSIDIAN_FOLDER = process.env.OBSIDIAN_FOLDER || 'Telegram Voice Notes';
 
 const bot = new Telegraf(TELEGRAM_TOKEN);
 const openai = new OpenAI({
@@ -28,6 +36,9 @@ const botMessageToVoice = new Map();
 
 // Хранилище начальных сообщений для удаления диапазона: userId -> messageId
 const deleteRangeStart = new Map();
+
+// Хранилище для временного сохранения расшифровок для Obsidian
+const transcriptionCache = new Map();
 
 // Константы для индикаторов режима
 const MODES = {
@@ -160,6 +171,56 @@ function splitLongText(text, maxLength = 3500) {
     return parts;
 }
 
+// Функция для создания inline keyboard
+function createTranscriptKeyboard(messageId) {
+    return Markup.inlineKeyboard([
+        [
+            Markup.button.callback('📝 Добавить в заметку', `add_note_${messageId}`),
+            Markup.button.callback('🎙️ Оставить как голосовое', `keep_voice_${messageId}`),
+        ],
+    ]);
+}
+
+// Функция для отправки заметки в Obsidian
+async function createObsidianNote(data) {
+    try {
+        const date = new Date(data.timestamp);
+        
+        // Создаем имя файла только с заголовком
+        const filename = `${data.title}.md`;
+        const filepath = `${OBSIDIAN_FOLDER}/${filename}`;
+        
+        // Форматируем дату для properties (YYYY-MM-DD HH:MM)
+        const formattedDate = date.toISOString().slice(0, 16).replace('T', ' ');
+        
+        // Форматируем контент для Obsidian
+        const content = `---
+title: "${data.title}"
+date: ${formattedDate}
+tags: [tg-transcript]
+source: telegram-voice
+mode: ${data.mode}
+---
+
+# ${data.title}
+
+${data.content}`;
+
+        // Отправляем запрос к Obsidian API
+        const response = await axios.put(`${OBSIDIAN_URL}/vault/${encodeURIComponent(filepath)}`, content, {
+            headers: {
+                Authorization: `Bearer ${OBSIDIAN_API_KEY}`,
+                'Content-Type': 'text/markdown',
+            },
+        });
+
+        return { success: true, filepath };
+    } catch (error) {
+        console.error('Ошибка при создании заметки в Obsidian:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Обновленная функция processVoice
 async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
     const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
@@ -210,8 +271,6 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
 
         if (fullMessage.length > 4000) {
             // Если сообщение слишком длинное, отправляем его частями или файлом
-
-            // Вариант 1: Отправка файлом
             const filename = `transcript_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
             const fileContent = withFormatting ? `Заголовок: ${title}\n\n${messageContent}` : messageContent;
 
@@ -227,6 +286,7 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
                         `📄 Расшифровка слишком длинная, отправляю файлом.`,
                     parse_mode: 'Markdown',
                     reply_to_message_id: voiceMessageId,
+                    ...createTranscriptKeyboard(voiceMessageId),
                 }
             );
 
@@ -238,15 +298,31 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
                 console.log('Не удалось удалить временный файл:', err.message);
             }
         } else {
-            // Обычная отправка для коротких сообщений
+            // Обычная отправка для коротких сообщений с кнопками
             botReply = await ctx.reply(fullMessage, {
                 parse_mode: 'Markdown',
                 reply_to_message_id: voiceMessageId,
+                ...createTranscriptKeyboard(voiceMessageId),
             });
         }
 
+        // Сохраняем в кэш для последующего использования
+        const cacheId = `${ctx.chat.id}_${voiceMessageId}`;
+        transcriptionCache.set(cacheId, {
+            title: title || 'Голосовая заметка',
+            content: messageContent,
+            timestamp: new Date(),
+            userId: ctx.from.id,
+            mode: mode.name,
+        });
+
         // Сохраняем связку с fileId
         botMessageToVoice.set(botReply.message_id, { voiceMessageId, fileId });
+
+        // Автоматически удаляем из кэша через 30 минут
+        setTimeout(() => {
+            transcriptionCache.delete(cacheId);
+        }, 30 * 60 * 1000);
 
         return botReply;
     } catch (error) {
@@ -259,6 +335,62 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
         throw error;
     }
 }
+
+// Обработчик кнопки "Добавить в заметку"
+bot.action(/add_note_(.+)/, async (ctx) => {
+    const voiceMessageId = ctx.match[1];
+    const cacheId = `${ctx.chat.id}_${voiceMessageId}`;
+    const transcriptionData = transcriptionCache.get(cacheId);
+
+    if (!transcriptionData) {
+        await ctx.answerCbQuery('❌ Расшифровка не найдена. Попробуйте заново.');
+        return;
+    }
+
+    // Проверяем настройки Obsidian
+    if (!OBSIDIAN_API_KEY) {
+        await ctx.answerCbQuery('❌ API ключ Obsidian не настроен');
+        await ctx.editMessageReplyMarkup();
+        await ctx.reply('⚠️ Для работы с Obsidian необходимо настроить API ключ в файле .env:\nOBSIDIAN_API_KEY=ваш_ключ');
+        return;
+    }
+
+    try {
+        // Создаем заметку в Obsidian
+        const result = await createObsidianNote(transcriptionData);
+
+        if (result.success) {
+            // Удаляем кнопки после успешного добавления
+            await ctx.editMessageReplyMarkup();
+            await ctx.answerCbQuery('✅ Заметка добавлена в Obsidian!');
+
+            // Отправляем подтверждение
+            const confirmMsg = await ctx.reply(`✅ Заметка сохранена в Obsidian!\n📁 Путь: \`${result.filepath}\``, { parse_mode: 'Markdown' });
+
+            // Очищаем кэш
+            transcriptionCache.delete(cacheId);
+        } else {
+            await ctx.answerCbQuery('❌ Ошибка при добавлении заметки');
+            console.error('Ошибка Obsidian:', result.error);
+        }
+    } catch (error) {
+        console.error('Ошибка при создании заметки:', error);
+        await ctx.answerCbQuery('❌ Не удалось подключиться к Obsidian');
+    }
+});
+
+// Обработчик кнопки "Оставить как голосовое"
+bot.action(/keep_voice_(.+)/, async (ctx) => {
+    const voiceMessageId = ctx.match[1];
+    const cacheId = `${ctx.chat.id}_${voiceMessageId}`;
+
+    // Просто удаляем кнопки
+    await ctx.editMessageReplyMarkup();
+    await ctx.answerCbQuery('👌 Оставлено как голосовое сообщение');
+
+    // Очищаем кэш
+    transcriptionCache.delete(cacheId);
+});
 
 // Команда /start
 bot.command('start', (ctx) => {
@@ -547,43 +679,43 @@ bot.command(['del_end', 'delend', 'de'], async (ctx) => {
 // Команда для удаления всех сообщений начиная с указанного (включая его)
 bot.command(['del_all', 'delall', 'da'], async (ctx) => {
     const chatId = ctx.chat.id;
-    
+
     // Проверяем, что это ответ на сообщение
     if (!ctx.message.reply_to_message) {
         await ctx.reply('⚠️ Ответьте этой командой на сообщение, начиная с которого нужно удалить все сообщения.', {
-            reply_to_message_id: ctx.message.message_id
+            reply_to_message_id: ctx.message.message_id,
         });
         return;
     }
-    
+
     const startMessageId = ctx.message.reply_to_message.message_id;
     const currentMessageId = ctx.message.message_id;
-    
+
     // Отправляем сообщение о процессе удаления
     const progressMessage = await ctx.reply(`🗑️ Удаляю все сообщения начиная с ID ${startMessageId} (включительно)...`);
-    
+
     let deletedCount = 0;
     let failedCount = 0;
     let consecutiveFailures = 0;
-    
+
     // Удаляем сообщения начиная с указанного (включая его)
     // Устанавливаем разумный лимит попыток (например, +1000 сообщений от текущего)
     const maxMessageId = currentMessageId + 1000;
-    
+
     for (let messageId = startMessageId; messageId <= maxMessageId; messageId++) {
         try {
             await ctx.telegram.deleteMessage(chatId, messageId);
             deletedCount++;
             consecutiveFailures = 0; // Сбрасываем счетчик неудач
-            
+
             // Небольшая задержка, чтобы не превысить лимиты API
             if (deletedCount % 10 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise((resolve) => setTimeout(resolve, 100));
             }
         } catch (error) {
             failedCount++;
             consecutiveFailures++;
-            
+
             // Если много подряд неудачных попыток, возможно, достигли конца сообщений
             if (consecutiveFailures >= 50) {
                 console.log(`Прекращаем удаление после ${consecutiveFailures} неудачных попыток подряд`);
@@ -591,14 +723,14 @@ bot.command(['del_all', 'delall', 'da'], async (ctx) => {
             }
         }
     }
-    
+
     // Удаляем команду пользователя
     try {
         await ctx.telegram.deleteMessage(chatId, ctx.message.message_id);
     } catch (error) {
         console.error('Не удалось удалить команду:', error);
     }
-    
+
     // Обновляем сообщение о прогрессе
     try {
         await ctx.telegram.editMessageText(
@@ -610,7 +742,7 @@ bot.command(['del_all', 'delall', 'da'], async (ctx) => {
     } catch (error) {
         console.error('Не удалось обновить сообщение о прогрессе:', error);
     }
-    
+
     // Удаляем сообщение о результате через 7 секунд
     setTimeout(async () => {
         try {
@@ -695,6 +827,8 @@ bot.command('help', (ctx) => {
             `💡 *Режимы работы:*\n` +
             `${MODES.WITH_FORMAT.emoji} **С форматированием:** заголовок + улучшенный текст\n` +
             `${MODES.WITHOUT_FORMAT.emoji} **Без форматирования:** только чистая расшифровка\n\n` +
+            `📝 *Obsidian интеграция:*\n` +
+            `После расшифровки появятся кнопки для сохранения заметки в Obsidian\n\n` +
             `💬 *Совет:* Ответьте на расшифровку командой /format или /noformat, чтобы переобработать это же сообщение в другом режиме!\n\n` +
             `🗑️ *Удаление сообщений:*\n` +
             `• Диапазон: /del_start на первое → /del_end на последнее\n` +
