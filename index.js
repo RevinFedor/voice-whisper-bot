@@ -435,18 +435,18 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
             title = await createTitle(improvedTranscript);
             messageContent = improvedTranscript;
         } else {
+            // Создаем заголовок даже для неформатированного текста
+            title = await createTitle(rawTranscript);
             messageContent = rawTranscript;
         }
 
-        const fullMessage = withFormatting
-            ? `${mode.emoji} *Режим: ${mode.name}*\n\n**Заголовок:**\n\`${title}\`\n\n**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``
-            : `${mode.emoji} *Режим: ${mode.name}*\n\n**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``;
+        const fullMessage = `${mode.emoji} *Режим: ${mode.name}*\n\n**Заголовок:**\n\`${title}\`\n\n**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``;
 
         let botReply;
 
         if (fullMessage.length > 4000) {
             const filename = `transcript_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
-            const fileContent = withFormatting ? `Заголовок: ${title}\n\n${messageContent}` : messageContent;
+            const fileContent = `Заголовок: ${title}\n\n${messageContent}`;
 
             const tmpFilePath = `/tmp/${filename}`;
             await writeFile(tmpFilePath, fileContent, 'utf8');
@@ -456,7 +456,7 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
                 {
                     caption:
                         `${mode.emoji} *Режим: ${mode.name}*\n\n` +
-                        (withFormatting ? `**Заголовок:** \`${title}\`\n\n` : '') +
+                        `**Заголовок:** \`${title}\`\n\n` +
                         `📄 Расшифровка слишком длинная, отправляю файлом.`,
                     parse_mode: 'Markdown',
                     reply_to_message_id: voiceMessageId,
