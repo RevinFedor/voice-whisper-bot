@@ -12,7 +12,7 @@ dotenv.config();
 // Используем переменные из .env
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
-const TIME_DELAY = 300_000;
+const TIME_DELAY = 400_000;
 
 const bot = new Telegraf(TELEGRAM_TOKEN);
 const openai = new OpenAI({
@@ -25,6 +25,9 @@ const userPreferences = new Map();
 
 // Хранилище связок: messageId бота -> { voiceMessageId, fileId }
 const botMessageToVoice = new Map();
+
+// Хранилище начальных сообщений для удаления диапазона: userId -> messageId
+const deleteRangeStart = new Map();
 
 // Константы для индикаторов режима
 const MODES = {
@@ -115,7 +118,49 @@ async function createTitle(text) {
     }
 }
 
-// Функция для обработки голосового сообщения
+// Функция для разбиения длинного текста на части
+function splitLongText(text, maxLength = 3500) {
+    const parts = [];
+    let currentPart = '';
+    const lines = text.split('\n');
+
+    for (const line of lines) {
+        if ((currentPart + line + '\n').length > maxLength) {
+            if (currentPart) {
+                parts.push(currentPart.trim());
+                currentPart = '';
+            }
+            // Если одна строка длиннее maxLength, разбиваем её по словам
+            if (line.length > maxLength) {
+                const words = line.split(' ');
+                let currentLine = '';
+                for (const word of words) {
+                    if ((currentLine + word + ' ').length > maxLength) {
+                        parts.push(currentLine.trim());
+                        currentLine = word + ' ';
+                    } else {
+                        currentLine += word + ' ';
+                    }
+                }
+                if (currentLine) {
+                    currentPart = currentLine;
+                }
+            } else {
+                currentPart = line + '\n';
+            }
+        } else {
+            currentPart += line + '\n';
+        }
+    }
+
+    if (currentPart) {
+        parts.push(currentPart.trim());
+    }
+
+    return parts;
+}
+
+// Обновленная функция processVoice
 async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
     const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
 
@@ -138,26 +183,63 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
             language: 'ru',
         });
 
-        // Удаляем сообщение о загрузке
-        await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        // Пытаемся удалить сообщение о загрузке
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (deleteError) {
+            console.log('Не удалось удалить сообщение о загрузке:', deleteError.message);
+        }
 
-        let botReply;
+        let messageContent;
+        let title = '';
 
         if (withFormatting) {
             const improvedTranscript = await improveReadability(rawTranscript);
-            const title = await createTitle(improvedTranscript);
+            title = await createTitle(improvedTranscript);
+            messageContent = improvedTranscript;
+        } else {
+            messageContent = rawTranscript;
+        }
 
-            botReply = await ctx.reply(
-                `${mode.emoji} *Режим: ${mode.name}*\n\n` +
-                    `**Заголовок:**\n\`${title}\`\n\n` +
-                    `**Расшифровка:**\n\`\`\`\n${improvedTranscript}\n\`\`\``,
+        // Проверяем длину сообщения
+        const fullMessage = withFormatting
+            ? `${mode.emoji} *Режим: ${mode.name}*\n\n**Заголовок:**\n\`${title}\`\n\n**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``
+            : `${mode.emoji} *Режим: ${mode.name}*\n\n**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``;
+
+        let botReply;
+
+        if (fullMessage.length > 4000) {
+            // Если сообщение слишком длинное, отправляем его частями или файлом
+
+            // Вариант 1: Отправка файлом
+            const filename = `transcript_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+            const fileContent = withFormatting ? `Заголовок: ${title}\n\n${messageContent}` : messageContent;
+
+            const tmpFilePath = `/tmp/${filename}`;
+            await writeFile(tmpFilePath, fileContent, 'utf8');
+
+            botReply = await ctx.replyWithDocument(
+                { source: tmpFilePath, filename: filename },
                 {
+                    caption:
+                        `${mode.emoji} *Режим: ${mode.name}*\n\n` +
+                        (withFormatting ? `**Заголовок:** \`${title}\`\n\n` : '') +
+                        `📄 Расшифровка слишком длинная, отправляю файлом.`,
                     parse_mode: 'Markdown',
                     reply_to_message_id: voiceMessageId,
                 }
             );
+
+            // Удаляем временный файл
+            try {
+                const fs = await import('fs/promises');
+                await fs.unlink(tmpFilePath);
+            } catch (err) {
+                console.log('Не удалось удалить временный файл:', err.message);
+            }
         } else {
-            botReply = await ctx.reply(`${mode.emoji} *Режим: ${mode.name}*\n\n` + `**Расшифровка:**\n\`\`\`\n${rawTranscript}\n\`\`\``, {
+            // Обычная отправка для коротких сообщений
+            botReply = await ctx.reply(fullMessage, {
                 parse_mode: 'Markdown',
                 reply_to_message_id: voiceMessageId,
             });
@@ -168,7 +250,12 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
 
         return botReply;
     } catch (error) {
-        await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        // Пытаемся удалить сообщение о загрузке в случае ошибки
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (deleteError) {
+            console.log('Не удалось удалить сообщение о загрузке при ошибке:', deleteError.message);
+        }
         throw error;
     }
 }
@@ -307,10 +394,10 @@ async function handleDelete(ctx) {
             try {
                 // Удаляем команду пользователя
                 await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-                
+
                 // Удаляем ответ бота с расшифровкой
                 await ctx.telegram.deleteMessage(ctx.chat.id, botMessage.message_id);
-                
+
                 // Удаляем оригинальное голосовое сообщение
                 await ctx.telegram.deleteMessage(ctx.chat.id, voiceData.voiceMessageId);
 
@@ -337,6 +424,230 @@ async function handleDelete(ctx) {
 
 bot.command('d', handleDelete);
 bot.command('del', handleDelete);
+
+// Команда для отметки начала диапазона удаления
+bot.command(['del_start', 'delstart', 'ds'], async (ctx) => {
+    const userId = ctx.from.id;
+
+    // Проверяем, что это ответ на сообщение
+    if (!ctx.message.reply_to_message) {
+        await ctx.reply('⚠️ Ответьте этой командой на сообщение, которое будет началом диапазона для удаления.', {
+            reply_to_message_id: ctx.message.message_id,
+        });
+        return;
+    }
+
+    const startMessageId = ctx.message.reply_to_message.message_id;
+    deleteRangeStart.set(userId, startMessageId);
+
+    // Отправляем подтверждение и удаляем через несколько секунд
+    const confirmMessage = await ctx.reply('✅ Начало диапазона отмечено. Теперь ответьте командой /del_end на последнее сообщение для удаления.', {
+        reply_to_message_id: ctx.message.message_id,
+    });
+
+    // Удаляем команду пользователя
+    try {
+        await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
+    } catch (error) {
+        console.error('Не удалось удалить команду:', error);
+    }
+
+    // Удаляем подтверждение через 5 секунд
+    setTimeout(async () => {
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, confirmMessage.message_id);
+        } catch (error) {
+            console.error('Не удалось удалить подтверждение:', error);
+        }
+    }, 5000);
+});
+
+// Команда для отметки конца диапазона и удаления
+bot.command(['del_end', 'delend', 'de'], async (ctx) => {
+    const userId = ctx.from.id;
+    const chatId = ctx.chat.id;
+
+    // Проверяем, что это ответ на сообщение
+    if (!ctx.message.reply_to_message) {
+        await ctx.reply('⚠️ Ответьте этой командой на сообщение, которое будет концом диапазона для удаления.', {
+            reply_to_message_id: ctx.message.message_id,
+        });
+        return;
+    }
+
+    // Проверяем, есть ли сохраненное начало диапазона
+    const startMessageId = deleteRangeStart.get(userId);
+    if (!startMessageId) {
+        await ctx.reply('⚠️ Сначала отметьте начало диапазона командой /del_start', {
+            reply_to_message_id: ctx.message.message_id,
+        });
+        return;
+    }
+
+    const endMessageId = ctx.message.reply_to_message.message_id;
+
+    // Определяем правильный порядок (start должен быть меньше end)
+    const fromId = Math.min(startMessageId, endMessageId);
+    const toId = Math.max(startMessageId, endMessageId);
+
+    // Отправляем сообщение о процессе удаления
+    const progressMessage = await ctx.reply(`🗑️ Удаляю сообщения с ID ${fromId} по ${toId}...`);
+
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    // Удаляем сообщения в диапазоне
+    for (let messageId = fromId; messageId <= toId; messageId++) {
+        try {
+            await ctx.telegram.deleteMessage(chatId, messageId);
+            deletedCount++;
+
+            // Небольшая задержка, чтобы не превысить лимиты API
+            if (deletedCount % 10 === 0) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+        } catch (error) {
+            // Сообщение может быть уже удалено или недоступно
+            failedCount++;
+        }
+    }
+
+    // Удаляем команду пользователя
+    try {
+        await ctx.telegram.deleteMessage(chatId, ctx.message.message_id);
+    } catch (error) {
+        console.error('Не удалось удалить команду:', error);
+    }
+
+    // Очищаем сохраненное начало диапазона
+    deleteRangeStart.delete(userId);
+
+    // Обновляем сообщение о прогрессе
+    try {
+        await ctx.telegram.editMessageText(
+            chatId,
+            progressMessage.message_id,
+            null,
+            `✅ Удаление завершено!\n📊 Удалено: ${deletedCount} сообщений\n❌ Пропущено: ${failedCount} сообщений`
+        );
+    } catch (error) {
+        console.error('Не удалось обновить сообщение о прогрессе:', error);
+    }
+
+    // Удаляем сообщение о результате через 5 секунд
+    setTimeout(async () => {
+        try {
+            await ctx.telegram.deleteMessage(chatId, progressMessage.message_id);
+        } catch (error) {
+            console.error('Не удалось удалить сообщение о результате:', error);
+        }
+    }, 5000);
+});
+
+// Команда для удаления всех сообщений начиная с указанного (включая его)
+bot.command(['del_all', 'delall', 'da'], async (ctx) => {
+    const chatId = ctx.chat.id;
+    
+    // Проверяем, что это ответ на сообщение
+    if (!ctx.message.reply_to_message) {
+        await ctx.reply('⚠️ Ответьте этой командой на сообщение, начиная с которого нужно удалить все сообщения.', {
+            reply_to_message_id: ctx.message.message_id
+        });
+        return;
+    }
+    
+    const startMessageId = ctx.message.reply_to_message.message_id;
+    const currentMessageId = ctx.message.message_id;
+    
+    // Отправляем сообщение о процессе удаления
+    const progressMessage = await ctx.reply(`🗑️ Удаляю все сообщения начиная с ID ${startMessageId} (включительно)...`);
+    
+    let deletedCount = 0;
+    let failedCount = 0;
+    let consecutiveFailures = 0;
+    
+    // Удаляем сообщения начиная с указанного (включая его)
+    // Устанавливаем разумный лимит попыток (например, +1000 сообщений от текущего)
+    const maxMessageId = currentMessageId + 1000;
+    
+    for (let messageId = startMessageId; messageId <= maxMessageId; messageId++) {
+        try {
+            await ctx.telegram.deleteMessage(chatId, messageId);
+            deletedCount++;
+            consecutiveFailures = 0; // Сбрасываем счетчик неудач
+            
+            // Небольшая задержка, чтобы не превысить лимиты API
+            if (deletedCount % 10 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        } catch (error) {
+            failedCount++;
+            consecutiveFailures++;
+            
+            // Если много подряд неудачных попыток, возможно, достигли конца сообщений
+            if (consecutiveFailures >= 50) {
+                console.log(`Прекращаем удаление после ${consecutiveFailures} неудачных попыток подряд`);
+                break;
+            }
+        }
+    }
+    
+    // Удаляем команду пользователя
+    try {
+        await ctx.telegram.deleteMessage(chatId, ctx.message.message_id);
+    } catch (error) {
+        console.error('Не удалось удалить команду:', error);
+    }
+    
+    // Обновляем сообщение о прогрессе
+    try {
+        await ctx.telegram.editMessageText(
+            chatId,
+            progressMessage.message_id,
+            null,
+            `✅ Удаление завершено!\n📊 Удалено: ${deletedCount} сообщений\n❌ Пропущено: ${failedCount} сообщений\n📍 Начиная с сообщения ID: ${startMessageId}`
+        );
+    } catch (error) {
+        console.error('Не удалось обновить сообщение о прогрессе:', error);
+    }
+    
+    // Удаляем сообщение о результате через 7 секунд
+    setTimeout(async () => {
+        try {
+            await ctx.telegram.deleteMessage(chatId, progressMessage.message_id);
+        } catch (error) {
+            console.error('Не удалось удалить сообщение о результате:', error);
+        }
+    }, 7000);
+});
+
+// Команда для отмены выбора начала диапазона
+bot.command(['del_cancel', 'delcancel', 'dc'], async (ctx) => {
+    const userId = ctx.from.id;
+
+    if (deleteRangeStart.has(userId)) {
+        deleteRangeStart.delete(userId);
+        const msg = await ctx.reply('❌ Выбор диапазона для удаления отменен.');
+
+        // Удаляем команду
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
+        } catch (error) {
+            console.error('Не удалось удалить команду:', error);
+        }
+
+        // Удаляем подтверждение через 3 секунды
+        setTimeout(async () => {
+            try {
+                await ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id);
+            } catch (error) {
+                console.error('Не удалось удалить подтверждение:', error);
+            }
+        }, 3000);
+    } else {
+        await ctx.reply('ℹ️ Нет активного выбора диапазона для удаления.');
+    }
+});
 
 bot.on('voice', async (ctx) => {
     try {
@@ -374,19 +685,26 @@ bot.command('help', (ctx) => {
             `${MODES.WITHOUT_FORMAT.emoji} \`/noformat\` - включить режим без форматирования (только расшифровка)\n` +
             `🔄 \`/toggle\` - быстрое переключение между режимами\n` +
             `ℹ️ \`/mode\` - проверить текущий режим работы\n` +
+            `🗑️ \`/d\` или \`/del\` - удалить голосовое и расшифровку\n` +
+            `📍 \`/del_start\` - отметить начало диапазона для удаления\n` +
+            `📍 \`/del_end\` - отметить конец и удалить диапазон сообщений\n` +
+            `🧹 \`/del_all\` - удалить все сообщения после указанного\n` +
+            `❌ \`/del_cancel\` - отменить выбор диапазона\n` +
             `🆘 \`/help\` - показать эту справку\n` +
             `🏠 \`/start\` - начать работу с ботом\n\n` +
             `💡 *Режимы работы:*\n` +
             `${MODES.WITH_FORMAT.emoji} **С форматированием:** заголовок + улучшенный текст\n` +
             `${MODES.WITHOUT_FORMAT.emoji} **Без форматирования:** только чистая расшифровка\n\n` +
             `💬 *Совет:* Ответьте на расшифровку командой /format или /noformat, чтобы переобработать это же сообщение в другом режиме!\n\n` +
+            `🗑️ *Удаление сообщений:*\n` +
+            `• Диапазон: /del_start на первое → /del_end на последнее\n` +
+            `• Все после: /del_all на сообщение → удалит все после него\n\n` +
             `📝 Текст форматируется моноширинным шрифтом для удобного копирования`,
         { parse_mode: 'Markdown' }
     );
 });
 
 bot.launch();
-
 
 // Устанавливаем команды для автокомплита
 bot.telegram.setMyCommands([
@@ -397,6 +715,10 @@ bot.telegram.setMyCommands([
     { command: 'mode', description: 'Текущий режим' },
     { command: 'd', description: 'Удалить сообщения 🗑️' },
     { command: 'del', description: 'Удалить сообщения 🗑️' },
+    { command: 'del_start', description: 'Начало диапазона удаления 📍' },
+    { command: 'del_end', description: 'Конец диапазона и удаление 📍' },
+    { command: 'del_all', description: 'Удалить все после сообщения 🧹' },
+    { command: 'del_cancel', description: 'Отменить выбор диапазона ❌' },
     { command: 'help', description: 'Справка по командам' },
 ]);
 
