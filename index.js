@@ -184,40 +184,70 @@ async function extractTagsFromVoice(voiceText, availableTags) {
             messages: [
                 {
                     role: 'system',
-                    content: `Извлеки теги из голосового сообщения. 
-Доступные теги: ${availableTags.join(', ')}
+                    content: `Извлеки теги из голосового сообщения и раздели их на существующие и новые.
+Существующие теги в системе: ${availableTags.join(', ')}
 
-Правила:
-1. Сопоставь упомянутые слова с доступными тегами
-2. Если пользователь говорит "тег" перед словами - объедини их в один тег с подчеркиванием
-3. Слова "подчеркивание", "нижнее подчеркивание", "через черточку" - объедини предыдущее и следующее слово
+Правила извлечения:
+1. Извлеки ВСЕ упомянутые в сообщении теги
+2. Раздели их на две группы:
+   - existing: теги которые ТОЧНО есть в списке существующих (с учетом регистра)
+   - new: новые теги которых НЕТ в списке существующих
+3. Если пользователь говорит "тег" перед словами - объедини их в один тег с подчеркиванием
+4. Слова "подчеркивание", "нижнее подчеркивание", "через черточку" - объедини предыдущее и следующее слово
+5. Новые теги форматируй в snake_case (только латиница, цифры и подчеркивания)
+6. Убирай из тегов символ # если он есть
 
 Примеры:
-- "личное" → personal
-- "тег личностное развитие" → личностное_развитие
-- "личностное подчеркивание развитие" → личностное_развитие
-- "саморазвитие через черточку книги" → саморазвитие_книги
+- "личное" и есть тег "personal" → existing: ["personal"], new: []
+- "тег личностное развитие" → new: ["личностное_развитие"]
+- "личностное подчеркивание развитие" → new: ["личностное_развитие"]
+- "новый проект" → new: ["новый_проект"]
 
-Верни ТОЛЬКО теги через запятую без решетки.`,
+Верни ТОЛЬКО валидный JSON в формате:
+{"existing": ["tag1", "tag2"], "new": ["new_tag1", "new_tag2"]}`,
                 },
                 {
                     role: 'user',
                     content: voiceText,
                 },
             ],
+            response_format: { type: 'json_object' },
         });
 
-        const extractedTags = response.choices[0].message.content.trim();
-        return extractedTags ? extractedTags.split(',').map((tag) => tag.trim()) : [];
+        const result = JSON.parse(response.choices[0].message.content);
+        
+        // Гарантируем правильную структуру
+        return {
+            existing: Array.isArray(result.existing) ? result.existing : [],
+            new: Array.isArray(result.new) ? result.new : []
+        };
     } catch (error) {
         console.error('Ошибка при извлечении тегов:', error);
-        return [];
+        return { existing: [], new: [] };
     }
 }
 
 async function showTagConfirmation(ctx, selectedTags, transcriptionData, voiceMessageId, availableTags) {
-    let confirmMessage = '✅ **Выбранные теги:**\n';
-    confirmMessage += selectedTags.map((tag) => `#${tag.replace(/_/g, '\\_')}`).join(', ');
+    const { existing, new: newTags } = selectedTags;
+    
+    let confirmMessage = '✅ **Выбранные теги:**\n\n';
+    
+    // Показываем существующие теги
+    confirmMessage += '📌 **Существующие теги:**\n';
+    if (existing.length > 0) {
+        confirmMessage += existing.map((tag) => `#${tag.replace(/_/g, '\\_')}`).join(', ');
+    } else {
+        confirmMessage += '_нет_';
+    }
+    
+    // Показываем новые теги
+    confirmMessage += '\n\n🆕 **Новые теги:**\n';
+    if (newTags.length > 0) {
+        confirmMessage += newTags.map((tag) => `#${tag.replace(/_/g, '\\_')}`).join(', ');
+    } else {
+        confirmMessage += '_нет_';
+    }
+    
     confirmMessage += '\n\n❓ Добавить заметку с этими тегами?';
     confirmMessage += '\n\n💬 Или отправьте новое голосовое для изменения тегов';
 
@@ -226,8 +256,12 @@ async function showTagConfirmation(ctx, selectedTags, transcriptionData, voiceMe
         ...Markup.inlineKeyboard([[Markup.button.callback('✅ Да, добавить', `confirm_tags_${voiceMessageId}`)]]),
     });
 
+    // Объединяем все теги для сохранения
+    const allTags = [...existing, ...newTags];
+    
     tagConfirmationState.set(ctx.from.id, {
-        selectedTags,
+        selectedTags: allTags, // сохраняем объединенный список для createObsidianNote
+        selectedTagsStructured: selectedTags, // сохраняем структурированный объект для отображения
         transcriptionData,
         voiceMessageId,
         confirmMsgId: confirmMsg.message_id,
@@ -675,10 +709,22 @@ bot.action(/confirm_tags_(.+)/, async (ctx) => {
                 await ctx.telegram.editMessageReplyMarkup(ctx.chat.id, botMsg[0]);
             }
 
-            const tagsStr =
-                confirmState.selectedTags.length > 0
-                    ? `\n🏷️ Теги: ${confirmState.selectedTags.map((t) => `#${t.replace(/_/g, '\\_')}`).join(', ')}`
-                    : '';
+            // Используем структурированные теги для отображения, если они есть
+            const structuredTags = confirmState.selectedTagsStructured || { existing: confirmState.selectedTags, new: [] };
+            let tagsStr = '';
+
+            if (structuredTags.existing.length > 0 || structuredTags.new.length > 0) {
+                tagsStr = '\n';
+                if (structuredTags.existing.length > 0) {
+                    tagsStr += `\n📌 Существующие: ${structuredTags.existing.map((t) => `#${t.replace(/_/g, '\\_')}`).join(', ')}`;
+                }
+                if (structuredTags.new.length > 0) {
+                    tagsStr += `\n🆕 Новые: ${structuredTags.new.map((t) => `#${t.replace(/_/g, '\\_')}`).join(', ')}`;
+                }
+            } else if (confirmState.selectedTags.length > 0) {
+                // Fallback для обратной совместимости
+                tagsStr = `\n🏷️ Теги: ${confirmState.selectedTags.map((t) => `#${t.replace(/_/g, '\\_')}`).join(', ')}`;
+            }
 
             await ctx.answerCbQuery('✅ Заметка сохранена!');
             await ctx.reply(`✅ Заметка сохранена в Obsidian!${tagsStr}\n📁 Путь: \`${result.filepath}\``, {
