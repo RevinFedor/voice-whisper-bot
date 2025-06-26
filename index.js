@@ -60,7 +60,7 @@ function getUserMode(userId) {
 async function improveReadability(text) {
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o',
             messages: [
                 {
                     role: 'system',
@@ -339,8 +339,6 @@ tags: [${allTags.join(', ')}]
 source: telegram-voice
 mode: ${data.mode}
 ---
-
-# ${data.title}
 
 ${data.content}`;
 
