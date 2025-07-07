@@ -230,9 +230,10 @@ async function extractTagsFromVoice(voiceText, availableTags) {
 async function showTagConfirmation(ctx, selectedTags, transcriptionData, voiceMessageId, availableTags) {
     const { existing, new: newTags } = selectedTags;
     
-    // Получаем ID сообщения с выбором тегов
+    // Получаем данные из tagSelectionState
     const tagState = tagSelectionState.get(ctx.from.id);
     const tagSelectionMsgId = tagState ? tagState.tagSelectionMsgId : null;
+    const botMessageId = tagState ? tagState.botMessageId : null; // добавляем
     
     let confirmMessage = '✅ **Выбранные теги:**\n\n';
     
@@ -270,7 +271,8 @@ async function showTagConfirmation(ctx, selectedTags, transcriptionData, voiceMe
         voiceMessageId,
         confirmMsgId: confirmMsg.message_id,
         availableTags,
-        tagSelectionMsgId: tagSelectionMsgId // добавляем сюда
+        tagSelectionMsgId: tagSelectionMsgId, // добавляем сюда
+        botMessageId: botMessageId // добавляем
     });
 }
 
@@ -549,7 +551,7 @@ bot.action(/add_note_(.+)/, async (ctx) => {
             tagsMessage += `\nНовые: ${recommendations.new.map((tag) => `#${tag.replace(/_/g, '\\_')}`).join(', ')}`;
         }
 
-        tagsMessage += '\n\n💬 Отправьте голосовое сообщение с нужными тегами';
+        tagsMessage += '\n\n💬 Отправьте ГС или текст с нужными тегами';
 
         const tagSelectionMsg = await ctx.reply(tagsMessage, {
             parse_mode: 'Markdown',
@@ -560,6 +562,7 @@ bot.action(/add_note_(.+)/, async (ctx) => {
             transcriptionData,
             tagSelectionMsgId: tagSelectionMsg.message_id,
             availableTags,
+            botMessageId: ctx.callbackQuery.message.message_id // добавляем
         });
     } catch (error) {
         console.error('Ошибка при загрузке тегов:', error);
@@ -568,7 +571,9 @@ bot.action(/add_note_(.+)/, async (ctx) => {
         const result = await createObsidianNote(transcriptionData);
         if (result.success) {
             await ctx.editMessageReplyMarkup();
-            await ctx.reply(`✅ Заметка сохранена в Obsidian!\n📁 Путь: \`${result.filepath}\``, { parse_mode: 'Markdown' });
+            await ctx.reply(`✅ Заметка сохранена в Obsidian!\n📝 ${transcriptionData.title}`, {
+                parse_mode: 'Markdown',
+            });
             transcriptionCache.delete(cacheId);
         }
     }
@@ -679,26 +684,70 @@ bot.on('voice', async (ctx) => {
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
     
-    // Пропускаем команды и ответы на другие состояния
+    // Пропускаем команды
     if (ctx.message.text.startsWith('/')) return;
     
-    // Проверяем, не находимся ли мы в состоянии выбора тегов
-    if (tagSelectionState.has(userId) || tagConfirmationState.has(userId)) {
-        // Пока что игнорируем текст в этих состояниях
+    // Проверяем подтверждение тегов
+    if (tagConfirmationState.has(userId)) {
+        const confirmState = tagConfirmationState.get(userId);
+
+        try {
+            // Удаляем предыдущее сообщение с подтверждением
+            try {
+                await ctx.telegram.deleteMessage(ctx.chat.id, confirmState.confirmMsgId);
+            } catch (e) {}
+
+            // Извлекаем теги из текста
+            const selectedTags = await extractTagsFromVoice(ctx.message.text, confirmState.availableTags);
+
+            // Показываем новое подтверждение
+            await showTagConfirmation(ctx, selectedTags, confirmState.transcriptionData, confirmState.voiceMessageId, confirmState.availableTags);
+
+            // Удаляем текстовое сообщение
+            try {
+                await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
+            } catch (e) {}
+        } catch (error) {
+            console.error('Ошибка при обновлении тегов:', error);
+            await ctx.reply('❌ Не удалось обработать теги');
+        }
         return;
     }
     
+    // Проверяем выбор тегов
+    if (tagSelectionState.has(userId)) {
+        const state = tagSelectionState.get(userId);
+
+        try {
+            // Извлекаем теги из текста
+            const selectedTags = await extractTagsFromVoice(ctx.message.text, state.availableTags);
+
+            // Удаляем текстовое сообщение
+            try {
+                await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
+            } catch (e) {}
+
+            // Показываем подтверждение
+            await showTagConfirmation(ctx, selectedTags, state.transcriptionData, state.voiceMessageId, state.availableTags);
+
+            tagSelectionState.delete(userId);
+        } catch (error) {
+            console.error('Ошибка при обработке тегов:', error);
+            await ctx.reply('❌ Не удалось обработать теги');
+            tagSelectionState.delete(userId);
+        }
+
+        return;
+    }
+    
+    // Обычная обработка текстовых сообщений (создание заметки)
     try {
         const messageText = ctx.message.text;
         const messageId = ctx.message.message_id;
         
-        // Генерируем заголовок
         const title = await createTitle(messageText);
-        
-        // Формируем ответ
         const responseText = `📝 **Заголовок:** \`${title}\``;
         
-        // Отправляем сообщение с кнопкой
         const botReply = await ctx.reply(responseText, {
             parse_mode: 'Markdown',
             reply_to_message_id: messageId,
@@ -707,7 +756,6 @@ bot.on('text', async (ctx) => {
             ])
         });
         
-        // Сохраняем в кэш
         const cacheId = `${ctx.chat.id}_text_${messageId}`;
         transcriptionCache.set(cacheId, {
             title: title || 'Текстовая заметка',
@@ -715,10 +763,9 @@ bot.on('text', async (ctx) => {
             timestamp: new Date(),
             userId: ctx.from.id,
             mode: 'Текст',
-            isText: true // флаг для различения текстовых заметок
+            isText: true
         });
         
-        // Удаляем из кэша через 30 минут
         setTimeout(() => {
             transcriptionCache.delete(cacheId);
         }, 30 * 60 * 1000);
@@ -772,7 +819,7 @@ bot.action(/add_note_(text_)?(.+)/, async (ctx) => {
             tagsMessage += `\nНовые: ${recommendations.new.map((tag) => `#${tag.replace(/_/g, '\\_')}`).join(', ')}`;
         }
 
-        tagsMessage += '\n\n💬 Отправьте голосовое сообщение с нужными тегами';
+        tagsMessage += '\n\n💬 Отправьте ГС или текст с нужными тегами';
 
         const tagSelectionMsg = await ctx.reply(tagsMessage, {
             parse_mode: 'Markdown',
@@ -783,16 +830,19 @@ bot.action(/add_note_(text_)?(.+)/, async (ctx) => {
             transcriptionData,
             tagSelectionMsgId: tagSelectionMsg.message_id,
             availableTags,
-            isText: isText // сохраняем флаг
+            isText: isText, // сохраняем флаг
+            botMessageId: ctx.callbackQuery.message.message_id // добавляем
         });
     } catch (error) {
         console.error('Ошибка при загрузке тегов:', error);
         await ctx.reply('❌ Не удалось загрузить теги. Добавляю заметку без тегов...');
-
+ 
         const result = await createObsidianNote(transcriptionData);
         if (result.success) {
             await ctx.editMessageReplyMarkup();
-            await ctx.reply(`✅ Заметка сохранена в Obsidian!\n📁 Путь: \`${result.filepath}\``, { parse_mode: 'Markdown' });
+            await ctx.reply(`✅ Заметка сохранена в Obsidian!\n📝 ${transcriptionData.title}`, {
+                parse_mode: 'Markdown',
+            });
             transcriptionCache.delete(cacheId);
         }
     }
@@ -833,6 +883,13 @@ bot.action(/confirm_tags_(.+)/, async (ctx) => {
                     await ctx.telegram.deleteMessage(ctx.chat.id, confirmState.tagSelectionMsgId);
                 } catch (e) {}
             }
+            
+            // Удаляем исходное сообщение бота с заголовком
+            if (confirmState.botMessageId) {
+                try {
+                    await ctx.telegram.deleteMessage(ctx.chat.id, confirmState.botMessageId);
+                } catch (e) {}
+            }
 
             // Удаляем кнопки с исходного сообщения
             const cacheId = `${ctx.chat.id}_${voiceMessageId}`;
@@ -859,7 +916,7 @@ bot.action(/confirm_tags_(.+)/, async (ctx) => {
             }
 
             await ctx.answerCbQuery('✅ Заметка сохранена!');
-            await ctx.reply(`✅ Заметка сохранена в Obsidian!${tagsStr}\n📁 Путь: \`${result.filepath}\``, {
+            await ctx.reply(`✅ Заметка сохранена в Obsidian!${tagsStr}\n📝 ${confirmState.transcriptionData.title}`, {
                 parse_mode: 'Markdown',
             });
 
