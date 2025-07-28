@@ -14,3 +14,14 @@
 решить что делать когда несколько заметок подряд идут, и по одной теме
     - надо чтобы на графе потом было видно связь с промежутком временным допустим если я в течение получаса записал там 15 заметок они все как бы на общей теме вот ну понятное дело что они будут помечены общими тегами но нужно также отдельно указать что они конкретно в этот временной промежуток были записаны то есть это будет как отдельная связь
 
+
+
+- получить все папки 
+curl -H "Authorization: Bearer f77f1c5a2f876b6511a2e57f89fe32fc52ac908930ff1ede24d141812d0b6ef0" "http://127.0.0.1:27123/vault/"
+
+- получить названия всех заметок в папке
+curl -H "Authorization: Bearer f77f1c5a2f876b6511a2e57f89fe32fc52ac908930ff1ede24d141812d0b6ef0" "http://127.0.0.1:27123/vault/Telegram%20Voice%20Notes/"
+
+
+- копировать все заметки из папки "Telegram Voice% Notes" 
+curl -H "Authorization: Bearer f77f1c5a2f876b6511a2e57f89fe32fc52ac908930ff1ede24d141812d0b6ef0" "http://127.0.0.1:27123/vault/Telegram%20Voice%20Notes/" | jq -r '.files[]' | while IFS= read -r file; do echo "=== $file ==="; curl -s -H "Authorization: Bearer f77f1c5a2f876b6511a2e57f89fe32fc52ac908930ff1ede24d141812d0b6ef0" "http://127.0.0.1:27123/vault/$(printf 'Telegram Voice Notes/%s' "$file" | jq -sRr @uri)"; echo -e "\n\n"; done | pbcopy
