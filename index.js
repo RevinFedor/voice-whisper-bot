@@ -9,10 +9,6 @@ import axios from 'axios';
 import ffmpeg from 'fluent-ffmpeg';
 import { promisify } from 'util';
 import { exec } from 'child_process';
-import ytdl from 'ytdl-core';
-import tiktokPkg from '@tobyg74/tiktok-api-dl';
-const { Downloader: TiktokDownloader } = tiktokPkg;
-
 const execPromise = promisify(exec);
 
 // Загружаем переменные из файла .env
@@ -616,9 +612,7 @@ async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSiz
             '1. Сожмите видео перед отправкой\n' +
             '2. Обрежьте видео на части\n' +
             '3. Используйте более низкое качество\n' +
-            '4. Отправьте только аудиодорожку\n\n' +
-            '📎 Или отправьте ссылку на видео командой:\n' +
-            '`/video ваша_ссылка`',
+            '4. Отправьте только аудиодорожку',
             { 
                 parse_mode: 'Markdown',
                 reply_to_message_id: videoMessageId 
@@ -894,8 +888,8 @@ async function processAudioFile(ctx, fileId, messageId, withFormatting, fileName
     }
 }
 
-// Добавляем глобальное логирование всех сообщений
-bot.use(async (ctx, next) => {
+// ВРЕМЕННО ОТКЛЮЧЕНО: глобальное логирование
+/* bot.use(async (ctx, next) => {
     const user = ctx.from;
     const username = user?.username ? `@${user.username}` : `${user?.first_name || 'Unknown'}`;
     
@@ -952,7 +946,7 @@ bot.use(async (ctx, next) => {
     console.log('===================\n');
     
     return next();
-});
+}); */
 
 // Обработчик аудио сообщений (когда Telegram распознает файл как аудио)
 bot.on('audio', async (ctx) => {
@@ -1068,7 +1062,8 @@ bot.on('document', async (ctx) => {
     }
 });
 
-// Функция для загрузки и обработки видео по ссылке
+// УДАЛЕНО: функция processVideoFromUrl
+/*
 async function processVideoFromUrl(ctx, videoUrl, withFormatting) {
     const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
     
@@ -1328,8 +1323,10 @@ async function processVideoFromUrl(ctx, videoUrl, withFormatting) {
         throw error;
     }
 }
+*/
 
-// Команда для обработки видео по ссылке
+// УДАЛЕНО: команда /video
+/*
 bot.command('video', async (ctx) => {
     const userId = ctx.from.id;
     const text = ctx.message.text;
@@ -1366,6 +1363,7 @@ bot.command('video', async (ctx) => {
         console.error('Ошибка при обработке команды /video:', error);
     }
 });
+*/
 
 // Обработчик голосовых сообщений для выбора тегов
 bot.on('voice', async (ctx) => {
@@ -2061,7 +2059,6 @@ bot.command('help', (ctx) => {
             `${MODES.WITHOUT_FORMAT.emoji} \`/noformat\` - включить режим без форматирования (только расшифровка)\n` +
             `🔄 \`/toggle\` - быстрое переключение между режимами\n` +
             `ℹ️ \`/mode\` - проверить текущий режим работы\n` +
-            `🎥 \`/video [ссылка]\` - расшифровать видео с YouTube/TikTok\n` +
             `🗑️ \`/d\` или \`/del\` - удалить голосовое и расшифровку\n` +
             `📍 \`/del_start\` - отметить начало диапазона для удаления\n` +
             `📍 \`/del_end\` - отметить конец и удалить диапазон сообщений\n` +
@@ -2076,8 +2073,7 @@ bot.command('help', (ctx) => {
             `После расшифровки появятся кнопки для сохранения заметки в Obsidian.\n` +
             `При сохранении можно выбрать теги голосовым сообщением.\n\n` +
             `🎥 *Поддержка видео:*\n` +
-            `• Отправьте MP4 файл (до 20 МБ)\n` +
-            `• Используйте /video для YouTube и TikTok\n\n` +
+            `• Отправьте MP4 файл (до 20 МБ)\n\n` +
             `🎵 *Поддержка аудио:*\n` +
             `• MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, WebM\n` +
             `• Максимальный размер: 25 МБ\n\n` +
@@ -2099,7 +2095,6 @@ bot.telegram.setMyCommands([
     { command: 'noformat', description: 'Режим без форматирования 📝' },
     { command: 'toggle', description: 'Переключить режим' },
     { command: 'mode', description: 'Текущий режим' },
-    { command: 'video', description: 'Расшифровать видео по ссылке 🎥' },
     { command: 'd', description: 'Удалить сообщения 🗑️' },
     { command: 'del', description: 'Удалить сообщения 🗑️' },
     { command: 'del_start', description: 'Начало диапазона удаления 📍' },
