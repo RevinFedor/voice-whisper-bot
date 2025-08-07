@@ -1,11 +1,16 @@
 import { Telegraf, Markup } from 'telegraf';
-import { writeFile } from 'fs/promises';
+import { writeFile, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
 import fetch from 'node-fetch';
 import { OpenAI } from 'openai';
 import { v4 as uuid } from 'uuid';
 import dotenv from 'dotenv';
 import axios from 'axios';
+import ffmpeg from 'fluent-ffmpeg';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+
+const execPromise = promisify(exec);
 
 // Загружаем переменные из файла .env
 dotenv.config();
@@ -575,6 +580,185 @@ bot.action(/add_note_(.+)/, async (ctx) => {
                 parse_mode: 'Markdown',
             });
             transcriptionCache.delete(cacheId);
+        }
+    }
+});
+
+// Функция для извлечения аудио из MP4
+async function extractAudioFromVideo(videoPath, outputPath) {
+    return new Promise((resolve, reject) => {
+        ffmpeg(videoPath)
+            .output(outputPath)
+            .audioCodec('libopus')
+            .format('ogg')
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+    });
+}
+
+// Функция обработки видео файлов
+async function processVideo(ctx, fileId, videoMessageId, withFormatting) {
+    const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
+
+    const loadingMessage = await ctx.reply(`${mode.emoji} ⏳ Извлекаю аудио из видео и обрабатываю в режиме "${mode.name}"...`, {
+        reply_to_message_id: videoMessageId,
+    });
+
+    try {
+        const link = await ctx.telegram.getFileLink(fileId);
+        const res = await fetch(link.href);
+        const buffer = await res.arrayBuffer();
+        const videoPath = `/tmp/${uuid()}.mp4`;
+        const audioPath = `/tmp/${uuid()}.ogg`;
+        
+        await writeFile(videoPath, Buffer.from(buffer));
+        
+        // Извлекаем аудио из видео
+        await extractAudioFromVideo(videoPath, audioPath);
+        
+        // Удаляем временный видео файл
+        await unlink(videoPath);
+
+        const rawTranscript = await openai.audio.transcriptions.create({
+            model: 'whisper-1',
+            file: createReadStream(audioPath),
+            response_format: 'text',
+            language: 'ru',
+        });
+        
+        // Удаляем временный аудио файл
+        await unlink(audioPath);
+
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (deleteError) {
+            console.log('Не удалось удалить сообщение о загрузке:', deleteError.message);
+        }
+
+        let messageContent;
+        let title = '';
+
+        if (withFormatting) {
+            const improvedTranscript = await improveReadability(rawTranscript);
+            title = await createTitle(improvedTranscript);
+            messageContent = improvedTranscript;
+        } else {
+            title = await createTitle(rawTranscript);
+            messageContent = rawTranscript;
+        }
+
+        const fullMessage = `${mode.emoji} *Режим: ${mode.name}*\n🎥 *Источник: видео*\n\n**Заголовок:**\n\`${title}\`\n\n**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``;
+
+        let botReply;
+
+        if (fullMessage.length > 4000) {
+            const filename = `transcript_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+            const fileContent = `Заголовок: ${title}\n\n${messageContent}`;
+
+            const tmpFilePath = `/tmp/${filename}`;
+            await writeFile(tmpFilePath, fileContent, 'utf8');
+
+            botReply = await ctx.replyWithDocument(
+                { source: tmpFilePath, filename: filename },
+                {
+                    caption:
+                        `${mode.emoji} *Режим: ${mode.name}*\n🎥 *Источник: видео*\n\n` +
+                        `**Заголовок:** \`${title}\`\n\n` +
+                        `📄 Расшифровка слишком длинная, отправляю файлом.`,
+                    parse_mode: 'Markdown',
+                    reply_to_message_id: videoMessageId,
+                    ...createTranscriptKeyboard(videoMessageId),
+                }
+            );
+
+            await unlink(tmpFilePath);
+        } else {
+            botReply = await ctx.reply(fullMessage, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: videoMessageId,
+                ...createTranscriptKeyboard(videoMessageId),
+            });
+        }
+
+        const cacheId = `${ctx.chat.id}_${videoMessageId}`;
+        transcriptionCache.set(cacheId, {
+            title: title || 'Видео заметка',
+            content: messageContent,
+            timestamp: new Date(),
+            userId: ctx.from.id,
+            mode: mode.name,
+        });
+
+        botMessageToVoice.set(botReply.message_id, { voiceMessageId: videoMessageId, fileId });
+
+        setTimeout(() => {
+            transcriptionCache.delete(cacheId);
+        }, 30 * 60 * 1000);
+
+        return botReply;
+    } catch (error) {
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (deleteError) {
+            console.log('Не удалось удалить сообщение о загрузке при ошибке:', deleteError.message);
+        }
+        throw error;
+    }
+}
+
+// Обработчик видео сообщений (MP4)
+bot.on('video', async (ctx) => {
+    const userId = ctx.from.id;
+    
+    // Проверяем что это MP4 файл
+    const video = ctx.message.video;
+    const mimeType = video.mime_type;
+    
+    if (mimeType && mimeType.includes('mp4')) {
+        try {
+            const user = ctx.message.from;
+            const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
+            console.log(`📹 Получено видео MP4 от пользователя ${username} (ID: ${userId})`);
+
+            const withFormatting = userPreferences.get(userId) === true;
+            const fileId = video.file_id;
+
+            const botReply = await processVideo(ctx, fileId, ctx.message.message_id, withFormatting);
+
+            const mode = getUserMode(userId);
+            console.log(`✅ Обработано видео от ${username} в режиме ${mode.name}`);
+        } catch (err) {
+            console.error(err);
+            await ctx.reply('❌ Не удалось извлечь и расшифровать аудио из видео.');
+        }
+    } else {
+        await ctx.reply('⚠️ Поддерживаются только MP4 файлы. Пожалуйста, отправьте видео в формате MP4.');
+    }
+});
+
+// Обработчик документов (для MP4 файлов отправленных как документы)
+bot.on('document', async (ctx) => {
+    const userId = ctx.from.id;
+    const document = ctx.message.document;
+    
+    // Проверяем что это MP4 файл
+    if (document.file_name && document.file_name.toLowerCase().endsWith('.mp4')) {
+        try {
+            const user = ctx.message.from;
+            const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
+            console.log(`📹 Получен MP4 документ от пользователя ${username} (ID: ${userId})`);
+
+            const withFormatting = userPreferences.get(userId) === true;
+            const fileId = document.file_id;
+
+            const botReply = await processVideo(ctx, fileId, ctx.message.message_id, withFormatting);
+
+            const mode = getUserMode(userId);
+            console.log(`✅ Обработан MP4 документ от ${username} в режиме ${mode.name}`);
+        } catch (err) {
+            console.error(err);
+            await ctx.reply('❌ Не удалось извлечь и расшифровать аудио из видео.');
         }
     }
 });
@@ -1286,6 +1470,8 @@ bot.command('help', (ctx) => {
             `📝 *Obsidian интеграция:*\n` +
             `После расшифровки появятся кнопки для сохранения заметки в Obsidian.\n` +
             `При сохранении можно выбрать теги голосовым сообщением.\n\n` +
+            `🎥 *Поддержка видео:*\n` +
+            `Отправьте MP4 файл - бот извлечет аудио и расшифрует его.\n\n` +
             `💬 *Совет:* Ответьте на расшифровку командой /format или /noformat, чтобы переобработать это же сообщение в другом режиме!\n\n` +
             `🗑️ *Удаление сообщений:*\n` +
             `• Диапазон: /del_start на первое → /del_end на последнее\n` +
