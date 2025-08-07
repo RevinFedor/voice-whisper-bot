@@ -598,8 +598,29 @@ async function extractAudioFromVideo(videoPath, outputPath) {
 }
 
 // Функция обработки видео файлов
-async function processVideo(ctx, fileId, videoMessageId, withFormatting) {
+async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSize = 0) {
     const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
+    
+    // Проверяем размер файла (Telegram API ограничение - 20 МБ)
+    const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 МБ в байтах
+    
+    if (fileSize > MAX_FILE_SIZE) {
+        await ctx.reply(
+            '⚠️ *Файл слишком большой*\n\n' +
+            `📊 Размер вашего файла: ${(fileSize / 1024 / 1024).toFixed(1)} МБ\n` +
+            `📏 Максимальный размер: 20 МБ\n\n` +
+            '💡 *Что делать:*\n' +
+            '1. Сожмите видео перед отправкой\n' +
+            '2. Обрежьте видео на части\n' +
+            '3. Используйте более низкое качество\n' +
+            '4. Отправьте только аудиодорожку',
+            { 
+                parse_mode: 'Markdown',
+                reply_to_message_id: videoMessageId 
+            }
+        );
+        return null;
+    }
 
     const loadingMessage = await ctx.reply(`${mode.emoji} ⏳ Извлекаю аудио из видео и обрабатываю в режиме "${mode.name}"...`, {
         reply_to_message_id: videoMessageId,
@@ -714,23 +735,35 @@ bot.on('video', async (ctx) => {
     // Проверяем что это MP4 файл
     const video = ctx.message.video;
     const mimeType = video.mime_type;
+    const fileSize = video.file_size || 0;
     
     if (mimeType && mimeType.includes('mp4')) {
         try {
             const user = ctx.message.from;
             const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
-            console.log(`📹 Получено видео MP4 от пользователя ${username} (ID: ${userId})`);
+            console.log(`📹 Получено видео MP4 от пользователя ${username} (ID: ${userId}), размер: ${(fileSize / 1024 / 1024).toFixed(1)} МБ`);
 
             const withFormatting = userPreferences.get(userId) === true;
             const fileId = video.file_id;
 
-            const botReply = await processVideo(ctx, fileId, ctx.message.message_id, withFormatting);
-
-            const mode = getUserMode(userId);
-            console.log(`✅ Обработано видео от ${username} в режиме ${mode.name}`);
+            const botReply = await processVideo(ctx, fileId, ctx.message.message_id, withFormatting, fileSize);
+            
+            if (botReply) {
+                const mode = getUserMode(userId);
+                console.log(`✅ Обработано видео от ${username} в режиме ${mode.name}`);
+            }
         } catch (err) {
             console.error(err);
-            await ctx.reply('❌ Не удалось извлечь и расшифровать аудио из видео.');
+            if (err.response && err.response.description === 'Bad Request: file is too big') {
+                await ctx.reply(
+                    '❌ *Файл слишком большой для обработки*\n\n' +
+                    '📏 Telegram API позволяет ботам загружать файлы до 20 МБ.\n' +
+                    '💡 Попробуйте сжать видео или отправить его частями.',
+                    { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id }
+                );
+            } else {
+                await ctx.reply('❌ Не удалось извлечь и расшифровать аудио из видео.');
+            }
         }
     } else {
         await ctx.reply('⚠️ Поддерживаются только MP4 файлы. Пожалуйста, отправьте видео в формате MP4.');
@@ -744,21 +777,34 @@ bot.on('document', async (ctx) => {
     
     // Проверяем что это MP4 файл
     if (document.file_name && document.file_name.toLowerCase().endsWith('.mp4')) {
+        const fileSize = document.file_size || 0;
+        
         try {
             const user = ctx.message.from;
             const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
-            console.log(`📹 Получен MP4 документ от пользователя ${username} (ID: ${userId})`);
+            console.log(`📹 Получен MP4 документ от пользователя ${username} (ID: ${userId}), размер: ${(fileSize / 1024 / 1024).toFixed(1)} МБ`);
 
             const withFormatting = userPreferences.get(userId) === true;
             const fileId = document.file_id;
 
-            const botReply = await processVideo(ctx, fileId, ctx.message.message_id, withFormatting);
-
-            const mode = getUserMode(userId);
-            console.log(`✅ Обработан MP4 документ от ${username} в режиме ${mode.name}`);
+            const botReply = await processVideo(ctx, fileId, ctx.message.message_id, withFormatting, fileSize);
+            
+            if (botReply) {
+                const mode = getUserMode(userId);
+                console.log(`✅ Обработан MP4 документ от ${username} в режиме ${mode.name}`);
+            }
         } catch (err) {
             console.error(err);
-            await ctx.reply('❌ Не удалось извлечь и расшифровать аудио из видео.');
+            if (err.response && err.response.description === 'Bad Request: file is too big') {
+                await ctx.reply(
+                    '❌ *Файл слишком большой для обработки*\n\n' +
+                    '📏 Telegram API позволяет ботам загружать файлы до 20 МБ.\n' +
+                    '💡 Попробуйте сжать видео или отправить его частями.',
+                    { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id }
+                );
+            } else {
+                await ctx.reply('❌ Не удалось извлечь и расшифровать аудио из видео.');
+            }
         }
     }
 });
