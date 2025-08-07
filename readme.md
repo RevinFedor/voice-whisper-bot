@@ -25,3 +25,13 @@ curl -H "Authorization: Bearer f77f1c5a2f876b6511a2e57f89fe32fc52ac908930ff1ede2
 
 - копировать все заметки из папки "Telegram Voice% Notes" 
 curl -H "Authorization: Bearer f77f1c5a2f876b6511a2e57f89fe32fc52ac908930ff1ede24d141812d0b6ef0" "http://127.0.0.1:27123/vault/Telegram%20Voice%20Notes/" | jq -r '.files[]' | while IFS= read -r file; do echo "=== $file ==="; curl -s -H "Authorization: Bearer f77f1c5a2f876b6511a2e57f89fe32fc52ac908930ff1ede24d141812d0b6ef0" "http://127.0.0.1:27123/vault/$(printf 'Telegram Voice Notes/%s' "$file" | jq -sRr @uri)"; echo -e "\n\n"; done | pbcopy
+
+
+\\\\
+
+
+кнопка доавбить блок - в новом блоке кнопка записать гс - получилась заметка
+далее у заметки должно быть описания с разных инстанций 
+    - какова цель пользователя была в момент записи заметки 
+    - какие проблемы решает что затрагивает
+так же нужно чтоб заметка куда-то относилась типа теги
