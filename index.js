@@ -1906,23 +1906,69 @@ bot.command(['del_end', 'delend', 'de'], async (ctx) => {
     const endMessageId = ctx.message.reply_to_message.message_id;
     const fromId = Math.min(startMessageId, endMessageId);
     const toId = Math.max(startMessageId, endMessageId);
+    
+    // Ограничиваем диапазон для больших промежутков
+    const MAX_RANGE = 10000; // Максимум 10000 сообщений за раз
+    const actualToId = Math.min(toId, fromId + MAX_RANGE);
 
-    const progressMessage = await ctx.reply(`🗑️ Удаляю сообщения с ID ${fromId} по ${toId}...`);
+    const progressMessage = await ctx.reply(
+        `🗑️ Удаляю сообщения...\n` +
+        `📊 Диапазон: ${fromId} - ${actualToId}\n` +
+        `⏳ Это может занять время...`
+    );
 
     let deletedCount = 0;
     let failedCount = 0;
+    let lastDeletedId = null;
+    let consecutiveFailures = 0;
 
-    for (let messageId = fromId; messageId <= toId; messageId++) {
-        try {
-            await ctx.telegram.deleteMessage(chatId, messageId);
-            deletedCount++;
-
-            if (deletedCount % 10 === 0) {
-                await new Promise((resolve) => setTimeout(resolve, 100));
-            }
-        } catch (error) {
-            failedCount++;
+    // Удаляем пачками для оптимизации
+    const BATCH_SIZE = 50;
+    for (let batchStart = fromId; batchStart <= actualToId; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, actualToId);
+        const deletePromises = [];
+        
+        for (let messageId = batchStart; messageId <= batchEnd; messageId++) {
+            deletePromises.push(
+                ctx.telegram.deleteMessage(chatId, messageId)
+                    .then(() => {
+                        deletedCount++;
+                        lastDeletedId = messageId;
+                        consecutiveFailures = 0;
+                        return true;
+                    })
+                    .catch(() => {
+                        failedCount++;
+                        consecutiveFailures++;
+                        return false;
+                    })
+            );
         }
+        
+        await Promise.all(deletePromises);
+        
+        // Обновляем прогресс каждые 50 сообщений
+        if (deletedCount > 0 && deletedCount % 50 === 0) {
+            try {
+                await ctx.telegram.editMessageText(
+                    chatId,
+                    progressMessage.message_id,
+                    null,
+                    `🗑️ Удаляю сообщения...\n` +
+                    `✅ Удалено: ${deletedCount}\n` +
+                    `⏳ Обработано: ${batchEnd - fromId + 1} из ${actualToId - fromId + 1}`
+                );
+            } catch (e) {}
+        }
+        
+        // Если слишком много ошибок подряд - останавливаемся
+        if (consecutiveFailures > 100) {
+            console.log('Слишком много ошибок подряд, останавливаем удаление');
+            break;
+        }
+        
+        // Небольшая задержка между пачками
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     try {
@@ -2021,6 +2067,96 @@ bot.command(['del_all', 'delall', 'da'], async (ctx) => {
     }, 7000);
 });
 
+// Команда для удаления последних N сообщений
+bot.command(['clear', 'cls'], async (ctx) => {
+    const chatId = ctx.chat.id;
+    const text = ctx.message.text;
+    const parts = text.split(' ');
+    
+    // Определяем количество сообщений для удаления
+    let count = 100; // По умолчанию 100
+    if (parts.length > 1) {
+        const num = parseInt(parts[1]);
+        if (!isNaN(num) && num > 0) {
+            count = Math.min(num, 1000); // Максимум 1000
+        }
+    }
+    
+    const currentMessageId = ctx.message.message_id;
+    const startId = Math.max(1, currentMessageId - count);
+    
+    const progressMessage = await ctx.reply(
+        `🗑️ Удаляю последние ${count} сообщений...\n` +
+        `⏳ Это может занять время...`
+    );
+    
+    let deletedCount = 0;
+    let failedCount = 0;
+    
+    // Удаляем пачками
+    const BATCH_SIZE = 20;
+    for (let batchStart = currentMessageId; batchStart >= startId; batchStart -= BATCH_SIZE) {
+        const batchEnd = Math.max(batchStart - BATCH_SIZE + 1, startId);
+        const deletePromises = [];
+        
+        for (let messageId = batchStart; messageId >= batchEnd; messageId--) {
+            deletePromises.push(
+                ctx.telegram.deleteMessage(chatId, messageId)
+                    .then(() => {
+                        deletedCount++;
+                        return true;
+                    })
+                    .catch(() => {
+                        failedCount++;
+                        return false;
+                    })
+            );
+        }
+        
+        await Promise.all(deletePromises);
+        
+        // Обновляем прогресс
+        if ((deletedCount + failedCount) % 50 === 0) {
+            try {
+                await ctx.telegram.editMessageText(
+                    chatId,
+                    progressMessage.message_id,
+                    null,
+                    `🗑️ Удаляю сообщения...\n` +
+                    `✅ Удалено: ${deletedCount}\n` +
+                    `❌ Пропущено: ${failedCount}`
+                );
+            } catch (e) {}
+        }
+        
+        // Задержка между пачками
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    // Финальное сообщение
+    try {
+        await ctx.telegram.editMessageText(
+            chatId,
+            progressMessage.message_id,
+            null,
+            `✅ Удаление завершено!\n` +
+            `📊 Удалено: ${deletedCount} сообщений\n` +
+            `❌ Пропущено: ${failedCount} сообщений`
+        );
+    } catch (error) {
+        console.error('Не удалось обновить сообщение о прогрессе:', error);
+    }
+    
+    // Удаляем сообщение о результате через 5 секунд
+    setTimeout(async () => {
+        try {
+            await ctx.telegram.deleteMessage(chatId, progressMessage.message_id);
+        } catch (error) {
+            console.error('Не удалось удалить сообщение о результате:', error);
+        }
+    }, 5000);
+});
+
 // Команда для отмены выбора начала диапазона
 bot.command(['del_cancel', 'delcancel', 'dc'], async (ctx) => {
     const userId = ctx.from.id;
@@ -2059,6 +2195,7 @@ bot.command('help', (ctx) => {
             `${MODES.WITHOUT_FORMAT.emoji} \`/noformat\` - включить режим без форматирования (только расшифровка)\n` +
             `🔄 \`/toggle\` - быстрое переключение между режимами\n` +
             `ℹ️ \`/mode\` - проверить текущий режим работы\n` +
+            `🧹 \`/clear [N]\` - удалить последние N сообщений (по умолчанию 100)\n` +
             `🗑️ \`/d\` или \`/del\` - удалить голосовое и расшифровку\n` +
             `📍 \`/del_start\` - отметить начало диапазона для удаления\n` +
             `📍 \`/del_end\` - отметить конец и удалить диапазон сообщений\n` +
@@ -2095,6 +2232,7 @@ bot.telegram.setMyCommands([
     { command: 'noformat', description: 'Режим без форматирования 📝' },
     { command: 'toggle', description: 'Переключить режим' },
     { command: 'mode', description: 'Текущий режим' },
+    { command: 'clear', description: 'Удалить последние N сообщений 🧹' },
     { command: 'd', description: 'Удалить сообщения 🗑️' },
     { command: 'del', description: 'Удалить сообщения 🗑️' },
     { command: 'del_start', description: 'Начало диапазона удаления 📍' },
