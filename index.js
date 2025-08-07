@@ -431,7 +431,7 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
             model: 'whisper-1',
             file: createReadStream(tmpPath),
             response_format: 'text',
-            language: 'ru',
+            // Автоопределение языка
         });
 
         try {
@@ -650,7 +650,7 @@ async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSiz
             model: 'whisper-1',
             file: createReadStream(audioPath),
             response_format: 'text',
-            language: 'ru',
+            // Автоопределение языка
         });
         
         // Удаляем временный аудио файл
@@ -812,7 +812,7 @@ async function processAudioFile(ctx, fileId, messageId, withFormatting, fileName
             model: 'whisper-1',
             file: createReadStream(audioPath),
             response_format: 'text',
-            language: 'ru',
+            // Автоопределение языка
         });
         
         await unlink(audioPath);
@@ -894,12 +894,102 @@ async function processAudioFile(ctx, fileId, messageId, withFormatting, fileName
     }
 }
 
+// Добавляем глобальное логирование всех сообщений
+bot.use(async (ctx, next) => {
+    const user = ctx.from;
+    const username = user?.username ? `@${user.username}` : `${user?.first_name || 'Unknown'}`;
+    
+    console.log('\n=== НОВОЕ СООБЩЕНИЕ ===');
+    console.log('От:', username, `(ID: ${user?.id})`);
+    console.log('Тип обновления:', ctx.updateType);
+    
+    if (ctx.message) {
+        console.log('Тип сообщения:', Object.keys(ctx.message).filter(k => 
+            ['text', 'voice', 'document', 'video', 'audio', 'photo'].includes(k)
+        ).join(', ') || 'unknown');
+        
+        if (ctx.message.document) {
+            console.log('Документ:', {
+                file_name: ctx.message.document.file_name,
+                mime_type: ctx.message.document.mime_type,
+                file_size: ctx.message.document.file_size,
+                file_id: ctx.message.document.file_id?.substring(0, 20) + '...'
+            });
+        }
+        
+        if (ctx.message.audio) {
+            console.log('Аудио:', {
+                performer: ctx.message.audio.performer,
+                title: ctx.message.audio.title,
+                duration: ctx.message.audio.duration,
+                mime_type: ctx.message.audio.mime_type,
+                file_size: ctx.message.audio.file_size,
+                file_id: ctx.message.audio.file_id?.substring(0, 20) + '...'
+            });
+        }
+        
+        if (ctx.message.voice) {
+            console.log('Голосовое:', {
+                duration: ctx.message.voice.duration,
+                mime_type: ctx.message.voice.mime_type,
+                file_size: ctx.message.voice.file_size
+            });
+        }
+        
+        if (ctx.message.video) {
+            console.log('Видео:', {
+                duration: ctx.message.video.duration,
+                mime_type: ctx.message.video.mime_type,
+                file_size: ctx.message.video.file_size
+            });
+        }
+        
+        if (ctx.message.text) {
+            console.log('Текст:', ctx.message.text.substring(0, 100));
+        }
+    }
+    
+    console.log('===================\n');
+    
+    return next();
+});
+
+// Обработчик аудио сообщений (когда Telegram распознает файл как аудио)
+bot.on('audio', async (ctx) => {
+    const userId = ctx.from.id;
+    const audio = ctx.message.audio;
+    const fileName = audio.file_name || `${audio.title || 'audio'}.${audio.mime_type?.split('/')[1] || 'mp3'}`;
+    
+    console.log('🎵 Обработка AUDIO сообщения:', fileName);
+    
+    try {
+        const user = ctx.message.from;
+        const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
+        console.log(`🎵 Получено аудио ${fileName} от ${username}, размер: ${(audio.file_size / 1024 / 1024).toFixed(1)} МБ`);
+        
+        const withFormatting = userPreferences.get(userId) === true;
+        const fileId = audio.file_id;
+        
+        const botReply = await processAudioFile(ctx, fileId, ctx.message.message_id, withFormatting, fileName);
+        
+        if (botReply) {
+            const mode = getUserMode(userId);
+            console.log(`✅ Обработано аудио от ${username} в режиме ${mode.name}`);
+        }
+    } catch (err) {
+        console.error('Ошибка при обработке аудио:', err);
+        await ctx.reply('❌ Не удалось расшифровать аудио файл.');
+    }
+});
+
 // Обработчик документов (для MP4 и аудио файлов)
 bot.on('document', async (ctx) => {
     const userId = ctx.from.id;
     const document = ctx.message.document;
     const fileName = document.file_name || 'file';
     const fileExt = fileName.toLowerCase().split('.').pop();
+    
+    console.log('📄 Обработка DOCUMENT:', fileName, 'расширение:', fileExt);
     
     // Проверяем что это MP4 файл
     if (fileExt === 'mp4') {
@@ -1006,7 +1096,13 @@ async function processVideoFromUrl(ctx, videoUrl, withFormatting) {
                 { parse_mode: 'Markdown' }
             );
             
-            const result = await TiktokDownloader(videoUrl, { version: 'v3' });
+            // Увеличиваем таймаут для TikTok
+            const result = await Promise.race([
+                TiktokDownloader(videoUrl, { version: 'v3' }),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('TikTok загрузка превысила 30 секунд')), 30000)
+                )
+            ]);
             
             if (!result || result.status !== 'success' || !result.result) {
                 throw new Error('Не удалось получить информацию о видео');
@@ -1031,11 +1127,23 @@ async function processVideoFromUrl(ctx, videoUrl, withFormatting) {
                 throw new Error('Не удалось получить ссылку на видео');
             }
             
-            // Скачиваем видео
+            // Скачиваем видео с таймаутом
             const videoPath = `/tmp/${uuid()}.mp4`;
-            const response = await fetch(videoUrlDirect);
-            const buffer = await response.arrayBuffer();
-            await writeFile(videoPath, Buffer.from(buffer));
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 60000); // 60 секунд таймаут
+            
+            try {
+                const response = await fetch(videoUrlDirect, { signal: controller.signal });
+                clearTimeout(timeout);
+                const buffer = await response.arrayBuffer();
+                await writeFile(videoPath, Buffer.from(buffer));
+            } catch (err) {
+                clearTimeout(timeout);
+                if (err.name === 'AbortError') {
+                    throw new Error('Загрузка видео превысила 60 секунд');
+                }
+                throw err;
+            }
             
             // Извлекаем аудио
             audioPath = `/tmp/${uuid()}.ogg`;
@@ -1118,7 +1226,7 @@ async function processVideoFromUrl(ctx, videoUrl, withFormatting) {
             model: 'whisper-1',
             file: createReadStream(audioPath),
             response_format: 'text',
-            language: 'ru',
+            // Автоопределение языка
         });
         
         // Удаляем временный аудио файл
