@@ -9,6 +9,9 @@ import axios from 'axios';
 import ffmpeg from 'fluent-ffmpeg';
 import { promisify } from 'util';
 import { exec } from 'child_process';
+import ytdl from 'ytdl-core';
+import tiktokPkg from '@tobyg74/tiktok-api-dl';
+const { Downloader: TiktokDownloader } = tiktokPkg;
 
 const execPromise = promisify(exec);
 
@@ -613,7 +616,9 @@ async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSiz
             '1. Сожмите видео перед отправкой\n' +
             '2. Обрежьте видео на части\n' +
             '3. Используйте более низкое качество\n' +
-            '4. Отправьте только аудиодорожку',
+            '4. Отправьте только аудиодорожку\n\n' +
+            '📎 Или отправьте ссылку на видео командой:\n' +
+            '`/video ваша_ссылка`',
             { 
                 parse_mode: 'Markdown',
                 reply_to_message_id: videoMessageId 
@@ -770,13 +775,134 @@ bot.on('video', async (ctx) => {
     }
 });
 
-// Обработчик документов (для MP4 файлов отправленных как документы)
+// Функция обработки аудио файлов
+async function processAudioFile(ctx, fileId, messageId, withFormatting, fileName = 'audio') {
+    const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
+    
+    const loadingMessage = await ctx.reply(
+        `${mode.emoji} ⏳ Обрабатываю аудио файл "${fileName}"...`,
+        { reply_to_message_id: messageId }
+    );
+    
+    try {
+        const link = await ctx.telegram.getFileLink(fileId);
+        const res = await fetch(link.href);
+        const buffer = await res.arrayBuffer();
+        
+        // Сохраняем временный файл
+        const inputPath = `/tmp/${uuid()}_${fileName}`;
+        await writeFile(inputPath, Buffer.from(buffer));
+        
+        // Конвертируем в OGG для Whisper если нужно
+        let audioPath = inputPath;
+        if (!fileName.toLowerCase().endsWith('.ogg')) {
+            audioPath = `/tmp/${uuid()}.ogg`;
+            await new Promise((resolve, reject) => {
+                ffmpeg(inputPath)
+                    .audioCodec('libopus')
+                    .format('ogg')
+                    .save(audioPath)
+                    .on('end', resolve)
+                    .on('error', reject);
+            });
+            await unlink(inputPath);
+        }
+        
+        const rawTranscript = await openai.audio.transcriptions.create({
+            model: 'whisper-1',
+            file: createReadStream(audioPath),
+            response_format: 'text',
+            language: 'ru',
+        });
+        
+        await unlink(audioPath);
+        
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (e) {}
+        
+        let messageContent;
+        let title = '';
+        
+        if (withFormatting) {
+            const improvedTranscript = await improveReadability(rawTranscript);
+            title = await createTitle(improvedTranscript);
+            messageContent = improvedTranscript;
+        } else {
+            title = await createTitle(rawTranscript);
+            messageContent = rawTranscript;
+        }
+        
+        const fullMessage = 
+            `${mode.emoji} *Режим: ${mode.name}*\n` +
+            `🎵 *Аудио файл: ${fileName}*\n\n` +
+            `**Заголовок:**\n\`${title}\`\n\n` +
+            `**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``;
+        
+        let botReply;
+        
+        if (fullMessage.length > 4000) {
+            const filename = `transcript_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+            const fileContent = `Источник: ${fileName}\nЗаголовок: ${title}\n\n${messageContent}`;
+            
+            const tmpFilePath = `/tmp/${filename}`;
+            await writeFile(tmpFilePath, fileContent, 'utf8');
+            
+            botReply = await ctx.replyWithDocument(
+                { source: tmpFilePath, filename: filename },
+                {
+                    caption:
+                        `${mode.emoji} *Режим: ${mode.name}*\n` +
+                        `🎵 *Аудио файл: ${fileName}*\n\n` +
+                        `**Заголовок:** \`${title}\`\n\n` +
+                        `📄 Расшифровка слишком длинная, отправляю файлом.`,
+                    parse_mode: 'Markdown',
+                    reply_to_message_id: messageId,
+                    ...createTranscriptKeyboard(messageId),
+                }
+            );
+            
+            await unlink(tmpFilePath);
+        } else {
+            botReply = await ctx.reply(fullMessage, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: messageId,
+                ...createTranscriptKeyboard(messageId),
+            });
+        }
+        
+        const cacheId = `${ctx.chat.id}_${messageId}`;
+        transcriptionCache.set(cacheId, {
+            title: title || 'Аудио заметка',
+            content: messageContent,
+            timestamp: new Date(),
+            userId: ctx.from.id,
+            mode: mode.name,
+            source: fileName
+        });
+        
+        setTimeout(() => {
+            transcriptionCache.delete(cacheId);
+        }, 30 * 60 * 1000);
+        
+        return botReply;
+    } catch (error) {
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (e) {}
+        throw error;
+    }
+}
+
+// Обработчик документов (для MP4 и аудио файлов)
 bot.on('document', async (ctx) => {
     const userId = ctx.from.id;
     const document = ctx.message.document;
+    const fileName = document.file_name || 'file';
+    const fileExt = fileName.toLowerCase().split('.').pop();
     
     // Проверяем что это MP4 файл
-    if (document.file_name && document.file_name.toLowerCase().endsWith('.mp4')) {
+    if (fileExt === 'mp4') {
         const fileSize = document.file_size || 0;
         
         try {
@@ -806,6 +932,330 @@ bot.on('document', async (ctx) => {
                 await ctx.reply('❌ Не удалось извлечь и расшифровать аудио из видео.');
             }
         }
+    } else if (['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'webm'].includes(fileExt)) {
+        // Обработка аудио файлов
+        const fileSize = document.file_size || 0;
+        const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 МБ для аудио
+        
+        if (fileSize > MAX_FILE_SIZE) {
+            await ctx.reply(
+                '⚠️ *Аудио файл слишком большой*\n\n' +
+                `📊 Размер вашего файла: ${(fileSize / 1024 / 1024).toFixed(1)} МБ\n` +
+                `📏 Максимальный размер: 25 МБ\n\n` +
+                '💡 Попробуйте обрезать аудио или уменьшить битрейт',
+                { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id }
+            );
+            return;
+        }
+        
+        try {
+            const user = ctx.message.from;
+            const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
+            console.log(`🎵 Получен аудио файл ${fileName} от пользователя ${username} (ID: ${userId}), размер: ${(fileSize / 1024 / 1024).toFixed(1)} МБ`);
+            
+            const withFormatting = userPreferences.get(userId) === true;
+            const fileId = document.file_id;
+            
+            const botReply = await processAudioFile(ctx, fileId, ctx.message.message_id, withFormatting, fileName);
+            
+            if (botReply) {
+                const mode = getUserMode(userId);
+                console.log(`✅ Обработан аудио файл от ${username} в режиме ${mode.name}`);
+            }
+        } catch (err) {
+            console.error(err);
+            if (err.response && err.response.description === 'Bad Request: file is too big') {
+                await ctx.reply(
+                    '❌ *Файл слишком большой для обработки*\n\n' +
+                    '📏 Telegram API позволяет ботам загружать файлы до 20 МБ.\n' +
+                    '💡 Попробуйте сжать аудио или разделить на части.',
+                    { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id }
+                );
+            } else {
+                await ctx.reply('❌ Не удалось расшифровать аудио файл.');
+            }
+        }
+    }
+});
+
+// Функция для загрузки и обработки видео по ссылке
+async function processVideoFromUrl(ctx, videoUrl, withFormatting) {
+    const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
+    
+    const loadingMessage = await ctx.reply(
+        `${mode.emoji} ⏳ Загружаю видео и извлекаю аудио...\n` +
+        `🔗 URL: ${videoUrl}\n\n` +
+        `⚠️ Это может занять несколько минут для больших видео`,
+        { parse_mode: 'Markdown' }
+    );
+    
+    try {
+        // Определяем тип видео
+        const isTikTok = videoUrl.includes('tiktok.com') || videoUrl.includes('vt.tiktok.com');
+        const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+        
+        let title, audioPath;
+        
+        if (isTikTok) {
+            // Обработка TikTok
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                loadingMessage.message_id,
+                null,
+                `${mode.emoji} 🎵 Загружаю TikTok видео...\n⏳ Подождите...`,
+                { parse_mode: 'Markdown' }
+            );
+            
+            const result = await TiktokDownloader(videoUrl, { version: 'v3' });
+            
+            if (!result || result.status !== 'success' || !result.result) {
+                throw new Error('Не удалось получить информацию о видео');
+            }
+            
+            const videoData = result.result;
+            title = videoData.description || videoData.desc || 'TikTok видео';
+            
+            // Получаем URL видео (берем HD версию если доступна)
+            let videoUrlDirect = null;
+            if (videoData.videoHD) {
+                videoUrlDirect = videoData.videoHD;
+            } else if (videoData.videoSD) {
+                videoUrlDirect = videoData.videoSD;
+            } else if (videoData.videoWatermark) {
+                videoUrlDirect = videoData.videoWatermark;
+            } else if (videoData.video && Array.isArray(videoData.video) && videoData.video.length > 0) {
+                videoUrlDirect = videoData.video[0];
+            }
+            
+            if (!videoUrlDirect) {
+                throw new Error('Не удалось получить ссылку на видео');
+            }
+            
+            // Скачиваем видео
+            const videoPath = `/tmp/${uuid()}.mp4`;
+            const response = await fetch(videoUrlDirect);
+            const buffer = await response.arrayBuffer();
+            await writeFile(videoPath, Buffer.from(buffer));
+            
+            // Извлекаем аудио
+            audioPath = `/tmp/${uuid()}.ogg`;
+            await extractAudioFromVideo(videoPath, audioPath);
+            
+            // Удаляем временное видео
+            await unlink(videoPath);
+            
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                loadingMessage.message_id,
+                null,
+                `${mode.emoji} 🎵 TikTok видео загружено\n🎙️ Расшифровываю аудио...`,
+                { parse_mode: 'Markdown' }
+            );
+            
+        } else if (isYouTube) {
+            // Обработка YouTube (существующий код)
+            const videoId = ytdl.getVideoID(videoUrl);
+            const info = await ytdl.getInfo(videoId);
+            title = info.videoDetails.title;
+            const duration = parseInt(info.videoDetails.lengthSeconds);
+            
+            // Информируем о видео
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                loadingMessage.message_id,
+                null,
+                `${mode.emoji} 📹 Найдено видео:\n` +
+                `📝 *${title}*\n` +
+                `⏱ Длительность: ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}\n\n` +
+                `⏳ Извлекаю аудио...`,
+                { parse_mode: 'Markdown' }
+            );
+            
+            // Скачиваем только аудио
+            const audioPathTemp = `/tmp/${uuid()}.mp3`;
+            const stream = ytdl(videoUrl, { 
+                quality: 'highestaudio',
+                filter: 'audioonly'
+            });
+            
+            await new Promise((resolve, reject) => {
+                ffmpeg(stream)
+                    .audioCodec('libmp3lame')
+                    .format('mp3')
+                    .save(audioPathTemp)
+                    .on('end', resolve)
+                    .on('error', reject);
+            });
+            
+            // Конвертируем в OGG для Whisper
+            audioPath = `/tmp/${uuid()}.ogg`;
+            await new Promise((resolve, reject) => {
+                ffmpeg(audioPathTemp)
+                    .audioCodec('libopus')
+                    .format('ogg')
+                    .save(audioPath)
+                    .on('end', resolve)
+                    .on('error', reject);
+            });
+            
+            // Удаляем временный MP3
+            await unlink(audioPathTemp);
+        } else {
+            throw new Error('Неподдерживаемый URL. Используйте YouTube или TikTok ссылки.');
+        }
+        
+        // Расшифровываем
+        await ctx.telegram.editMessageText(
+            ctx.chat.id,
+            loadingMessage.message_id,
+            null,
+            `${mode.emoji} 🎙️ Расшифровываю аудио...\n` +
+            `Это может занять некоторое время`,
+            { parse_mode: 'Markdown' }
+        );
+        
+        const rawTranscript = await openai.audio.transcriptions.create({
+            model: 'whisper-1',
+            file: createReadStream(audioPath),
+            response_format: 'text',
+            language: 'ru',
+        });
+        
+        // Удаляем временный аудио файл
+        await unlink(audioPath);
+        
+        // Удаляем сообщение о загрузке
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (e) {}
+        
+        let messageContent;
+        let processedTitle = '';
+        
+        if (withFormatting) {
+            const improvedTranscript = await improveReadability(rawTranscript);
+            processedTitle = await createTitle(improvedTranscript);
+            messageContent = improvedTranscript;
+        } else {
+            processedTitle = await createTitle(rawTranscript);
+            messageContent = rawTranscript;
+        }
+        
+        const fullMessage = 
+            `${mode.emoji} *Режим: ${mode.name}*\n` +
+            `🎥 *Источник: ${title}*\n\n` +
+            `**Заголовок:**\n\`${processedTitle}\`\n\n` +
+            `**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``;
+        
+        let botReply;
+        
+        if (fullMessage.length > 4000) {
+            const filename = `transcript_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+            const fileContent = `Источник: ${title}\nЗаголовок: ${processedTitle}\n\n${messageContent}`;
+            
+            const tmpFilePath = `/tmp/${filename}`;
+            await writeFile(tmpFilePath, fileContent, 'utf8');
+            
+            botReply = await ctx.replyWithDocument(
+                { source: tmpFilePath, filename: filename },
+                {
+                    caption:
+                        `${mode.emoji} *Режим: ${mode.name}*\n` +
+                        `🎥 *Источник: ${title}*\n\n` +
+                        `**Заголовок:** \`${processedTitle}\`\n\n` +
+                        `📄 Расшифровка слишком длинная, отправляю файлом.`,
+                    parse_mode: 'Markdown',
+                    ...createTranscriptKeyboard(`url_${videoId}`),
+                }
+            );
+            
+            await unlink(tmpFilePath);
+        } else {
+            botReply = await ctx.reply(fullMessage, {
+                parse_mode: 'Markdown',
+                ...createTranscriptKeyboard(`url_${videoId}`),
+            });
+        }
+        
+        const cacheId = `${ctx.chat.id}_url_${Date.now()}`;
+        transcriptionCache.set(cacheId, {
+            title: processedTitle || 'Видео заметка',
+            content: messageContent,
+            timestamp: new Date(),
+            userId: ctx.from.id,
+            mode: mode.name,
+            source: title
+        });
+        
+        setTimeout(() => {
+            transcriptionCache.delete(cacheId);
+        }, 30 * 60 * 1000);
+        
+        return botReply;
+    } catch (error) {
+        console.error('Ошибка при обработке видео:', error);
+        
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+        } catch (e) {}
+        
+        if (error.message && (error.message.includes('not a valid YouTube URL') || error.message.includes('Неподдерживаемый URL'))) {
+            await ctx.reply(
+                '❌ *Неверная ссылка*\n\n' +
+                'Поддерживаются ссылки:\n' +
+                '• YouTube видео\n' +
+                '• YouTube Shorts\n' +
+                '• TikTok видео\n\n' +
+                'Примеры:\n' +
+                '`/video https://youtube.com/watch?v=...`\n' +
+                '`/video https://vt.tiktok.com/...`',
+                { parse_mode: 'Markdown' }
+            );
+        } else if (error.message && error.message.includes('private')) {
+            await ctx.reply('❌ Это видео приватное или недоступно в вашем регионе');
+        } else {
+            await ctx.reply('❌ Не удалось обработать видео. Проверьте ссылку и попробуйте снова.');
+        }
+        
+        throw error;
+    }
+}
+
+// Команда для обработки видео по ссылке
+bot.command('video', async (ctx) => {
+    const userId = ctx.from.id;
+    const text = ctx.message.text;
+    const parts = text.split(' ');
+    
+    if (parts.length < 2) {
+        await ctx.reply(
+            '📹 *Обработка видео по ссылке*\n\n' +
+            'Использование:\n' +
+            '`/video [ссылка_на_видео]`\n\n' +
+            'Примеры:\n' +
+            '`/video https://youtube.com/watch?v=...`\n' +
+            '`/video https://youtu.be/...`\n' +
+            '`/video https://vt.tiktok.com/...`\n\n' +
+            '💡 Бот извлечет аудио из видео и расшифрует его.\n' +
+            '⚠️ Работает с видео любого размера!\n' +
+            '🎵 Поддерживает YouTube и TikTok!',
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    const videoUrl = parts.slice(1).join(' ').trim();
+    
+    try {
+        const withFormatting = userPreferences.get(userId) === true;
+        await processVideoFromUrl(ctx, videoUrl, withFormatting);
+        
+        const mode = getUserMode(userId);
+        const user = ctx.message.from;
+        const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
+        console.log(`✅ Обработано видео по ссылке от ${username} в режиме ${mode.name}`);
+    } catch (error) {
+        console.error('Ошибка при обработке команды /video:', error);
     }
 });
 
@@ -1503,6 +1953,7 @@ bot.command('help', (ctx) => {
             `${MODES.WITHOUT_FORMAT.emoji} \`/noformat\` - включить режим без форматирования (только расшифровка)\n` +
             `🔄 \`/toggle\` - быстрое переключение между режимами\n` +
             `ℹ️ \`/mode\` - проверить текущий режим работы\n` +
+            `🎥 \`/video [ссылка]\` - расшифровать видео с YouTube/TikTok\n` +
             `🗑️ \`/d\` или \`/del\` - удалить голосовое и расшифровку\n` +
             `📍 \`/del_start\` - отметить начало диапазона для удаления\n` +
             `📍 \`/del_end\` - отметить конец и удалить диапазон сообщений\n` +
@@ -1517,7 +1968,11 @@ bot.command('help', (ctx) => {
             `После расшифровки появятся кнопки для сохранения заметки в Obsidian.\n` +
             `При сохранении можно выбрать теги голосовым сообщением.\n\n` +
             `🎥 *Поддержка видео:*\n` +
-            `Отправьте MP4 файл - бот извлечет аудио и расшифрует его.\n\n` +
+            `• Отправьте MP4 файл (до 20 МБ)\n` +
+            `• Используйте /video для YouTube и TikTok\n\n` +
+            `🎵 *Поддержка аудио:*\n` +
+            `• MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, WebM\n` +
+            `• Максимальный размер: 25 МБ\n\n` +
             `💬 *Совет:* Ответьте на расшифровку командой /format или /noformat, чтобы переобработать это же сообщение в другом режиме!\n\n` +
             `🗑️ *Удаление сообщений:*\n` +
             `• Диапазон: /del_start на первое → /del_end на последнее\n` +
@@ -1536,6 +1991,7 @@ bot.telegram.setMyCommands([
     { command: 'noformat', description: 'Режим без форматирования 📝' },
     { command: 'toggle', description: 'Переключить режим' },
     { command: 'mode', description: 'Текущий режим' },
+    { command: 'video', description: 'Расшифровать видео по ссылке 🎥' },
     { command: 'd', description: 'Удалить сообщения 🗑️' },
     { command: 'del', description: 'Удалить сообщения 🗑️' },
     { command: 'del_start', description: 'Начало диапазона удаления 📍' },
