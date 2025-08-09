@@ -37,6 +37,23 @@
             height: 300%;
             min-width: 100vw;
             min-height: 100vh;
+            transform-origin: 0 0;
+            transition: transform 0.1s;
+        }
+
+        /* Индикатор масштаба */
+        .zoom-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(26, 26, 26, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 8px 15px;
+            font-size: 12px;
+            color: #888;
+            z-index: 1000;
         }
 
         /* Метка даты */
@@ -942,9 +959,16 @@
         <button class="control-btn" onclick="groupSelected()">📚 Объединить</button>
         <button class="control-btn" onclick="sendToObsidian()">📤 В Obsidian</button>
         <div style="border-left: 1px solid #333; height: 20px;"></div>
+        <button class="control-btn" onclick="zoomIn()">🔍+</button>
+        <button class="control-btn" onclick="zoomOut()">🔍-</button>
+        <button class="control-btn" onclick="resetZoom()">🔄 100%</button>
+        <div style="border-left: 1px solid #333; height: 20px;"></div>
         <button class="control-btn" onclick="toggleView()">📊 Вид</button>
         <button class="control-btn" onclick="addNote()">➕ Добавить</button>
     </div>
+
+    <!-- Индикатор масштаба -->
+    <div class="zoom-indicator" id="zoomIndicator">100%</div>
 
     <!-- Статистика -->
     <div class="stats-panel">
@@ -1054,6 +1078,16 @@
         let mouseDownTime = 0;
         let currentNoteId = null;
 
+        // Переменные для zoom и панорамирования
+        let scale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isPanning = false;
+        let panStartX = 0;
+        let panStartY = 0;
+        let lastTranslateX = 0;
+        let lastTranslateY = 0;
+
         // Данные заметок для демо
         const notesData = {
             '1': {
@@ -1134,6 +1168,7 @@
         document.querySelectorAll('.note').forEach(note => {
             note.addEventListener('mousedown', (e) => {
                 if (e.target.classList.contains('note-action')) return;
+                if (isPanning) return; // Не перетаскивать в режиме панорамирования
 
                 mouseDownTime = Date.now();
                 currentElement = note;
@@ -1376,6 +1411,101 @@
         function addNote() {
             alert('Добавление новой заметки');
         }
+
+        // Функции масштабирования
+        function updateTransform() {
+            const canvasInner = document.querySelector('.canvas-inner');
+            canvasInner.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            document.getElementById('zoomIndicator').textContent = Math.round(scale * 100) + '%';
+        }
+
+        function zoomIn() {
+            if (scale < 3) {
+                scale *= 1.2;
+                updateTransform();
+            }
+        }
+
+        function zoomOut() {
+            if (scale > 0.3) {
+                scale /= 1.2;
+                updateTransform();
+            }
+        }
+
+        function resetZoom() {
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            updateTransform();
+        }
+
+        // Zoom колесиком мыши
+        document.getElementById('canvas').addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                const newScale = scale * delta;
+                
+                if (newScale >= 0.3 && newScale <= 3) {
+                    // Zoom к позиции курсора
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    translateX -= x * (delta - 1);
+                    translateY -= y * (delta - 1);
+                    scale = newScale;
+                    
+                    updateTransform();
+                }
+            }
+        });
+
+        // Панорамирование с зажатым пробелом
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !isPanning) {
+                e.preventDefault();
+                isPanning = true;
+                document.getElementById('canvas').style.cursor = 'grab';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                isPanning = false;
+                document.getElementById('canvas').style.cursor = 'default';
+            }
+        });
+
+        // Панорамирование мышью
+        document.getElementById('canvas').addEventListener('mousedown', (e) => {
+            if (isPanning) {
+                e.preventDefault();
+                panStartX = e.clientX;
+                panStartY = e.clientY;
+                lastTranslateX = translateX;
+                lastTranslateY = translateY;
+                document.getElementById('canvas').style.cursor = 'grabbing';
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isPanning && e.buttons === 1) {
+                const dx = e.clientX - panStartX;
+                const dy = e.clientY - panStartY;
+                translateX = lastTranslateX + dx;
+                translateY = lastTranslateY + dy;
+                updateTransform();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isPanning) {
+                document.getElementById('canvas').style.cursor = 'grab';
+            }
+        });
 
 
     </script>
