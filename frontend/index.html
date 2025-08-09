@@ -275,6 +275,232 @@
             z-index: 2000;
         }
 
+        /* Новые стили для улучшенной модалки редактирования */
+        .field-group {
+            margin-bottom: 25px;
+        }
+
+        .field-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .field-with-actions {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
+        .field-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .action-btn {
+            width: 32px;
+            height: 42px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #888;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: #333;
+            color: #fff;
+            border-color: #555;
+        }
+
+        .action-btn.active {
+            background: #2a4;
+            color: white;
+            border-color: #2a4;
+        }
+
+        /* История генераций */
+        .history-panel {
+            background: #181818;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .history-panel.active {
+            display: block;
+        }
+
+        .history-item {
+            padding: 8px;
+            margin-bottom: 6px;
+            background: #222;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-item:hover {
+            background: #2a2a2a;
+            border: 1px solid #444;
+        }
+
+        .history-item.current {
+            border: 1px solid #2a4;
+        }
+
+        .history-time {
+            font-size: 10px;
+            color: #666;
+        }
+
+        /* Мини чат */
+        .prompt-panel {
+            background: #181818;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .prompt-panel.active {
+            display: block;
+        }
+
+        .prompt-input {
+            display: flex;
+            gap: 8px;
+        }
+
+        .prompt-input input {
+            flex: 1;
+            padding: 8px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .prompt-input button {
+            padding: 8px 16px;
+            background: #2a4;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        /* Двухуровневая система тегов */
+        .tags-system {
+            background: #181818;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .tags-row {
+            margin-bottom: 15px;
+        }
+
+        .tags-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .tags-row-label {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tag.existing {
+            background: #1a3a5a;
+            border: 1px solid #2a5a8a;
+        }
+
+        .tag.new {
+            background: #2a5a2a;
+            border: 1px solid #4a8a4a;
+        }
+
+        .tag-add {
+            padding: 4px 10px;
+            background: transparent;
+            border: 1px dashed #444;
+            color: #666;
+            border-radius: 12px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tag-add:hover {
+            border-color: #666;
+            color: #888;
+        }
+
+        /* Dropdown меню */
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: #222;
+            min-width: 200px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            border: 1px solid #444;
+            border-radius: 8px;
+            z-index: 10;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+        }
+
+        .dropdown-content.active {
+            display: block;
+        }
+
+        .dropdown-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .dropdown-item:hover {
+            background: #2a2a2a;
+        }
+
+        .dropdown-item:first-child {
+            border-radius: 8px 8px 0 0;
+        }
+
+        .dropdown-item:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+
         /* Стили для модалки с темами и командами */
         .topic-item {
             background: #1a1a1a;
@@ -1029,34 +1255,122 @@
 
     <!-- Модалка редактирования -->
     <div class="modal" id="editModal">
-        <div class="modal-content">
+        <div class="modal-content" style="width: 700px;">
             <div class="modal-header">
-                <div class="modal-title">Редактирование заметки</div>
+                <div class="modal-title">✏️ Редактирование заметки</div>
                 <button class="modal-close" onclick="closeEditModal()">×</button>
             </div>
             <div class="modal-body">
-                <div class="input-group">
-                    <div class="input-label">Заголовок</div>
-                    <input type="text" class="input-field" id="noteTitle" placeholder="Введите заголовок...">
-                </div>
-                <div class="input-group">
-                    <div class="input-label">Содержимое</div>
-                    <textarea class="input-field textarea-field" id="noteContent"
-                        placeholder="Введите текст заметки..."></textarea>
-                </div>
-                <div class="input-group">
-                    <div class="input-label">Теги</div>
-                    <div class="tags-container" id="tagsContainer">
-                        <div class="tag">
-                            проект
-                            <span class="tag-remove" onclick="removeTag(this)">×</span>
-                        </div>
-                        <div class="tag">
-                            архитектура
-                            <span class="tag-remove" onclick="removeTag(this)">×</span>
+                <!-- Заголовок с AI функциями -->
+                <div class="field-group">
+                    <div class="field-label">Заголовок</div>
+                    <div class="field-with-actions">
+                        <input type="text" class="input-field" id="noteTitle" placeholder="Введите заголовок...">
+                        <div class="field-actions">
+                            <button class="action-btn" onclick="regenerateTitle()" title="Сгенерировать новый">↻</button>
+                            <button class="action-btn" onclick="toggleHistory()" title="История генераций">📜</button>
+                            <button class="action-btn" onclick="togglePrompt()" title="Уточнить промпт">💬</button>
                         </div>
                     </div>
-                    <input type="text" class="input-field" placeholder="Добавить тег..." onkeypress="addTag(event)">
+                    
+                    <!-- История генераций заголовков -->
+                    <div class="history-panel" id="titleHistory">
+                        <div class="history-item current">
+                            <span>Идея для проекта</span>
+                            <span class="history-time">текущий</span>
+                        </div>
+                        <div class="history-item" onclick="useTitle(this)">
+                            <span>Архитектура системы заметок</span>
+                            <span class="history-time">10:30</span>
+                        </div>
+                        <div class="history-item" onclick="useTitle(this)">
+                            <span>Интеграция Telegram и Obsidian</span>
+                            <span class="history-time">10:28</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Промпт панель -->
+                    <div class="prompt-panel" id="titlePrompt">
+                        <div class="prompt-input">
+                            <input type="text" placeholder="Сделай заголовок в стиле...">
+                            <button>Применить</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Содержимое -->
+                <div class="field-group">
+                    <div class="field-label">Содержимое</div>
+                    <textarea class="input-field textarea-field" id="noteContent" placeholder="Введите текст заметки..."></textarea>
+                </div>
+                
+                <!-- Двухуровневая система тегов -->
+                <div class="field-group">
+                    <div class="field-label">Теги</div>
+                    <div class="tags-system">
+                        <!-- Текущие теги -->
+                        <div class="tags-row">
+                            <div class="tags-row-label">
+                                <span>Текущие теги</span>
+                            </div>
+                            <div class="tags-container" id="currentTags" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                <div class="tag">
+                                    проект
+                                    <span class="tag-remove" onclick="removeTag(this)">×</span>
+                                </div>
+                                <div class="tag">
+                                    архитектура
+                                    <span class="tag-remove" onclick="removeTag(this)">×</span>
+                                </div>
+                                <div class="tag-add" onclick="addCustomTag()">+ добавить</div>
+                            </div>
+                        </div>
+                        
+                        <!-- AI предложения -->
+                        <div class="tags-row">
+                            <div class="tags-row-label">
+                                <span>AI предложения</span>
+                                <div style="display: flex; gap: 4px;">
+                                    <div class="dropdown">
+                                        <button class="action-btn" onclick="toggleDropdown(this)" style="width: auto; padding: 0 10px; height: 24px; font-size: 12px;">
+                                            ↻ Предложить ▼
+                                        </button>
+                                        <div class="dropdown-content">
+                                            <div class="dropdown-item" onclick="suggestFromExisting()">
+                                                Из существующих в Obsidian
+                                            </div>
+                                            <div class="dropdown-item" onclick="suggestNew()">
+                                                Создать новые теги
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button class="action-btn" onclick="toggleTagPrompt()" title="Уточнить через чат" style="width: 24px; height: 24px; font-size: 12px;">💬</button>
+                                </div>
+                            </div>
+                            <div class="tags-container" id="suggestedTags">
+                                <div class="tag existing" draggable="true" ondragstart="drag(event)">
+                                    backend
+                                </div>
+                                <div class="tag existing" draggable="true" ondragstart="drag(event)">
+                                    система
+                                </div>
+                                <div class="tag new" draggable="true" ondragstart="drag(event)">
+                                    telegram_bot
+                                </div>
+                                <div class="tag new" draggable="true" ondragstart="drag(event)">
+                                    obsidian_api
+                                </div>
+                            </div>
+                            
+                            <!-- Чат панель для тегов -->
+                            <div class="prompt-panel" id="tagPrompt" style="margin-top: 10px;">
+                                <div class="prompt-input">
+                                    <input type="text" placeholder="Сгенерируй теги в стиле...">
+                                    <button>Применить</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1374,6 +1688,109 @@
         function removeTag(element) {
             element.parentElement.remove();
         }
+
+        // AI функции для заголовка
+        function regenerateTitle() {
+            const titles = [
+                'Система управления заметками',
+                'Интеграция сервисов для заметок',
+                'Проект: Notes Management'
+            ];
+            document.getElementById('noteTitle').value = titles[Math.floor(Math.random() * titles.length)];
+        }
+        
+        // Переключатели панелей
+        function toggleHistory() {
+            const panel = document.getElementById('titleHistory');
+            panel.classList.toggle('active');
+            document.getElementById('titlePrompt').classList.remove('active');
+        }
+        
+        function togglePrompt() {
+            const panel = document.getElementById('titlePrompt');
+            panel.classList.toggle('active');
+            document.getElementById('titleHistory').classList.remove('active');
+        }
+        
+        function toggleTagPrompt() {
+            const panel = document.getElementById('tagPrompt');
+            panel.classList.toggle('active');
+        }
+        
+        function useTitle(element) {
+            const title = element.querySelector('span').textContent;
+            document.getElementById('noteTitle').value = title;
+            document.querySelectorAll('.history-item').forEach(item => item.classList.remove('current'));
+            element.classList.add('current');
+        }
+        
+        // Dropdown
+        function toggleDropdown(button) {
+            const dropdown = button.parentElement.querySelector('.dropdown-content');
+            dropdown.classList.toggle('active');
+        }
+        
+        // Теги
+        function addCustomTag() {
+            const tag = prompt('Введите тег:');
+            if (tag) {
+                const container = document.getElementById('currentTags');
+                const tagEl = document.createElement('div');
+                tagEl.className = 'tag';
+                tagEl.innerHTML = `${tag} <span class="tag-remove" onclick="removeTag(this)">×</span>`;
+                container.insertBefore(tagEl, container.lastElementChild);
+            }
+        }
+        
+        function suggestFromExisting() {
+            // Имитация загрузки тегов из Obsidian
+            const container = document.getElementById('suggestedTags');
+            container.innerHTML = `
+                <div class="tag existing" draggable="true" ondragstart="drag(event)">postgresql</div>
+                <div class="tag existing" draggable="true" ondragstart="drag(event)">react</div>
+                <div class="tag existing" draggable="true" ondragstart="drag(event)">интеграция</div>
+            `;
+        }
+        
+        function suggestNew() {
+            // Имитация генерации новых тегов
+            const container = document.getElementById('suggestedTags');
+            container.innerHTML = `
+                <div class="tag new" draggable="true" ondragstart="drag(event)">notes_system</div>
+                <div class="tag new" draggable="true" ondragstart="drag(event)">api_integration</div>
+                <div class="tag new" draggable="true" ondragstart="drag(event)">mvp</div>
+            `;
+        }
+        
+        // Drag & Drop
+        function drag(ev) {
+            ev.dataTransfer.setData("text", ev.target.textContent.trim());
+            ev.dataTransfer.setData("class", ev.target.className);
+        }
+        
+        function allowDrop(ev) {
+            ev.preventDefault();
+        }
+        
+        function drop(ev) {
+            ev.preventDefault();
+            const tagText = ev.dataTransfer.getData("text");
+            const tagClass = ev.dataTransfer.getData("class");
+            
+            const tagEl = document.createElement('div');
+            tagEl.className = 'tag';
+            tagEl.innerHTML = `${tagText} <span class="tag-remove" onclick="removeTag(this)">×</span>`;
+            
+            const container = document.getElementById('currentTags');
+            container.insertBefore(tagEl, container.lastElementChild);
+        }
+        
+        // Клик вне dropdown закрывает его
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.dropdown')) {
+                document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('active'));
+            }
+        });
 
         function addTag(event) {
             if (event.key === 'Enter' && event.target.value) {
