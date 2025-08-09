@@ -48,6 +48,8 @@ const transcriptionCache = new Map();
 const tagSelectionState = new Map(); // Для хранения состояния выбора тегов
 const tagConfirmationState = new Map(); // Добавьте для хранения состояния подтверждения
 const collectSessionState = new Map(); // Хранилище для сессий накопления сообщений
+const messageHistory = new Map(); // История сообщений для удаления
+const pendingMessages = new Map(); // Сообщения в процессе обработки (для обработки reply во время обработки)
 
 // Константы для индикаторов режима
 const MODES = {
@@ -71,8 +73,9 @@ function getUserMode(userId) {
 
 // Класс для управления сессией накопления
 class CollectSession {
-    constructor(userId) {
+    constructor(userId, chatId) {
         this.userId = userId;
+        this.chatId = chatId;
         this.messages = [];
         this.textCount = 0;
         this.voiceCount = 0;
@@ -82,6 +85,8 @@ class CollectSession {
         this.startTime = new Date();
         this.statusMessageId = null;
         this.timeoutTimer = null;
+        // Для отслеживания всех сообщений сессии (для удаления)
+        this.allMessageIds = [];
     }
 
     addMessage(type, content, messageId, fileId = null) {
@@ -114,6 +119,16 @@ class CollectSession {
         this.resetTimeout();
     }
 
+    // Метод для отслеживания всех сообщений сессии
+    trackMessage(messageId, messageType) {
+        this.allMessageIds.push({
+            id: messageId,
+            type: messageType, // 'user_command', 'bot_status', 'user_content', 'bot_response', 'final_result'
+            timestamp: new Date()
+        });
+        console.log(`📌 Отслеживаю сообщение: ID=${messageId}, тип=${messageType}, всего=${this.allMessageIds.length}`);
+    }
+
     getTotalCount() {
         return this.messages.length;
     }
@@ -143,6 +158,7 @@ class CollectSession {
         this.photoCount = 0;
         this.videoCount = 0;
         this.documentCount = 0;
+        this.allMessageIds = [];
         this.resetTimeout();
     }
 }
@@ -409,13 +425,24 @@ async function getTagRecommendations(text, availableTags) {
 }
 
 // Функция для создания inline keyboard
-function createTranscriptKeyboard(messageId) {
-    return Markup.inlineKeyboard([
-        [
-            Markup.button.callback('📝 Добавить в заметку', `add_note_${messageId}`),
-            Markup.button.callback('🎙️ Оставить как голосовое', `keep_voice_${messageId}`),
-        ],
-    ]);
+function createTranscriptKeyboard(messageId, isCollect = false) {
+    if (isCollect) {
+        // Для накопленных заметок
+        return Markup.inlineKeyboard([
+            [
+                Markup.button.callback('📝 Добавить в Obsidian', `add_note_combined_${messageId}`),
+                Markup.button.callback('🗑️ Удалить всё', `delete_collect_${messageId}`)
+            ]
+        ]);
+    } else {
+        // Для обычных сообщений
+        return Markup.inlineKeyboard([
+            [
+                Markup.button.callback('📝 Добавить в заметку', `add_note_${messageId}`),
+                Markup.button.callback('🗑️', `delete_msg_${messageId}`)
+            ]
+        ]);
+    }
 }
 
 // Функция для отправки заметки в Obsidian
@@ -496,7 +523,7 @@ function splitLongText(text, maxLength = 3500) {
 }
 
 // Обновленная функция processVoice
-async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
+async function processVoice(ctx, fileId, voiceMessageId, withFormatting, pendingKey = null) {
     const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
 
     const loadingMessage = await ctx.reply(`${mode.emoji} ⏳ Обрабатываю в режиме "${mode.name}"...`, {
@@ -584,10 +611,34 @@ async function processVoice(ctx, fileId, voiceMessageId, withFormatting) {
         });
 
         botMessageToVoice.set(botReply.message_id, { voiceMessageId, fileId });
+        
+        // Сохраняем историю сообщений для удаления
+        messageHistory.set(botReply.message_id, {
+            userMessageId: voiceMessageId,
+            botMessageIds: [loadingMessage.message_id], // если не удалилось
+            type: 'voice'
+        });
 
         setTimeout(() => {
             transcriptionCache.delete(cacheId);
+            messageHistory.delete(botReply.message_id);
         }, 30 * 60 * 1000);
+        
+        // Проверяем, есть ли ожидающая коллекция для этого сообщения
+        if (pendingKey) {
+            const pendingData = pendingMessages.get(pendingKey);
+            if (pendingData && pendingData.collectSession) {
+                // Обновляем сообщение в коллекции с реальной расшифровкой
+                const session = pendingData.collectSession;
+                const msgIndex = session.messages.findIndex(m => m.messageId === voiceMessageId);
+                if (msgIndex !== -1) {
+                    session.messages[msgIndex].type = 'voice';
+                    session.messages[msgIndex].content = rawTranscript; // Сохраняем оригинальную расшифровку
+                }
+            }
+            // Удаляем из pending
+            pendingMessages.delete(pendingKey);
+        }
 
         return botReply;
     } catch (error) {
@@ -684,7 +735,7 @@ async function extractAudioFromVideo(videoPath, outputPath) {
 }
 
 // Функция обработки видео файлов
-async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSize = 0) {
+async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSize = 0, pendingKey = null) {
     const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
     
     // Проверяем размер файла (Telegram API ограничение - 20 МБ)
@@ -802,6 +853,22 @@ async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSiz
         setTimeout(() => {
             transcriptionCache.delete(cacheId);
         }, 30 * 60 * 1000);
+        
+        // Проверяем, есть ли ожидающая коллекция для этого сообщения
+        if (pendingKey) {
+            const pendingData = pendingMessages.get(pendingKey);
+            if (pendingData && pendingData.collectSession) {
+                // Обновляем сообщение в коллекции с реальной расшифровкой
+                const session = pendingData.collectSession;
+                const msgIndex = session.messages.findIndex(m => m.messageId === videoMessageId);
+                if (msgIndex !== -1) {
+                    session.messages[msgIndex].type = 'video';
+                    session.messages[msgIndex].content = rawTranscript; // Сохраняем оригинальную расшифровку
+                }
+            }
+            // Удаляем из pending
+            pendingMessages.delete(pendingKey);
+        }
 
         return botReply;
     } catch (error) {
@@ -820,7 +887,8 @@ async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSiz
 // Команда для начала сессии накопления
 bot.command(['collect', 'заметка'], async (ctx) => {
     console.log('📝 Команда /collect вызвана пользователем:', ctx.from.username || ctx.from.id);
-    const userId = ctx.from.id;
+    const userId = ctx.from.id; // Это число!
+    const chatId = ctx.chat.id;
     
     // Проверяем, есть ли уже активная сессия
     if (collectSessionState.has(userId)) {
@@ -836,8 +904,11 @@ bot.command(['collect', 'заметка'], async (ctx) => {
     }
     
     // Создаем новую сессию
-    const session = new CollectSession(userId);
+    const session = new CollectSession(userId, chatId);
     collectSessionState.set(userId, session);
+    
+    // Отслеживаем команду /collect
+    session.trackMessage(ctx.message.message_id, 'user_command');
     
     const statusMsg = await ctx.reply(
         '📝 *Режим накопления активирован*\n\n' +
@@ -852,6 +923,7 @@ bot.command(['collect', 'заметка'], async (ctx) => {
     );
     
     session.statusMessageId = statusMsg.message_id;
+    session.trackMessage(statusMsg.message_id, 'bot_status');
     
     // Устанавливаем таймер на 5 минут
     session.timeoutTimer = setTimeout(async () => {
@@ -891,6 +963,9 @@ bot.command(['done', 'готово'], async (ctx) => {
         return;
     }
     
+    // Отслеживаем команду /done
+    session.trackMessage(ctx.message.message_id, 'user_command');
+    
     // Очищаем таймер
     session.resetTimeout();
     
@@ -900,30 +975,40 @@ bot.command(['done', 'готово'], async (ctx) => {
         { parse_mode: 'Markdown' }
     );
     
+    session.trackMessage(processingMsg.message_id, 'bot_status');
+    
     try {
         // Объединяем все сообщения
         let combinedText = '';
         const withFormatting = userPreferences.get(userId) === true;
         
         for (const msg of session.messages) {
-            if (msg.type === 'text') {
+            if (msg.type === 'pending') {
+                // Пропускаем pending сообщения или обрабатываем как нераспознанное
+                combinedText += '[Сообщение не успело обработаться]\n\n';
+            } else if (msg.type === 'text') {
                 combinedText += msg.content + '\n\n';
-            } else if (msg.type === 'voice' && msg.fileId) {
-                // Расшифровываем голосовое
-                const link = await ctx.telegram.getFileLink(msg.fileId);
-                const res = await fetch(link.href);
-                const buffer = await res.arrayBuffer();
-                const tmpPath = `/tmp/${uuid()}.ogg`;
-                await writeFile(tmpPath, Buffer.from(buffer));
-                
-                const transcript = await openai.audio.transcriptions.create({
-                    model: 'whisper-1',
-                    file: createReadStream(tmpPath),
-                    response_format: 'text',
-                });
-                
-                await unlink(tmpPath);
-                combinedText += transcript + '\n\n';
+            } else if (msg.type === 'voice') {
+                if (msg.content) {
+                    // Уже есть расшифровка (сообщение было обработано)
+                    combinedText += msg.content + '\n\n';
+                } else if (msg.fileId) {
+                    // Расшифровываем голосовое
+                    const link = await ctx.telegram.getFileLink(msg.fileId);
+                    const res = await fetch(link.href);
+                    const buffer = await res.arrayBuffer();
+                    const tmpPath = `/tmp/${uuid()}.ogg`;
+                    await writeFile(tmpPath, Buffer.from(buffer));
+                    
+                    const transcript = await openai.audio.transcriptions.create({
+                        model: 'whisper-1',
+                        file: createReadStream(tmpPath),
+                        response_format: 'text',
+                    });
+                    
+                    await unlink(tmpPath);
+                    combinedText += transcript + '\n\n';
+                }
             } else if ((msg.type === 'video' || msg.type === 'audio') && msg.fileId) {
                 // Обрабатываем видео/аудио - извлекаем аудио и расшифровываем
                 try {
@@ -1009,7 +1094,10 @@ bot.command(['done', 'готово'], async (ctx) => {
                         `📄 Заметка слишком длинная, отправляю файлом.`,
                     parse_mode: 'Markdown',
                     ...Markup.inlineKeyboard([
-                        [Markup.button.callback('📝 Добавить в Obsidian', `add_note_combined_${userId}`)]
+                        [
+                            Markup.button.callback('📝 Добавить в Obsidian', `add_note_combined_${userId}`),
+                            Markup.button.callback('🗑️ Удалить всё', `delete_collect_${userId}`)
+                        ]
                     ])
                 }
             );
@@ -1019,10 +1107,16 @@ bot.command(['done', 'готово'], async (ctx) => {
             botReply = await ctx.reply(fullMessage, {
                 parse_mode: 'Markdown',
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback('📝 Добавить в Obsidian', `add_note_combined_${userId}`)]
+                    [
+                        Markup.button.callback('📝 Добавить в Obsidian', `add_note_combined_${userId}`),
+                        Markup.button.callback('🗑️ Удалить всё', `delete_collect_${userId}`)
+                    ]
                 ])
             });
         }
+        
+        // Отслеживаем финальное сообщение
+        session.trackMessage(botReply.message_id, 'final_result');
         
         // Сохраняем в кэш для возможности добавления в Obsidian
         const cacheId = `${ctx.chat.id}_combined_${userId}`;
@@ -1038,6 +1132,10 @@ bot.command(['done', 'готово'], async (ctx) => {
         
         setTimeout(() => {
             transcriptionCache.delete(cacheId);
+            // Удаляем сессию через 30 минут если она еще существует
+            if (collectSessionState.has(userId)) {
+                collectSessionState.delete(userId);
+            }
         }, 30 * 60 * 1000);
         
     } catch (error) {
@@ -1045,8 +1143,8 @@ bot.command(['done', 'готово'], async (ctx) => {
         await ctx.reply('❌ Произошла ошибка при обработке сообщений.');
     }
     
-    // Удаляем сессию
-    collectSessionState.delete(userId);
+    // НЕ удаляем сессию сразу, она нужна для удаления истории!
+    // Она будет удалена после удаления истории или через таймаут (30 минут)
 });
 
 // Команда отмены накопления  
@@ -1102,18 +1200,69 @@ bot.command('status', async (ctx) => {
 bot.on('video', async (ctx) => {
     const userId = ctx.from.id;
     
+    // Проверяем, является ли сообщение ответом на другое сообщение
+    if (ctx.message.reply_to_message && !collectSessionState.has(userId)) {
+        // Автоматически запускаем коллекцию
+        const session = new CollectSession(userId, ctx.chat.id);
+        collectSessionState.set(userId, session);
+        
+        // Добавляем исходное сообщение, на которое ответили
+        const originalMsg = ctx.message.reply_to_message;
+        const originalMsgId = originalMsg.message_id;
+        
+        // Проверяем, обрабатывается ли исходное сообщение
+        const pendingKey = `${ctx.chat.id}_${originalMsgId}`;
+        const pendingData = pendingMessages.get(pendingKey);
+        if (pendingData) {
+            // Сообщение еще обрабатывается, добавляем placeholder
+            session.addMessage('pending', 'Сообщение в обработке...', originalMsgId, pendingData.fileId);
+            session.trackMessage(originalMsgId, 'user_content');
+            pendingData.collectSession = session; // Связываем с сессией для последующего обновления
+        } else {
+            // Сообщение уже обработано, добавляем как обычно
+            if (originalMsg.voice) {
+                session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.text) {
+                session.addMessage('text', originalMsg.text, originalMsg.message_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.video) {
+                session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.document) {
+                const fileName = originalMsg.document.file_name || 'file';
+                const fileExt = fileName.toLowerCase().split('.').pop();
+                if (fileExt === 'mp4') {
+                    session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
+                    session.trackMessage(originalMsg.message_id, 'user_content');
+                }
+            }
+        }
+        
+        // Уведомляем о начале коллекции
+        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
+        session.trackMessage(notification.message_id, 'bot_notification');
+    }
+    
     // Проверяем режим накопления
     const collectSession = collectSessionState.get(userId);
     if (collectSession) {
         const video = ctx.message.video;
         collectSession.addMessage('video', null, ctx.message.message_id, video.file_id);
         
+        // Отслеживаем сообщение пользователя
+        collectSession.trackMessage(ctx.message.message_id, 'user_content');
+        
         const messageIndex = collectSession.getTotalCount();
-        await ctx.reply(
+        const replyMsg = await ctx.reply(
             `🎥 Добавлено видео #${messageIndex}\n` +
             `📊 Всего сообщений: ${collectSession.getTotalCount()}`,
             { reply_to_message_id: ctx.message.message_id }
         );
+        
+        // Отслеживаем ответ бота
+        collectSession.trackMessage(replyMsg.message_id, 'bot_response');
+        
         return;
     }
     
@@ -1130,8 +1279,19 @@ bot.on('video', async (ctx) => {
 
             const withFormatting = userPreferences.get(userId) === true;
             const fileId = video.file_id;
+            const videoMessageId = ctx.message.message_id;
+            
+            // Отмечаем сообщение как обрабатываемое
+            const pendingKey = `${ctx.chat.id}_${videoMessageId}`;
+            pendingMessages.set(pendingKey, {
+                type: 'video',
+                fileId: video.file_id,
+                userId: userId,
+                chatId: ctx.chat.id,
+                startTime: new Date()
+            });
 
-            const botReply = await processVideo(ctx, fileId, ctx.message.message_id, withFormatting, fileSize);
+            const botReply = await processVideo(ctx, fileId, videoMessageId, withFormatting, fileSize, pendingKey);
             
             if (botReply) {
                 const mode = getUserMode(userId);
@@ -1139,6 +1299,9 @@ bot.on('video', async (ctx) => {
             }
         } catch (err) {
             console.error(err);
+            // Удаляем из pending при ошибке
+            pendingMessages.delete(pendingKey);
+            
             if (err.response && err.response.description === 'Bad Request: file is too big') {
                 await ctx.reply(
                     '❌ *Файл слишком большой для обработки*\n\n' +
@@ -1386,6 +1549,37 @@ bot.on('document', async (ctx) => {
     
     console.log('📄 Обработка DOCUMENT:', fileName, 'расширение:', fileExt);
     
+    // Проверяем, является ли сообщение ответом на другое сообщение
+    if (ctx.message.reply_to_message && !collectSessionState.has(userId) && fileExt === 'mp4') {
+        // Автоматически запускаем коллекцию
+        const session = new CollectSession(userId, ctx.chat.id);
+        collectSessionState.set(userId, session);
+        
+        // Добавляем исходное сообщение, на которое ответили
+        const originalMsg = ctx.message.reply_to_message;
+        if (originalMsg.voice) {
+            session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
+            session.trackMessage(originalMsg.message_id, 'user_content');
+        } else if (originalMsg.text) {
+            session.addMessage('text', originalMsg.text, originalMsg.message_id);
+            session.trackMessage(originalMsg.message_id, 'user_content');
+        } else if (originalMsg.video) {
+            session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
+            session.trackMessage(originalMsg.message_id, 'user_content');
+        } else if (originalMsg.document) {
+            const origFileName = originalMsg.document.file_name || 'file';
+            const origFileExt = origFileName.toLowerCase().split('.').pop();
+            if (origFileExt === 'mp4') {
+                session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            }
+        }
+        
+        // Уведомляем о начале коллекции
+        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
+        session.trackMessage(notification.message_id, 'bot_notification');
+    }
+    
     // Проверяем что это MP4 файл
     if (fileExt === 'mp4') {
         const fileSize = document.file_size || 0;
@@ -1506,18 +1700,69 @@ bot.command('video', async (ctx) => {
 bot.on('voice', async (ctx) => {
     const userId = ctx.from.id;
     
+    // Проверяем, является ли сообщение ответом на другое сообщение
+    if (ctx.message.reply_to_message && !collectSessionState.has(userId)) {
+        // Автоматически запускаем коллекцию
+        const session = new CollectSession(userId, ctx.chat.id);
+        collectSessionState.set(userId, session);
+        
+        // Добавляем исходное сообщение, на которое ответили
+        const originalMsg = ctx.message.reply_to_message;
+        const originalMsgId = originalMsg.message_id;
+        
+        // Проверяем, обрабатывается ли исходное сообщение
+        const pendingKey = `${ctx.chat.id}_${originalMsgId}`;
+        const pendingData = pendingMessages.get(pendingKey);
+        if (pendingData) {
+            // Сообщение еще обрабатывается, добавляем placeholder
+            session.addMessage('pending', 'Сообщение в обработке...', originalMsgId, pendingData.fileId);
+            session.trackMessage(originalMsgId, 'user_content');
+            pendingData.collectSession = session; // Связываем с сессией для последующего обновления
+        } else {
+            // Сообщение уже обработано, добавляем как обычно
+            if (originalMsg.voice) {
+                session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.text) {
+                session.addMessage('text', originalMsg.text, originalMsg.message_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.video) {
+                session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.document) {
+                const fileName = originalMsg.document.file_name || 'file';
+                const fileExt = fileName.toLowerCase().split('.').pop();
+                if (fileExt === 'mp4') {
+                    session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
+                    session.trackMessage(originalMsg.message_id, 'user_content');
+                }
+            }
+        }
+        
+        // Уведомляем о начале коллекции
+        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
+        session.trackMessage(notification.message_id, 'bot_notification');
+    }
+    
     // Проверяем режим накопления
     const collectSession = collectSessionState.get(userId);
     if (collectSession) {
         const fileId = ctx.message.voice.file_id;
         collectSession.addMessage('voice', null, ctx.message.message_id, fileId);
         
+        // Отслеживаем сообщение пользователя
+        collectSession.trackMessage(ctx.message.message_id, 'user_content');
+        
         const messageIndex = collectSession.getTotalCount();
-        await ctx.reply(
+        const replyMsg = await ctx.reply(
             `🎤 Добавлено голосовое сообщение #${messageIndex}\n` +
             `📊 Всего сообщений: ${collectSession.getTotalCount()}`,
             { reply_to_message_id: ctx.message.message_id }
         );
+        
+        // Отслеживаем ответ бота
+        collectSession.trackMessage(replyMsg.message_id, 'bot_response');
+        
         return;
     }
 
@@ -1600,6 +1845,18 @@ bot.on('voice', async (ctx) => {
     }
 
     // Обычная обработка голосовых сообщений
+    const voiceMessageId = ctx.message.message_id;
+    
+    // Отмечаем сообщение как обрабатываемое
+    const pendingKey = `${ctx.chat.id}_${voiceMessageId}`;
+    pendingMessages.set(pendingKey, {
+        type: 'voice',
+        fileId: ctx.message.voice.file_id,
+        userId: userId,
+        chatId: ctx.chat.id,
+        startTime: new Date()
+    });
+    
     try {
         const user = ctx.message.from;
         const username = user.username ? `@${user.username}` : `${user.first_name} ${user.last_name || ''}`.trim();
@@ -1608,13 +1865,15 @@ bot.on('voice', async (ctx) => {
         const withFormatting = userPreferences.get(userId) === true;
         const fileId = ctx.message.voice.file_id;
 
-        const botReply = await processVoice(ctx, fileId, ctx.message.message_id, withFormatting);
+        const botReply = await processVoice(ctx, fileId, voiceMessageId, withFormatting, pendingKey);
 
         const mode = getUserMode(userId);
         console.log(`✅ Обработано сообщение от ${username} в режиме ${mode.name}`);
     } catch (err) {
         console.error(err);
         await ctx.reply('❌ Не удалось расшифровать сообщение.');
+        // Удаляем из pending при ошибке
+        pendingMessages.delete(pendingKey);
     }
 });
 
@@ -1625,18 +1884,69 @@ bot.on('text', async (ctx) => {
     // Пропускаем команды
     if (ctx.message.text.startsWith('/')) return;
     
+    // Проверяем, является ли сообщение ответом на другое сообщение
+    if (ctx.message.reply_to_message && !collectSessionState.has(userId)) {
+        // Автоматически запускаем коллекцию
+        const session = new CollectSession(userId, ctx.chat.id);
+        collectSessionState.set(userId, session);
+        
+        // Добавляем исходное сообщение, на которое ответили
+        const originalMsg = ctx.message.reply_to_message;
+        const originalMsgId = originalMsg.message_id;
+        
+        // Проверяем, обрабатывается ли исходное сообщение
+        const pendingKey = `${ctx.chat.id}_${originalMsgId}`;
+        const pendingData = pendingMessages.get(pendingKey);
+        if (pendingData) {
+            // Сообщение еще обрабатывается, добавляем placeholder
+            session.addMessage('pending', 'Сообщение в обработке...', originalMsgId, pendingData.fileId);
+            session.trackMessage(originalMsgId, 'user_content');
+            pendingData.collectSession = session; // Связываем с сессией для последующего обновления
+        } else {
+            // Сообщение уже обработано, добавляем как обычно
+            if (originalMsg.voice) {
+                session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.text) {
+                session.addMessage('text', originalMsg.text, originalMsg.message_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.video) {
+                session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.document) {
+                const fileName = originalMsg.document.file_name || 'file';
+                const fileExt = fileName.toLowerCase().split('.').pop();
+                if (fileExt === 'mp4') {
+                    session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
+                    session.trackMessage(originalMsg.message_id, 'user_content');
+                }
+            }
+        }
+        
+        // Уведомляем о начале коллекции
+        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
+        session.trackMessage(notification.message_id, 'bot_notification');
+    }
+    
     // Проверяем режим накопления
     const collectSession = collectSessionState.get(userId);
     if (collectSession) {
         const text = ctx.message.text;
         collectSession.addMessage('text', text, ctx.message.message_id);
         
+        // Отслеживаем сообщение пользователя
+        collectSession.trackMessage(ctx.message.message_id, 'user_content');
+        
         const messageIndex = collectSession.getTotalCount();
-        await ctx.reply(
+        const replyMsg = await ctx.reply(
             `✅ Добавлено текстовое сообщение #${messageIndex}\n` +
             `📊 Всего сообщений: ${collectSession.getTotalCount()}`,
             { reply_to_message_id: ctx.message.message_id }
         );
+        
+        // Отслеживаем ответ бота
+        collectSession.trackMessage(replyMsg.message_id, 'bot_response');
+        
         return;
     }
     
@@ -1819,6 +2129,187 @@ bot.action(/keep_voice_(.+)/, async (ctx) => {
     await ctx.answerCbQuery('👌 Оставлено как голосовое сообщение');
 
     transcriptionCache.delete(cacheId);
+});
+
+// Обработчик удаления обычных сообщений (без подтверждения)
+bot.action(/delete_msg_(.+)/, async (ctx) => {
+    const messageId = ctx.match[1];
+    const historyData = messageHistory.get(ctx.callbackQuery.message.message_id);
+    
+    let deletedCount = 0;
+    let errors = 0;
+    
+    try {
+        // Удаляем сообщение бота (текущее сообщение с кнопками)
+        await ctx.telegram.deleteMessage(ctx.chat.id, ctx.callbackQuery.message.message_id);
+        deletedCount++;
+    } catch (e) {
+        errors++;
+    }
+    
+    // Если есть история сообщений
+    if (historyData) {
+        // Удаляем исходное сообщение пользователя
+        if (historyData.userMessageId) {
+            try {
+                await ctx.telegram.deleteMessage(ctx.chat.id, historyData.userMessageId);
+                deletedCount++;
+            } catch (e) {
+                errors++;
+            }
+        }
+        
+        // Удаляем все связанные сообщения бота
+        if (historyData.botMessageIds) {
+            for (const msgId of historyData.botMessageIds) {
+                try {
+                    await ctx.telegram.deleteMessage(ctx.chat.id, msgId);
+                    deletedCount++;
+                } catch (e) {
+                    errors++;
+                }
+            }
+        }
+        
+        // Очищаем историю
+        messageHistory.delete(ctx.callbackQuery.message.message_id);
+    } else {
+        // Если истории нет, пытаемся удалить по messageId
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, messageId);
+            deletedCount++;
+        } catch (e) {
+            errors++;
+        }
+    }
+    
+    // Очищаем кэши
+    const cacheId = `${ctx.chat.id}_${messageId}`;
+    transcriptionCache.delete(cacheId);
+    transcriptionCache.delete(`${ctx.chat.id}_text_${messageId}`);
+    
+    if (errors === 0) {
+        await ctx.answerCbQuery(`✅ Удалено`);
+    } else {
+        await ctx.answerCbQuery(`⚠️ Удалено частично`);
+    }
+});
+
+// Обработчик удаления истории накопления (с подтверждением)
+bot.action(/delete_collect_(.+)/, async (ctx) => {
+    const userId = ctx.match[1];
+    console.log('🗑️ Попытка удаления истории для userId:', userId);
+    console.log('📊 Активные сессии:', Array.from(collectSessionState.keys()));
+    
+    // Преобразуем userId в число если нужно
+    const userIdNum = parseInt(userId);
+    let session = collectSessionState.get(userId) || collectSessionState.get(userIdNum);
+    
+    if (!session) {
+        console.log('❌ Сессия не найдена для userId:', userId, 'или', userIdNum);
+        await ctx.answerCbQuery('❌ Сессия не найдена');
+        return;
+    }
+    
+    // ВАЖНО: Сначала отвечаем на callback query чтобы избежать повторов!
+    await ctx.answerCbQuery();
+    
+    const totalMessages = session.allMessageIds.length;
+    
+    // Показываем подтверждение
+    try {
+        const confirmMsg = await ctx.reply(
+            `⚠️ *Удалить историю сессии?*\n\n` +
+            `Будет удалено: ${totalMessages} сообщений\n\n`,
+            {
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback('✅ Да, удалить', `confirm_delete_collect_${userId}`),
+                        Markup.button.callback('❌ Отмена', `cancel_delete_collect_${userId}`)
+                    ]
+                ])
+            }
+        );
+        
+        // НЕ добавляем это сообщение в историю сессии!
+        // Оно будет удалено отдельно
+    } catch (e) {
+        console.error('Ошибка при показе подтверждения:', e);
+    }
+});
+
+// Подтверждение удаления истории накопления
+bot.action(/confirm_delete_collect_(.+)/, async (ctx) => {
+    const userId = ctx.match[1];
+    
+    // Сначала отвечаем на callback чтобы избежать повторов
+    await ctx.answerCbQuery('⏳ Удаляю...');
+    
+    // Преобразуем userId в число если нужно
+    const userIdNum = parseInt(userId);
+    let session = collectSessionState.get(userId) || collectSessionState.get(userIdNum);
+    
+    if (!session) {
+        try {
+            await ctx.deleteMessage();
+        } catch (e) {}
+        return;
+    }
+    
+    console.log(`📊 Удаление ${session.allMessageIds.length} сообщений для пользователя ${userId}`);
+    
+    let deletedCount = 0;
+    let errors = 0;
+    
+    // Удаляем все сообщения из истории сессии
+    for (const msg of session.allMessageIds) {
+        try {
+            await ctx.telegram.deleteMessage(session.chatId, msg.id);
+            deletedCount++;
+        } catch (e) {
+            errors++;
+        }
+    }
+    
+    // Удаляем сообщение с подтверждением
+    try {
+        await ctx.deleteMessage();
+    } catch (e) {}
+    
+    // Очищаем сессию и кэши (удаляем оба возможных ключа)
+    collectSessionState.delete(userId);
+    collectSessionState.delete(userIdNum);
+    const cacheId = `${ctx.chat.id}_combined_${userId}`;
+    transcriptionCache.delete(cacheId);
+    transcriptionCache.delete(`${ctx.chat.id}_combined_${userIdNum}`);
+    
+    // Отправляем результат
+    const resultMsg = await ctx.reply(
+        `✅ История сессии удалена\n` +
+        `📊 Удалено: ${deletedCount} из ${session.allMessageIds.length} сообщений`,
+        { parse_mode: 'Markdown' }
+    );
+    
+    // Удаляем уведомление через 3 секунды
+    setTimeout(async () => {
+        try {
+            await ctx.telegram.deleteMessage(ctx.chat.id, resultMsg.message_id);
+        } catch (e) {}
+    }, 3000);
+});
+
+// Отмена удаления истории накопления
+bot.action(/cancel_delete_collect_(.+)/, async (ctx) => {
+    // Сначала отвечаем на callback чтобы избежать повторов
+    await ctx.answerCbQuery('❌ Отменено');
+    
+    // Затем удаляем сообщение с подтверждением
+    try {
+        await ctx.deleteMessage();
+    } catch (e) {
+        console.error('Не удалось удалить сообщение подтверждения:', e);
+    }
 });
 
 bot.action(/confirm_tags_(.+)/, async (ctx) => {
