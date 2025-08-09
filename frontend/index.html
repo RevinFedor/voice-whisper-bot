@@ -254,6 +254,156 @@
             z-index: 2000;
         }
 
+        /* Стили для модалки с темами и командами */
+        .topic-item {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 15px;
+        }
+
+        .topic-item:hover {
+            background: #222;
+            border-color: #444;
+        }
+
+        .topic-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .topic-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topic-icon {
+            width: 24px;
+            height: 24px;
+            background: #2a3f2a;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .topic-expand {
+            color: #666;
+            transition: transform 0.2s;
+        }
+
+        .topic-item.expanded .topic-expand {
+            transform: rotate(90deg);
+        }
+
+        .topic-content {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #333;
+            color: #aaa;
+            font-size: 14px;
+            line-height: 1.6;
+            display: none;
+        }
+
+        .topic-item.expanded .topic-content {
+            display: block;
+        }
+
+        .topic-keywords {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .keyword {
+            padding: 4px 10px;
+            background: #2a2a2a;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* Команды */
+        .command-item {
+            background: linear-gradient(135deg, #2a1a1a, #1a2a2a);
+            border: 1px dashed #4a4;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .command-type {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #4a2a2a;
+            color: #ff4a4a;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .command-text {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .command-preview {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            color: #888;
+            font-size: 13px;
+        }
+
+        .command-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .command-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .command-btn.accept {
+            background: #2a4;
+            color: white;
+        }
+
+        .command-btn.accept:hover {
+            background: #3b5;
+        }
+
+        .command-btn.reject {
+            background: #333;
+            color: #888;
+        }
+
+        .command-btn.reject:hover {
+            background: #444;
+            color: #aaa;
+        }
+
         .modal.active {
             display: flex;
             align-items: center;
@@ -934,12 +1084,48 @@
                 title: 'Архитектура системы',
                 content: 'Коллекция из 3 заметок про архитектуру',
                 topics: [
-                    { title: 'База данных', content: 'PostgreSQL схема с Prisma ORM', keywords: ['PostgreSQL', 'Prisma'] },
-                    { title: 'API', content: 'NestJS с GraphQL', keywords: ['NestJS', 'GraphQL'] },
-                    { title: 'Frontend', content: 'React с TypeScript', keywords: ['React', 'TypeScript'] }
+                    {
+                        title: 'База данных',
+                        content: 'Нужно создать масштабируемую систему с PostgreSQL, Prisma ORM. Важно продумать структуру БД для хранения голосовых заметок, их транскрипций и метаданных.',
+                        keywords: ['PostgreSQL', 'Prisma', 'Database', 'Schema']
+                    },
+                    {
+                        title: 'API структура',
+                        content: 'REST endpoints для работы с заметками, WebSocket для real-time синхронизации между Telegram ботом и веб-интерфейсом. GraphQL для гибких запросов.',
+                        keywords: ['REST', 'WebSocket', 'GraphQL', 'API']
+                    },
+                    {
+                        title: 'Frontend',
+                        content: 'React компоненты с TypeScript. Canvas-подобный интерфейс как в Figma/Miro с возможностью drag&drop. State management через Redux или Zustand.',
+                        keywords: ['React', 'TypeScript', 'Canvas', 'Drag&Drop']
+                    },
+                    {
+                        title: 'Интеграция с Telegram',
+                        content: 'Бот должен сохранять все голосовые в базу данных сразу после расшифровки. Нужна синхронизация состояний между ботом и веб-интерфейсом.',
+                        keywords: ['Telegram', 'Bot', 'Sync', 'Voice']
+                    },
+                    {
+                        title: 'UI/UX концепция',
+                        content: 'Интерфейс в стиле Figma/Miro с возможностью drag&drop. Карточки заметок на бесконечном холсте. Темная тема для комфортной работы.',
+                        keywords: ['Figma', 'Canvas', 'Drag&Drop', 'Dark Theme']
+                    }
                 ],
                 commands: [
-                    { type: 'save', text: 'Сохранить коллекцию как одну заметку', preview: 'Все части будут объединены' }
+                    {
+                        type: 'tags',
+                        text: 'Добавить теги: #архитектура #проект #система',
+                        preview: 'К коллекции будут добавлены теги: архитектура, проект, система'
+                    },
+                    {
+                        type: 'save',
+                        text: 'Сохранить коллекцию в Obsidian как одну заметку',
+                        preview: 'Все 3 заметки будут объединены и сохранены в Obsidian'
+                    },
+                    {
+                        type: 'merge',
+                        text: 'Объединить с заметкой "Идея для проекта"',
+                        preview: 'Эта коллекция будет объединена с заметкой от 09:15'
+                    }
                 ]
             }
         };
