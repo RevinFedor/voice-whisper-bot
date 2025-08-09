@@ -98,6 +98,10 @@
             cursor: move;
             transition: all 0.2s;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
         }
 
         .note:hover {
@@ -1191,6 +1195,11 @@
                     isDragging = true;
                     currentElement.classList.add('dragging');
                     currentElement.style.zIndex = 1000;
+                    // Отключаем выделение текста при перетаскивании
+                    e.preventDefault();
+                    if (window.getSelection) {
+                        window.getSelection().removeAllRanges();
+                    }
                 }
 
                 const newX = e.clientX - startX;
