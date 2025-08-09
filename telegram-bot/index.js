@@ -47,9 +47,11 @@ const deleteRangeStart = new Map();
 const transcriptionCache = new Map();
 const tagSelectionState = new Map(); // Для хранения состояния выбора тегов
 const tagConfirmationState = new Map(); // Добавьте для хранения состояния подтверждения
-const collectSessionState = new Map(); // Хранилище для сессий накопления сообщений
+const collectSessionState = new Map(); // Хранилище для активных сессий накопления сообщений
+const completedSessionsMap = new Map(); // Хранилище для завершенных сессий (для удаления)
 const messageHistory = new Map(); // История сообщений для удаления
 const pendingMessages = new Map(); // Сообщения в процессе обработки (для обработки reply во время обработки)
+const processedCallbacks = new Set(); // Для предотвращения повторной обработки callback queries
 
 // Константы для индикаторов режима
 const MODES = {
@@ -69,6 +71,70 @@ const MODES = {
 function getUserMode(userId) {
     const withFormatting = userPreferences.get(userId) === true;
     return withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
+}
+
+// Функция для обработки автоматического старта коллекции при ответе
+async function handleReplyAndStartCollection(ctx, userId, replyToMsg) {
+    // Автоматически запускаем коллекцию
+    const session = new CollectSession(userId, ctx.chat.id);
+    collectSessionState.set(userId, session);
+    
+    // Проверяем, является ли это ответом на сообщение бота (расшифровку)
+    if (replyToMsg.from?.is_bot) {
+        // Ищем связанное исходное сообщение
+        const voiceData = botMessageToVoice.get(replyToMsg.message_id);
+        if (voiceData) {
+            // Добавляем исходное голосовое сообщение в коллекцию
+            const cacheId = `${ctx.chat.id}_${voiceData.voiceMessageId}`;
+            const cachedData = transcriptionCache.get(cacheId);
+            if (cachedData && cachedData.rawTranscript) {
+                session.addMessage('voice', cachedData.rawTranscript, voiceData.voiceMessageId, voiceData.fileId);
+            } else {
+                session.addMessage('voice', null, voiceData.voiceMessageId, voiceData.fileId);
+            }
+            session.trackMessage(voiceData.voiceMessageId, 'user_content');
+            session.trackMessage(replyToMsg.message_id, 'bot_response');
+        }
+    } else {
+        // Это ответ на обычное сообщение пользователя
+        const originalMsg = replyToMsg;
+        const originalMsgId = originalMsg.message_id;
+        
+        // Проверяем, обрабатывается ли исходное сообщение
+        const pendingKey = `${ctx.chat.id}_${originalMsgId}`;
+        const pendingData = pendingMessages.get(pendingKey);
+        if (pendingData) {
+            // Сообщение еще обрабатывается, добавляем placeholder
+            session.addMessage('pending', 'Сообщение в обработке...', originalMsgId, pendingData.fileId);
+            session.trackMessage(originalMsgId, 'user_content');
+            pendingData.collectSession = session; // Связываем с сессией для последующего обновления
+        } else {
+            // Сообщение уже обработано, добавляем как обычно
+            if (originalMsg.voice) {
+                session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.text) {
+                session.addMessage('text', originalMsg.text, originalMsg.message_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.video) {
+                session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
+                session.trackMessage(originalMsg.message_id, 'user_content');
+            } else if (originalMsg.document) {
+                const fileName = originalMsg.document.file_name || 'file';
+                const fileExt = fileName.toLowerCase().split('.').pop();
+                if (fileExt === 'mp4') {
+                    session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
+                    session.trackMessage(originalMsg.message_id, 'user_content');
+                }
+            }
+        }
+    }
+    
+    // Уведомляем о начале коллекции
+    const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
+    session.trackMessage(notification.message_id, 'bot_notification');
+    
+    return session;
 }
 
 // Класс для управления сессией накопления
@@ -1130,12 +1196,16 @@ bot.command(['done', 'готово'], async (ctx) => {
             messagesInfo: session.getStatusText()
         });
         
+        // ВАЖНО: Удаляем сессию сразу после завершения обработки
+        collectSessionState.delete(userId);
+        
+        // Но сохраняем сессию в отдельном хранилище для удаления сообщений
+        completedSessionsMap.set(userId, session);
+        
         setTimeout(() => {
             transcriptionCache.delete(cacheId);
-            // Удаляем сессию через 30 минут если она еще существует
-            if (collectSessionState.has(userId)) {
-                collectSessionState.delete(userId);
-            }
+            // Удаляем завершенную сессию из временного хранилища
+            completedSessionsMap.delete(userId);
         }, 30 * 60 * 1000);
         
     } catch (error) {
@@ -1202,46 +1272,7 @@ bot.on('video', async (ctx) => {
     
     // Проверяем, является ли сообщение ответом на другое сообщение
     if (ctx.message.reply_to_message && !collectSessionState.has(userId)) {
-        // Автоматически запускаем коллекцию
-        const session = new CollectSession(userId, ctx.chat.id);
-        collectSessionState.set(userId, session);
-        
-        // Добавляем исходное сообщение, на которое ответили
-        const originalMsg = ctx.message.reply_to_message;
-        const originalMsgId = originalMsg.message_id;
-        
-        // Проверяем, обрабатывается ли исходное сообщение
-        const pendingKey = `${ctx.chat.id}_${originalMsgId}`;
-        const pendingData = pendingMessages.get(pendingKey);
-        if (pendingData) {
-            // Сообщение еще обрабатывается, добавляем placeholder
-            session.addMessage('pending', 'Сообщение в обработке...', originalMsgId, pendingData.fileId);
-            session.trackMessage(originalMsgId, 'user_content');
-            pendingData.collectSession = session; // Связываем с сессией для последующего обновления
-        } else {
-            // Сообщение уже обработано, добавляем как обычно
-            if (originalMsg.voice) {
-                session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.text) {
-                session.addMessage('text', originalMsg.text, originalMsg.message_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.video) {
-                session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.document) {
-                const fileName = originalMsg.document.file_name || 'file';
-                const fileExt = fileName.toLowerCase().split('.').pop();
-                if (fileExt === 'mp4') {
-                    session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
-                    session.trackMessage(originalMsg.message_id, 'user_content');
-                }
-            }
-        }
-        
-        // Уведомляем о начале коллекции
-        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
-        session.trackMessage(notification.message_id, 'bot_notification');
+        await handleReplyAndStartCollection(ctx, userId, ctx.message.reply_to_message);
     }
     
     // Проверяем режим накопления
@@ -1551,33 +1582,7 @@ bot.on('document', async (ctx) => {
     
     // Проверяем, является ли сообщение ответом на другое сообщение
     if (ctx.message.reply_to_message && !collectSessionState.has(userId) && fileExt === 'mp4') {
-        // Автоматически запускаем коллекцию
-        const session = new CollectSession(userId, ctx.chat.id);
-        collectSessionState.set(userId, session);
-        
-        // Добавляем исходное сообщение, на которое ответили
-        const originalMsg = ctx.message.reply_to_message;
-        if (originalMsg.voice) {
-            session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
-            session.trackMessage(originalMsg.message_id, 'user_content');
-        } else if (originalMsg.text) {
-            session.addMessage('text', originalMsg.text, originalMsg.message_id);
-            session.trackMessage(originalMsg.message_id, 'user_content');
-        } else if (originalMsg.video) {
-            session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
-            session.trackMessage(originalMsg.message_id, 'user_content');
-        } else if (originalMsg.document) {
-            const origFileName = originalMsg.document.file_name || 'file';
-            const origFileExt = origFileName.toLowerCase().split('.').pop();
-            if (origFileExt === 'mp4') {
-                session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            }
-        }
-        
-        // Уведомляем о начале коллекции
-        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
-        session.trackMessage(notification.message_id, 'bot_notification');
+        await handleReplyAndStartCollection(ctx, userId, ctx.message.reply_to_message);
     }
     
     // Проверяем что это MP4 файл
@@ -1702,46 +1707,7 @@ bot.on('voice', async (ctx) => {
     
     // Проверяем, является ли сообщение ответом на другое сообщение
     if (ctx.message.reply_to_message && !collectSessionState.has(userId)) {
-        // Автоматически запускаем коллекцию
-        const session = new CollectSession(userId, ctx.chat.id);
-        collectSessionState.set(userId, session);
-        
-        // Добавляем исходное сообщение, на которое ответили
-        const originalMsg = ctx.message.reply_to_message;
-        const originalMsgId = originalMsg.message_id;
-        
-        // Проверяем, обрабатывается ли исходное сообщение
-        const pendingKey = `${ctx.chat.id}_${originalMsgId}`;
-        const pendingData = pendingMessages.get(pendingKey);
-        if (pendingData) {
-            // Сообщение еще обрабатывается, добавляем placeholder
-            session.addMessage('pending', 'Сообщение в обработке...', originalMsgId, pendingData.fileId);
-            session.trackMessage(originalMsgId, 'user_content');
-            pendingData.collectSession = session; // Связываем с сессией для последующего обновления
-        } else {
-            // Сообщение уже обработано, добавляем как обычно
-            if (originalMsg.voice) {
-                session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.text) {
-                session.addMessage('text', originalMsg.text, originalMsg.message_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.video) {
-                session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.document) {
-                const fileName = originalMsg.document.file_name || 'file';
-                const fileExt = fileName.toLowerCase().split('.').pop();
-                if (fileExt === 'mp4') {
-                    session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
-                    session.trackMessage(originalMsg.message_id, 'user_content');
-                }
-            }
-        }
-        
-        // Уведомляем о начале коллекции
-        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
-        session.trackMessage(notification.message_id, 'bot_notification');
+        await handleReplyAndStartCollection(ctx, userId, ctx.message.reply_to_message);
     }
     
     // Проверяем режим накопления
@@ -1886,46 +1852,7 @@ bot.on('text', async (ctx) => {
     
     // Проверяем, является ли сообщение ответом на другое сообщение
     if (ctx.message.reply_to_message && !collectSessionState.has(userId)) {
-        // Автоматически запускаем коллекцию
-        const session = new CollectSession(userId, ctx.chat.id);
-        collectSessionState.set(userId, session);
-        
-        // Добавляем исходное сообщение, на которое ответили
-        const originalMsg = ctx.message.reply_to_message;
-        const originalMsgId = originalMsg.message_id;
-        
-        // Проверяем, обрабатывается ли исходное сообщение
-        const pendingKey = `${ctx.chat.id}_${originalMsgId}`;
-        const pendingData = pendingMessages.get(pendingKey);
-        if (pendingData) {
-            // Сообщение еще обрабатывается, добавляем placeholder
-            session.addMessage('pending', 'Сообщение в обработке...', originalMsgId, pendingData.fileId);
-            session.trackMessage(originalMsgId, 'user_content');
-            pendingData.collectSession = session; // Связываем с сессией для последующего обновления
-        } else {
-            // Сообщение уже обработано, добавляем как обычно
-            if (originalMsg.voice) {
-                session.addMessage('voice', null, originalMsg.message_id, originalMsg.voice.file_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.text) {
-                session.addMessage('text', originalMsg.text, originalMsg.message_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.video) {
-                session.addMessage('video', null, originalMsg.message_id, originalMsg.video.file_id);
-                session.trackMessage(originalMsg.message_id, 'user_content');
-            } else if (originalMsg.document) {
-                const fileName = originalMsg.document.file_name || 'file';
-                const fileExt = fileName.toLowerCase().split('.').pop();
-                if (fileExt === 'mp4') {
-                    session.addMessage('document', null, originalMsg.message_id, originalMsg.document.file_id);
-                    session.trackMessage(originalMsg.message_id, 'user_content');
-                }
-            }
-        }
-        
-        // Уведомляем о начале коллекции
-        const notification = await ctx.reply(`🔄 Автоматически начата коллекция сообщений\n\nОтправляйте сообщения для добавления или используйте /done для завершения`);
-        session.trackMessage(notification.message_id, 'bot_notification');
+        await handleReplyAndStartCollection(ctx, userId, ctx.message.reply_to_message);
     }
     
     // Проверяем режим накопления
@@ -2197,26 +2124,56 @@ bot.action(/delete_msg_(.+)/, async (ctx) => {
 
 // Обработчик удаления истории накопления (с подтверждением)
 bot.action(/delete_collect_(.+)/, async (ctx) => {
-    const userId = ctx.match[1];
-    console.log('🗑️ Попытка удаления истории для userId:', userId);
-    console.log('📊 Активные сессии:', Array.from(collectSessionState.keys()));
+    const callbackId = ctx.callbackQuery.id;
     
-    // Преобразуем userId в число если нужно
-    const userIdNum = parseInt(userId);
-    let session = collectSessionState.get(userId) || collectSessionState.get(userIdNum);
-    
-    if (!session) {
-        console.log('❌ Сессия не найдена для userId:', userId, 'или', userIdNum);
-        await ctx.answerCbQuery('❌ Сессия не найдена');
+    // Проверяем, не обработали ли мы уже этот callback
+    if (processedCallbacks.has(callbackId)) {
+        await ctx.answerCbQuery('Уже обрабатывается...');
         return;
     }
     
+    // Добавляем в обработанные
+    processedCallbacks.add(callbackId);
+    
+    // Удаляем через 5 секунд из памяти
+    setTimeout(() => {
+        processedCallbacks.delete(callbackId);
+    }, 5000);
+    
+    const userId = ctx.match[1];
+    console.log('🗑️ Попытка удаления истории для userId:', userId);
+    console.log('📊 Активные сессии:', Array.from(collectSessionState.keys()));
+    console.log('📊 Завершенные сессии:', Array.from(completedSessionsMap.keys()));
+    
     // ВАЖНО: Сначала отвечаем на callback query чтобы избежать повторов!
-    await ctx.answerCbQuery();
+    try {
+        await ctx.answerCbQuery();
+    } catch (e) {
+        console.error('Ошибка при ответе на callback query:', e);
+        processedCallbacks.delete(callbackId);
+        return;
+    }
+    
+    // Преобразуем userId в число если нужно
+    const userIdNum = parseInt(userId);
+    // Ищем сессию сначала в активных, потом в завершенных
+    let session = collectSessionState.get(userId) || collectSessionState.get(userIdNum) ||
+                  completedSessionsMap.get(userId) || completedSessionsMap.get(userIdNum);
+    
+    if (!session) {
+        console.log('❌ Сессия не найдена для userId:', userId, 'или', userIdNum);
+        // Удаляем кнопки с сообщения, так как сессия уже не существует
+        try {
+            await ctx.editMessageReplyMarkup();
+        } catch (e) {}
+        return;
+    }
+    
+    console.log('✅ Сессия найдена, сообщений:', session.allMessageIds.length);
     
     const totalMessages = session.allMessageIds.length;
     
-    // Показываем подтверждение
+    // Показываем подтверждение в новом сообщении
     try {
         const confirmMsg = await ctx.reply(
             `⚠️ *Удалить историю сессии?*\n\n` +
@@ -2248,7 +2205,9 @@ bot.action(/confirm_delete_collect_(.+)/, async (ctx) => {
     
     // Преобразуем userId в число если нужно
     const userIdNum = parseInt(userId);
-    let session = collectSessionState.get(userId) || collectSessionState.get(userIdNum);
+    // Ищем сессию сначала в активных, потом в завершенных
+    let session = collectSessionState.get(userId) || collectSessionState.get(userIdNum) ||
+                  completedSessionsMap.get(userId) || completedSessionsMap.get(userIdNum);
     
     if (!session) {
         try {
