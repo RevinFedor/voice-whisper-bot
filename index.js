@@ -1,3 +1,11 @@
+/*
+ * ВАЖНО: Порядок определения обработчиков критичен!
+ * 1. Сначала команды (bot.command) 
+ * 2. Затем actions (bot.action)
+ * 3. В конце общие обработчики (bot.on)
+ * См. DEVELOPMENT_RULES.md для подробностей
+ */
+
 import { Telegraf, Markup } from 'telegraf';
 import { writeFile, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
@@ -39,6 +47,7 @@ const deleteRangeStart = new Map();
 const transcriptionCache = new Map();
 const tagSelectionState = new Map(); // Для хранения состояния выбора тегов
 const tagConfirmationState = new Map(); // Добавьте для хранения состояния подтверждения
+const collectSessionState = new Map(); // Хранилище для сессий накопления сообщений
 
 // Константы для индикаторов режима
 const MODES = {
@@ -58,6 +67,84 @@ const MODES = {
 function getUserMode(userId) {
     const withFormatting = userPreferences.get(userId) === true;
     return withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
+}
+
+// Класс для управления сессией накопления
+class CollectSession {
+    constructor(userId) {
+        this.userId = userId;
+        this.messages = [];
+        this.textCount = 0;
+        this.voiceCount = 0;
+        this.photoCount = 0;
+        this.videoCount = 0;
+        this.documentCount = 0;
+        this.startTime = new Date();
+        this.statusMessageId = null;
+        this.timeoutTimer = null;
+    }
+
+    addMessage(type, content, messageId, fileId = null) {
+        this.messages.push({
+            type,
+            content,
+            messageId,
+            fileId,
+            timestamp: new Date()
+        });
+
+        switch(type) {
+            case 'text':
+                this.textCount++;
+                break;
+            case 'voice':
+                this.voiceCount++;
+                break;
+            case 'photo':
+                this.photoCount++;
+                break;
+            case 'video':
+                this.videoCount++;
+                break;
+            case 'document':
+                this.documentCount++;
+                break;
+        }
+
+        this.resetTimeout();
+    }
+
+    getTotalCount() {
+        return this.messages.length;
+    }
+
+    getStatusText() {
+        const parts = [];
+        if (this.textCount > 0) parts.push(`${this.textCount} текстовых`);
+        if (this.voiceCount > 0) parts.push(`${this.voiceCount} голосовых`);
+        if (this.photoCount > 0) parts.push(`${this.photoCount} фото`);
+        if (this.videoCount > 0) parts.push(`${this.videoCount} видео`);
+        if (this.documentCount > 0) parts.push(`${this.documentCount} документов`);
+        
+        if (parts.length === 0) return 'нет сообщений';
+        return parts.join(', ');
+    }
+
+    resetTimeout() {
+        if (this.timeoutTimer) {
+            clearTimeout(this.timeoutTimer);
+        }
+    }
+
+    clear() {
+        this.messages = [];
+        this.textCount = 0;
+        this.voiceCount = 0;
+        this.photoCount = 0;
+        this.videoCount = 0;
+        this.documentCount = 0;
+        this.resetTimeout();
+    }
 }
 
 // Функция для улучшения читаемости текста без изменения слов
@@ -727,9 +814,308 @@ async function processVideo(ctx, fileId, videoMessageId, withFormatting, fileSiz
     }
 }
 
+// ============= КОМАНДЫ НАКОПЛЕНИЯ =============
+// ВАЖНО: Команды должны быть определены ДО обработчиков сообщений!
+
+// Команда для начала сессии накопления
+bot.command(['collect', 'заметка'], async (ctx) => {
+    console.log('📝 Команда /collect вызвана пользователем:', ctx.from.username || ctx.from.id);
+    const userId = ctx.from.id;
+    
+    // Проверяем, есть ли уже активная сессия
+    if (collectSessionState.has(userId)) {
+        await ctx.reply(
+            '⚠️ У вас уже есть активная сессия накопления сообщений.\n\n' +
+            'Используйте:\n' +
+            '• `/done` или `/готово` - завершить и обработать\n' +
+            '• `/cancel` или `/отмена` - отменить накопление\n' +
+            '• `/status` - посмотреть статус',
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    // Создаем новую сессию
+    const session = new CollectSession(userId);
+    collectSessionState.set(userId, session);
+    
+    const statusMsg = await ctx.reply(
+        '📝 *Режим накопления активирован*\n\n' +
+        'Отправляйте сообщения (голосовые, текст, фото, видео).\n' +
+        'Каждое сообщение будет добавлено в общую заметку.\n\n' +
+        '📊 Сообщений: 0\n\n' +
+        'Команды:\n' +
+        '• `/done` - завершить и обработать все сообщения\n' +
+        '• `/cancel` - отменить накопление\n' +
+        '• `/status` - текущий статус',
+        { parse_mode: 'Markdown' }
+    );
+    
+    session.statusMessageId = statusMsg.message_id;
+    
+    // Устанавливаем таймер на 5 минут
+    session.timeoutTimer = setTimeout(async () => {
+        if (collectSessionState.has(userId)) {
+            await ctx.telegram.sendMessage(
+                ctx.chat.id,
+                '⚠️ Режим накопления будет автоматически завершен через 1 минуту из-за неактивности.\n' +
+                'Отправьте сообщение чтобы продолжить или `/done` чтобы завершить сейчас.'
+            );
+            
+            // Финальный таймер на 1 минуту
+            session.timeoutTimer = setTimeout(async () => {
+                if (collectSessionState.has(userId) && collectSessionState.get(userId) === session) {
+                    collectSessionState.delete(userId);
+                    await ctx.telegram.sendMessage(
+                        ctx.chat.id,
+                        '❌ Режим накопления отменен из-за неактивности.'
+                    );
+                }
+            }, 60000); // 1 минута
+        }
+    }, 300000); // 5 минут
+});
+
+// Команда для завершения накопления и обработки
+bot.command(['done', 'готово'], async (ctx) => {
+    const userId = ctx.from.id;
+    const session = collectSessionState.get(userId);
+    
+    if (!session) {
+        await ctx.reply('ℹ️ Нет активного режима накопления.\nИспользуйте `/collect` чтобы начать.');
+        return;
+    }
+    
+    if (session.getTotalCount() === 0) {
+        await ctx.reply('⚠️ Нет сообщений для обработки. Добавьте хотя бы одно сообщение.');
+        return;
+    }
+    
+    // Очищаем таймер
+    session.resetTimeout();
+    
+    const processingMsg = await ctx.reply(
+        `⏳ Обрабатываю ${session.getTotalCount()} сообщений...\n` +
+        `📊 ${session.getStatusText()}`,
+        { parse_mode: 'Markdown' }
+    );
+    
+    try {
+        // Объединяем все сообщения
+        let combinedText = '';
+        const withFormatting = userPreferences.get(userId) === true;
+        
+        for (const msg of session.messages) {
+            if (msg.type === 'text') {
+                combinedText += msg.content + '\n\n';
+            } else if (msg.type === 'voice' && msg.fileId) {
+                // Расшифровываем голосовое
+                const link = await ctx.telegram.getFileLink(msg.fileId);
+                const res = await fetch(link.href);
+                const buffer = await res.arrayBuffer();
+                const tmpPath = `/tmp/${uuid()}.ogg`;
+                await writeFile(tmpPath, Buffer.from(buffer));
+                
+                const transcript = await openai.audio.transcriptions.create({
+                    model: 'whisper-1',
+                    file: createReadStream(tmpPath),
+                    response_format: 'text',
+                });
+                
+                await unlink(tmpPath);
+                combinedText += transcript + '\n\n';
+            } else if ((msg.type === 'video' || msg.type === 'audio') && msg.fileId) {
+                // Обрабатываем видео/аудио - извлекаем аудио и расшифровываем
+                try {
+                    const link = await ctx.telegram.getFileLink(msg.fileId);
+                    const res = await fetch(link.href);
+                    const buffer = await res.arrayBuffer();
+                    
+                    let audioPath = `/tmp/${uuid()}.ogg`;
+                    
+                    if (msg.type === 'video') {
+                        const videoPath = `/tmp/${uuid()}.mp4`;
+                        await writeFile(videoPath, Buffer.from(buffer));
+                        await extractAudioFromVideo(videoPath, audioPath);
+                        await unlink(videoPath);
+                    } else {
+                        // Для аудио - конвертируем если нужно
+                        const inputPath = `/tmp/${uuid()}_audio`;
+                        await writeFile(inputPath, Buffer.from(buffer));
+                        
+                        await new Promise((resolve, reject) => {
+                            ffmpeg(inputPath)
+                                .audioCodec('libopus')
+                                .format('ogg')
+                                .save(audioPath)
+                                .on('end', resolve)
+                                .on('error', reject);
+                        });
+                        await unlink(inputPath);
+                    }
+                    
+                    const transcript = await openai.audio.transcriptions.create({
+                        model: 'whisper-1',
+                        file: createReadStream(audioPath),
+                        response_format: 'text',
+                    });
+                    
+                    await unlink(audioPath);
+                    combinedText += transcript + '\n\n';
+                } catch (err) {
+                    console.error(`Ошибка обработки ${msg.type}:`, err);
+                }
+            }
+            // Фото пропускаем - можно добавить OCR если нужно
+        }
+        
+        // Обрабатываем объединенный текст
+        let finalContent = combinedText.trim();
+        let title = '';
+        
+        if (withFormatting) {
+            finalContent = await improveReadability(finalContent);
+        }
+        
+        title = await createTitle(finalContent);
+        
+        // Удаляем сообщение о процессинге
+        await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
+        
+        // Отправляем результат
+        const mode = getUserMode(userId);
+        const fullMessage = 
+            `${mode.emoji} *Обработанная заметка*\n` +
+            `📊 Объединено сообщений: ${session.getTotalCount()}\n\n` +
+            `**Заголовок:**\n\`${title}\`\n\n` +
+            `**Содержание:**\n\`\`\`\n${finalContent}\n\`\`\``;
+        
+        let botReply;
+        
+        if (fullMessage.length > 4000) {
+            const filename = `combined_note_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
+            const fileContent = `Заголовок: ${title}\n\nОбъединено сообщений: ${session.getTotalCount()}\n${session.getStatusText()}\n\n${finalContent}`;
+            
+            const tmpFilePath = `/tmp/${filename}`;
+            await writeFile(tmpFilePath, fileContent, 'utf8');
+            
+            botReply = await ctx.replyWithDocument(
+                { source: tmpFilePath, filename: filename },
+                {
+                    caption:
+                        `${mode.emoji} *Обработанная заметка*\n` +
+                        `📊 Объединено: ${session.getTotalCount()} (${session.getStatusText()})\n\n` +
+                        `**Заголовок:** \`${title}\`\n\n` +
+                        `📄 Заметка слишком длинная, отправляю файлом.`,
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback('📝 Добавить в Obsidian', `add_note_combined_${userId}`)]
+                    ])
+                }
+            );
+            
+            await unlink(tmpFilePath);
+        } else {
+            botReply = await ctx.reply(fullMessage, {
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📝 Добавить в Obsidian', `add_note_combined_${userId}`)]
+                ])
+            });
+        }
+        
+        // Сохраняем в кэш для возможности добавления в Obsidian
+        const cacheId = `${ctx.chat.id}_combined_${userId}`;
+        transcriptionCache.set(cacheId, {
+            title: title || 'Объединенная заметка',
+            content: finalContent,
+            timestamp: new Date(),
+            userId: userId,
+            mode: mode.name,
+            messagesCount: session.getTotalCount(),
+            messagesInfo: session.getStatusText()
+        });
+        
+        setTimeout(() => {
+            transcriptionCache.delete(cacheId);
+        }, 30 * 60 * 1000);
+        
+    } catch (error) {
+        console.error('Ошибка при обработке накопленных сообщений:', error);
+        await ctx.reply('❌ Произошла ошибка при обработке сообщений.');
+    }
+    
+    // Удаляем сессию
+    collectSessionState.delete(userId);
+});
+
+// Команда отмены накопления  
+bot.command(['cancel', 'отмена'], async (ctx) => {
+    const userId = ctx.from.id;
+    const session = collectSessionState.get(userId);
+    
+    if (!session) {
+        await ctx.reply('ℹ️ Нет активного режима накопления.');
+        return;
+    }
+    
+    session.resetTimeout();
+    const count = session.getTotalCount();
+    collectSessionState.delete(userId);
+    
+    await ctx.reply(
+        `❌ *Режим накопления отменен*\n\n` +
+        `Удалено из очереди: ${count} сообщений`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// Команда просмотра статуса
+bot.command('status', async (ctx) => {
+    const userId = ctx.from.id;
+    const session = collectSessionState.get(userId);
+    
+    if (!session) {
+        await ctx.reply('ℹ️ Нет активного режима накопления.\nИспользуйте `/collect` чтобы начать.');
+        return;
+    }
+    
+    const elapsed = Math.floor((new Date() - session.startTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    
+    await ctx.reply(
+        `📊 *Статус накопления*\n\n` +
+        `📝 Сообщений в очереди: ${session.getTotalCount()}\n` +
+        `📋 Детали: ${session.getStatusText()}\n` +
+        `⏱️ Время сессии: ${minutes}:${seconds.toString().padStart(2, '0')}\n\n` +
+        `Команды:\n` +
+        `• `/done` - завершить и обработать\n` +
+        `• `/cancel` - отменить накопление`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// ============= КОНЕЦ КОМАНД НАКОПЛЕНИЯ =============
+
 // Обработчик видео сообщений (MP4)
 bot.on('video', async (ctx) => {
     const userId = ctx.from.id;
+    
+    // Проверяем режим накопления
+    const collectSession = collectSessionState.get(userId);
+    if (collectSession) {
+        const video = ctx.message.video;
+        collectSession.addMessage('video', null, ctx.message.message_id, video.file_id);
+        
+        const messageIndex = collectSession.getTotalCount();
+        await ctx.reply(
+            `🎥 Добавлено видео #${messageIndex}\n` +
+            `📊 Всего сообщений: ${collectSession.getTotalCount()}`,
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
     
     // Проверяем что это MP4 файл
     const video = ctx.message.video;
@@ -951,6 +1337,21 @@ async function processAudioFile(ctx, fileId, messageId, withFormatting, fileName
 // Обработчик аудио сообщений (когда Telegram распознает файл как аудио)
 bot.on('audio', async (ctx) => {
     const userId = ctx.from.id;
+    
+    // Проверяем режим накопления
+    const collectSession = collectSessionState.get(userId);
+    if (collectSession) {
+        const audio = ctx.message.audio;
+        collectSession.addMessage('audio', null, ctx.message.message_id, audio.file_id);
+        
+        const messageIndex = collectSession.getTotalCount();
+        await ctx.reply(
+            `🎵 Добавлено аудио #${messageIndex}\n` +
+            `📊 Всего сообщений: ${collectSession.getTotalCount()}`,
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
     const audio = ctx.message.audio;
     const fileName = audio.file_name || `${audio.title || 'audio'}.${audio.mime_type?.split('/')[1] || 'mp3'}`;
     
@@ -1062,271 +1463,7 @@ bot.on('document', async (ctx) => {
     }
 });
 
-// УДАЛЕНО: функция processVideoFromUrl
-/*
-async function processVideoFromUrl(ctx, videoUrl, withFormatting) {
-    const mode = withFormatting ? MODES.WITH_FORMAT : MODES.WITHOUT_FORMAT;
-    
-    const loadingMessage = await ctx.reply(
-        `${mode.emoji} ⏳ Загружаю видео и извлекаю аудио...\n` +
-        `🔗 URL: ${videoUrl}\n\n` +
-        `⚠️ Это может занять несколько минут для больших видео`,
-        { parse_mode: 'Markdown' }
-    );
-    
-    try {
-        // Определяем тип видео
-        const isTikTok = videoUrl.includes('tiktok.com') || videoUrl.includes('vt.tiktok.com');
-        const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
-        
-        let title, audioPath;
-        
-        if (isTikTok) {
-            // Обработка TikTok
-            await ctx.telegram.editMessageText(
-                ctx.chat.id,
-                loadingMessage.message_id,
-                null,
-                `${mode.emoji} 🎵 Загружаю TikTok видео...\n⏳ Подождите...`,
-                { parse_mode: 'Markdown' }
-            );
-            
-            // Увеличиваем таймаут для TikTok
-            const result = await Promise.race([
-                TiktokDownloader(videoUrl, { version: 'v3' }),
-                new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('TikTok загрузка превысила 30 секунд')), 30000)
-                )
-            ]);
-            
-            if (!result || result.status !== 'success' || !result.result) {
-                throw new Error('Не удалось получить информацию о видео');
-            }
-            
-            const videoData = result.result;
-            title = videoData.description || videoData.desc || 'TikTok видео';
-            
-            // Получаем URL видео (берем HD версию если доступна)
-            let videoUrlDirect = null;
-            if (videoData.videoHD) {
-                videoUrlDirect = videoData.videoHD;
-            } else if (videoData.videoSD) {
-                videoUrlDirect = videoData.videoSD;
-            } else if (videoData.videoWatermark) {
-                videoUrlDirect = videoData.videoWatermark;
-            } else if (videoData.video && Array.isArray(videoData.video) && videoData.video.length > 0) {
-                videoUrlDirect = videoData.video[0];
-            }
-            
-            if (!videoUrlDirect) {
-                throw new Error('Не удалось получить ссылку на видео');
-            }
-            
-            // Скачиваем видео с таймаутом
-            const videoPath = `/tmp/${uuid()}.mp4`;
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 60000); // 60 секунд таймаут
-            
-            try {
-                const response = await fetch(videoUrlDirect, { signal: controller.signal });
-                clearTimeout(timeout);
-                const buffer = await response.arrayBuffer();
-                await writeFile(videoPath, Buffer.from(buffer));
-            } catch (err) {
-                clearTimeout(timeout);
-                if (err.name === 'AbortError') {
-                    throw new Error('Загрузка видео превысила 60 секунд');
-                }
-                throw err;
-            }
-            
-            // Извлекаем аудио
-            audioPath = `/tmp/${uuid()}.ogg`;
-            await extractAudioFromVideo(videoPath, audioPath);
-            
-            // Удаляем временное видео
-            await unlink(videoPath);
-            
-            await ctx.telegram.editMessageText(
-                ctx.chat.id,
-                loadingMessage.message_id,
-                null,
-                `${mode.emoji} 🎵 TikTok видео загружено\n🎙️ Расшифровываю аудио...`,
-                { parse_mode: 'Markdown' }
-            );
-            
-        } else if (isYouTube) {
-            // Обработка YouTube (существующий код)
-            const videoId = ytdl.getVideoID(videoUrl);
-            const info = await ytdl.getInfo(videoId);
-            title = info.videoDetails.title;
-            const duration = parseInt(info.videoDetails.lengthSeconds);
-            
-            // Информируем о видео
-            await ctx.telegram.editMessageText(
-                ctx.chat.id,
-                loadingMessage.message_id,
-                null,
-                `${mode.emoji} 📹 Найдено видео:\n` +
-                `📝 *${title}*\n` +
-                `⏱ Длительность: ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}\n\n` +
-                `⏳ Извлекаю аудио...`,
-                { parse_mode: 'Markdown' }
-            );
-            
-            // Скачиваем только аудио
-            const audioPathTemp = `/tmp/${uuid()}.mp3`;
-            const stream = ytdl(videoUrl, { 
-                quality: 'highestaudio',
-                filter: 'audioonly'
-            });
-            
-            await new Promise((resolve, reject) => {
-                ffmpeg(stream)
-                    .audioCodec('libmp3lame')
-                    .format('mp3')
-                    .save(audioPathTemp)
-                    .on('end', resolve)
-                    .on('error', reject);
-            });
-            
-            // Конвертируем в OGG для Whisper
-            audioPath = `/tmp/${uuid()}.ogg`;
-            await new Promise((resolve, reject) => {
-                ffmpeg(audioPathTemp)
-                    .audioCodec('libopus')
-                    .format('ogg')
-                    .save(audioPath)
-                    .on('end', resolve)
-                    .on('error', reject);
-            });
-            
-            // Удаляем временный MP3
-            await unlink(audioPathTemp);
-        } else {
-            throw new Error('Неподдерживаемый URL. Используйте YouTube или TikTok ссылки.');
-        }
-        
-        // Расшифровываем
-        await ctx.telegram.editMessageText(
-            ctx.chat.id,
-            loadingMessage.message_id,
-            null,
-            `${mode.emoji} 🎙️ Расшифровываю аудио...\n` +
-            `Это может занять некоторое время`,
-            { parse_mode: 'Markdown' }
-        );
-        
-        const rawTranscript = await openai.audio.transcriptions.create({
-            model: 'whisper-1',
-            file: createReadStream(audioPath),
-            response_format: 'text',
-            // Автоопределение языка
-        });
-        
-        // Удаляем временный аудио файл
-        await unlink(audioPath);
-        
-        // Удаляем сообщение о загрузке
-        try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
-        } catch (e) {}
-        
-        let messageContent;
-        let processedTitle = '';
-        
-        if (withFormatting) {
-            const improvedTranscript = await improveReadability(rawTranscript);
-            processedTitle = await createTitle(improvedTranscript);
-            messageContent = improvedTranscript;
-        } else {
-            processedTitle = await createTitle(rawTranscript);
-            messageContent = rawTranscript;
-        }
-        
-        const fullMessage = 
-            `${mode.emoji} *Режим: ${mode.name}*\n` +
-            `🎥 *Источник: ${title}*\n\n` +
-            `**Заголовок:**\n\`${processedTitle}\`\n\n` +
-            `**Расшифровка:**\n\`\`\`\n${messageContent}\n\`\`\``;
-        
-        let botReply;
-        
-        if (fullMessage.length > 4000) {
-            const filename = `transcript_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.txt`;
-            const fileContent = `Источник: ${title}\nЗаголовок: ${processedTitle}\n\n${messageContent}`;
-            
-            const tmpFilePath = `/tmp/${filename}`;
-            await writeFile(tmpFilePath, fileContent, 'utf8');
-            
-            botReply = await ctx.replyWithDocument(
-                { source: tmpFilePath, filename: filename },
-                {
-                    caption:
-                        `${mode.emoji} *Режим: ${mode.name}*\n` +
-                        `🎥 *Источник: ${title}*\n\n` +
-                        `**Заголовок:** \`${processedTitle}\`\n\n` +
-                        `📄 Расшифровка слишком длинная, отправляю файлом.`,
-                    parse_mode: 'Markdown',
-                    ...createTranscriptKeyboard(`url_${videoId}`),
-                }
-            );
-            
-            await unlink(tmpFilePath);
-        } else {
-            botReply = await ctx.reply(fullMessage, {
-                parse_mode: 'Markdown',
-                ...createTranscriptKeyboard(`url_${videoId}`),
-            });
-        }
-        
-        const cacheId = `${ctx.chat.id}_url_${Date.now()}`;
-        transcriptionCache.set(cacheId, {
-            title: processedTitle || 'Видео заметка',
-            content: messageContent,
-            timestamp: new Date(),
-            userId: ctx.from.id,
-            mode: mode.name,
-            source: title
-        });
-        
-        setTimeout(() => {
-            transcriptionCache.delete(cacheId);
-        }, 30 * 60 * 1000);
-        
-        return botReply;
-    } catch (error) {
-        console.error('Ошибка при обработке видео:', error);
-        
-        try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
-        } catch (e) {}
-        
-        if (error.message && (error.message.includes('not a valid YouTube URL') || error.message.includes('Неподдерживаемый URL'))) {
-            await ctx.reply(
-                '❌ *Неверная ссылка*\n\n' +
-                'Поддерживаются ссылки:\n' +
-                '• YouTube видео\n' +
-                '• YouTube Shorts\n' +
-                '• TikTok видео\n\n' +
-                'Примеры:\n' +
-                '`/video https://youtube.com/watch?v=...`\n' +
-                '`/video https://vt.tiktok.com/...`',
-                { parse_mode: 'Markdown' }
-            );
-        } else if (error.message && error.message.includes('private')) {
-            await ctx.reply('❌ Это видео приватное или недоступно в вашем регионе');
-        } else {
-            await ctx.reply('❌ Не удалось обработать видео. Проверьте ссылку и попробуйте снова.');
-        }
-        
-        throw error;
-    }
-}
-*/
 
-// УДАЛЕНО: команда /video
-/*
 bot.command('video', async (ctx) => {
     const userId = ctx.from.id;
     const text = ctx.message.text;
@@ -1363,11 +1500,26 @@ bot.command('video', async (ctx) => {
         console.error('Ошибка при обработке команды /video:', error);
     }
 });
-*/
+
 
 // Обработчик голосовых сообщений для выбора тегов
 bot.on('voice', async (ctx) => {
     const userId = ctx.from.id;
+    
+    // Проверяем режим накопления
+    const collectSession = collectSessionState.get(userId);
+    if (collectSession) {
+        const fileId = ctx.message.voice.file_id;
+        collectSession.addMessage('voice', null, ctx.message.message_id, fileId);
+        
+        const messageIndex = collectSession.getTotalCount();
+        await ctx.reply(
+            `🎤 Добавлено голосовое сообщение #${messageIndex}\n` +
+            `📊 Всего сообщений: ${collectSession.getTotalCount()}`,
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
 
     // Проверяем подтверждение тегов
     if (tagConfirmationState.has(userId)) {
@@ -1473,6 +1625,21 @@ bot.on('text', async (ctx) => {
     // Пропускаем команды
     if (ctx.message.text.startsWith('/')) return;
     
+    // Проверяем режим накопления
+    const collectSession = collectSessionState.get(userId);
+    if (collectSession) {
+        const text = ctx.message.text;
+        collectSession.addMessage('text', text, ctx.message.message_id);
+        
+        const messageIndex = collectSession.getTotalCount();
+        await ctx.reply(
+            `✅ Добавлено текстовое сообщение #${messageIndex}\n` +
+            `📊 Всего сообщений: ${collectSession.getTotalCount()}`,
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
+    
     // Проверяем подтверждение тегов
     if (tagConfirmationState.has(userId)) {
         const confirmState = tagConfirmationState.get(userId);
@@ -1563,10 +1730,19 @@ bot.on('text', async (ctx) => {
 });
 
 // Обновляем обработчик кнопки "Добавить в заметку" для поддержки текстовых сообщений
-bot.action(/add_note_(text_)?(.+)/, async (ctx) => {
-    const isText = ctx.match[1] === 'text_';
+bot.action(/add_note_(text_|combined_)?(.+)/, async (ctx) => {
+    const prefix = ctx.match[1];
+    const isText = prefix === 'text_';
+    const isCombined = prefix === 'combined_';
     const messageId = ctx.match[2];
-    const cacheId = `${ctx.chat.id}_${isText ? 'text_' : ''}${messageId}`;
+    let cacheId;
+    if (isCombined) {
+        cacheId = `${ctx.chat.id}_combined_${messageId}`;
+    } else if (isText) {
+        cacheId = `${ctx.chat.id}_text_${messageId}`;
+    } else {
+        cacheId = `${ctx.chat.id}_${messageId}`;
+    }
     const transcriptionData = transcriptionCache.get(cacheId);
 
     if (!transcriptionData) {
@@ -1733,7 +1909,6 @@ bot.command('start', (ctx) => {
         { parse_mode: 'Markdown' }
     );
 });
-
 // Команда для включения форматирования
 bot.command('format', async (ctx) => {
     const userId = ctx.from.id;
@@ -2183,6 +2358,7 @@ bot.command(['del_cancel', 'delcancel', 'dc'], async (ctx) => {
     }
 });
 
+// Добавляем справку  
 // Добавляем справку
 bot.command('help', (ctx) => {
     const mode = getUserMode(ctx.from.id);
@@ -2218,6 +2394,12 @@ bot.command('help', (ctx) => {
             `🗑️ *Удаление сообщений:*\n` +
             `• Диапазон: /del_start на первое → /del_end на последнее\n` +
             `• Все после: /del_all на сообщение → удалит все после него\n\n` +
+            `📝 *Режим накопления (новое!):*\n` +
+            `• \`/collect\` - начать накопление сообщений\n` +
+            `• Отправляйте голосовые, текст, видео, аудио\n` +
+            `• \`/done\` - объединить все в одну заметку\n` +
+            `• \`/cancel\` - отменить накопление\n` +
+            `• \`/status\` - проверить статус накопления\n\n` +
             `📝 Текст форматируется моноширинным шрифтом для удобного копирования`,
         { parse_mode: 'Markdown' }
     );
@@ -2228,6 +2410,10 @@ bot.launch();
 // Устанавливаем команды для автокомплита
 bot.telegram.setMyCommands([
     { command: 'start', description: 'Начать работу с ботом' },
+    { command: 'collect', description: 'Начать накопление сообщений 📝' },
+    { command: 'done', description: 'Завершить и обработать накопление ✅' },
+    { command: 'cancel', description: 'Отменить накопление ❌' },
+    { command: 'status', description: 'Статус накопления 📊' },
     { command: 'format', description: 'Режим с форматированием 🎨' },
     { command: 'noformat', description: 'Режим без форматирования 📝' },
     { command: 'toggle', description: 'Переключить режим' },
