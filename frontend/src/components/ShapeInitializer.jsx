@@ -105,9 +105,10 @@ function createNotesGrid(editor) {
         const richTextContent = toRichText(note.title + '\n' + note.content);
         
         try {
-            editor.createShape({
-                id: createShapeId(),
-                type: 'note',
+            const shapeId = createShapeId();
+            const result = editor.createShape({
+                id: shapeId,
+                type: 'custom-note',
                 x: note.x,
                 y: note.y,
                 props: {
@@ -116,10 +117,28 @@ function createNotesGrid(editor) {
                     time: note.time,
                     duration: note.duration || '',
                     color: 'black',
+                    labelColor: 'black',
                     size: 'm',
+                    font: 'draw',
+                    align: 'middle',
+                    verticalAlign: 'middle',
+                    growY: 0,
+                    fontSizeAdjustment: 0,
+                    url: '',
+                    scale: 1,
+                    w: 180,
+                    h: 150,
                 },
             });
-            console.log('Created note:', note.title);
+            console.log('Created custom-note:', note.title, 'ID:', shapeId, 'Result:', result);
+            
+            // Проверяем, действительно ли shape создан
+            const createdShape = editor.getShape(shapeId);
+            if (createdShape) {
+                console.log('✓ Shape verified in store:', createdShape.type, createdShape.id);
+            } else {
+                console.error('✗ Shape NOT found in store after creation!', shapeId);
+            }
         } catch (error) {
             console.error('Error creating note:', error);
         }

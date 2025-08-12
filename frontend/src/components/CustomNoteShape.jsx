@@ -30,7 +30,7 @@ const NOTE_COLORS = {
 
 // Кастомный NoteShapeUtil
 export class CustomNoteShapeUtil extends ShapeUtil {
-    static type = 'note';
+    static type = 'custom-note';
     
     static props = {
         w: T.number,

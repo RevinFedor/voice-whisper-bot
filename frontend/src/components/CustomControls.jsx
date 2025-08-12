@@ -79,21 +79,47 @@ export function CustomControls() {
     };
 
     const handleAddNote = () => {
+        console.log('=== handleAddNote called ===');
+        
         // Добавление новой заметки
         const id = createShapeId();
-        editor.createShape({
-            id,
-            type: 'note',
-            x: 100 + Math.random() * 500,
-            y: 100 + Math.random() * 300,
-            props: {
-                richText: toRichText('Новая заметка\nНажмите для редактирования...'),
-                noteType: 'text',
-                time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                color: 'black',
-                size: 'm',
+        const x = 100 + Math.random() * 500;
+        const y = 100 + Math.random() * 300;
+        
+        console.log('Creating shape with:', { id, type: 'custom-note', x, y });
+        
+        try {
+            const result = editor.createShape({
+                id,
+                type: 'custom-note',
+                x,
+                y,
+                props: {
+                    richText: toRichText('Новая заметка\nНажмите для редактирования...'),
+                    noteType: 'text',
+                    time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                    color: 'black',
+                    size: 'm',
+                }
+            });
+            
+            console.log('Shape creation result:', result);
+            
+            // Проверяем создание
+            const createdShape = editor.getShape(id);
+            if (createdShape) {
+                console.log('✓ New note created successfully:', createdShape);
+            } else {
+                console.error('✗ Failed to create note!');
             }
-        });
+            
+            // Проверяем общее количество shapes
+            const allShapes = editor.getCurrentPageShapes();
+            console.log('Total shapes after creation:', allShapes.length);
+            
+        } catch (error) {
+            console.error('Error in handleAddNote:', error);
+        }
     };
 
     return (
