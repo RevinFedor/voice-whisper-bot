@@ -10,7 +10,7 @@ export declare class NotesService {
         title: string;
         content?: string;
         type: NoteType;
-        date?: Date;
+        date?: Date | string;
         voiceDuration?: number;
         voiceFileUrl?: string;
     }): Promise<Note>;

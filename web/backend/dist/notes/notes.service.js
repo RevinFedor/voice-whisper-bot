@@ -26,7 +26,11 @@ let NotesService = class NotesService {
         this.prisma = prisma;
     }
     calculateColumnX(date, baseDate) {
-        const daysDiff = Math.floor((date.getTime() - baseDate.getTime()) / (24 * 60 * 60 * 1000));
+        const normalizedDate = new Date(date);
+        normalizedDate.setHours(0, 0, 0, 0);
+        const normalizedBase = new Date(baseDate);
+        normalizedBase.setHours(0, 0, 0, 0);
+        const daysDiff = Math.floor((normalizedDate.getTime() - normalizedBase.getTime()) / (24 * 60 * 60 * 1000));
         return LAYOUT_CONFIG.startX + (daysDiff * (LAYOUT_CONFIG.columnWidth + LAYOUT_CONFIG.columnSpacing));
     }
     async findNextAvailableY(userId, date, columnX) {
@@ -83,7 +87,21 @@ let NotesService = class NotesService {
                 },
             });
         }
-        const noteDate = data.date || new Date();
+        let noteDate;
+        if (data.date) {
+            if (typeof data.date === 'string') {
+                noteDate = new Date(data.date);
+            }
+            else {
+                noteDate = new Date(data.date);
+            }
+        }
+        else {
+            noteDate = new Date();
+        }
+        if (isNaN(noteDate.getTime())) {
+            noteDate = new Date();
+        }
         noteDate.setHours(0, 0, 0, 0);
         const baseDate = await this.getBaseDate(userId);
         const columnX = this.calculateColumnX(noteDate, baseDate);
@@ -159,7 +177,14 @@ let NotesService = class NotesService {
         }
         const baseDate = await this.getBaseDate(note.userId);
         const originalColumnX = this.calculateColumnX(note.date, baseDate);
-        const isBackInColumn = Math.abs(x - originalColumnX) < 10;
+        const columnThreshold = LAYOUT_CONFIG.columnWidth / 2;
+        const isBackInColumn = Math.abs(x - originalColumnX) < columnThreshold;
+        console.log(`📍 Position update for note ${noteId}:`, {
+            newPosition: { x, y },
+            originalColumnX,
+            isBackInColumn,
+            manuallyPositioned: !isBackInColumn,
+        });
         return this.prisma.note.update({
             where: { id: noteId },
             data: {

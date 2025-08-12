@@ -21,7 +21,14 @@ export class NotesService {
    * Calculate X position for a date column
    */
   private calculateColumnX(date: Date, baseDate: Date): number {
-    const daysDiff = Math.floor((date.getTime() - baseDate.getTime()) / (24 * 60 * 60 * 1000));
+    // Normalize both dates to start of day to avoid time component issues
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(0, 0, 0, 0);
+    
+    const normalizedBase = new Date(baseDate);
+    normalizedBase.setHours(0, 0, 0, 0);
+    
+    const daysDiff = Math.floor((normalizedDate.getTime() - normalizedBase.getTime()) / (24 * 60 * 60 * 1000));
     return LAYOUT_CONFIG.startX + (daysDiff * (LAYOUT_CONFIG.columnWidth + LAYOUT_CONFIG.columnSpacing));
   }
 
@@ -93,7 +100,7 @@ export class NotesService {
     title: string;
     content?: string;
     type: NoteType;
-    date?: Date;
+    date?: Date | string;
     voiceDuration?: number;
     voiceFileUrl?: string;
   }): Promise<Note> {
@@ -115,8 +122,24 @@ export class NotesService {
     }
 
     // Use provided date or today
-    const noteDate = data.date || new Date();
-    noteDate.setHours(0, 0, 0, 0); // Normalize to start of day
+    let noteDate: Date;
+    if (data.date) {
+      // Handle both Date object and string format
+      if (typeof data.date === 'string') {
+        // Parse YYYY-MM-DD format
+        noteDate = new Date(data.date);
+      } else {
+        noteDate = new Date(data.date);
+      }
+    } else {
+      noteDate = new Date();
+    }
+    // Ensure it's a valid date
+    if (isNaN(noteDate.getTime())) {
+      noteDate = new Date();
+    }
+    // Set to beginning of day in local timezone
+    noteDate.setHours(0, 0, 0, 0);
 
     // Get base date for column calculation
     const baseDate = await this.getBaseDate(userId);
@@ -225,8 +248,16 @@ export class NotesService {
     const baseDate = await this.getBaseDate(note.userId);
     const originalColumnX = this.calculateColumnX(note.date, baseDate);
     
-    // If moved close to original column, consider it not manually positioned
-    const isBackInColumn = Math.abs(x - originalColumnX) < 10;
+    // Check if note is within column bounds (column width is 180)
+    const columnThreshold = LAYOUT_CONFIG.columnWidth / 2; // Allow some flexibility
+    const isBackInColumn = Math.abs(x - originalColumnX) < columnThreshold;
+    
+    console.log(`📍 Position update for note ${noteId}:`, {
+      newPosition: { x, y },
+      originalColumnX,
+      isBackInColumn,
+      manuallyPositioned: !isBackInColumn,
+    });
 
     return this.prisma.note.update({
       where: { id: noteId },

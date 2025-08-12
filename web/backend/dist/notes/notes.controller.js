@@ -29,7 +29,7 @@ let NotesController = class NotesController {
     async createNote(userId = 'test-user-id', createNoteDto) {
         return this.notesService.createNote(userId, {
             ...createNoteDto,
-            date: createNoteDto.date ? new Date(createNoteDto.date) : undefined,
+            date: createNoteDto.date,
         });
     }
     async createRandomNote(userId = 'test-user-id') {

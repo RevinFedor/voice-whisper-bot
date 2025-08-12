@@ -3,6 +3,7 @@ import { Tldraw, createShapeId } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
 import { CustomControls } from './components/CustomControls';
+import DatePickerModal from './components/DatePickerModal';
 import './utils/debugHelpers';
 
 // API configuration
@@ -149,6 +150,7 @@ export default function SyncedProductionApp() {
     const [notes, setNotes] = useState([]);
     const [isSyncing, setIsSyncing] = useState(false);
     const [noteIdMap, setNoteIdMap] = useState(new Map()); // Map DB ID to Shape ID
+    const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     
     // Load notes from backend
     const loadNotes = useCallback(async () => {
@@ -194,6 +196,8 @@ export default function SyncedProductionApp() {
             const shapeId = createShapeId();
             newNoteIdMap.set(note.id, shapeId);
             
+            console.log(`📝 Creating shape for note ${note.id} with dbId in props`);
+            
             editor.createShape({
                 id: shapeId,
                 type: 'custom-note',
@@ -211,6 +215,8 @@ export default function SyncedProductionApp() {
                     duration: note.voiceDuration ? 
                         `${Math.floor(note.voiceDuration / 60)}:${(note.voiceDuration % 60).toString().padStart(2, '0')}` : 
                         '',
+                    manuallyPositioned: note.manuallyPositioned || false,
+                    dbId: note.id,
                 },
             });
         });
@@ -220,6 +226,7 @@ export default function SyncedProductionApp() {
         const sortedDates = uniqueDates.sort((a, b) => new Date(a) - new Date(b));
         
         sortedDates.forEach((dateStr, index) => {
+            // Parse date string properly
             const date = new Date(dateStr);
             const day = date.getDate().toString().padStart(2, '0');
             const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase();
@@ -244,11 +251,114 @@ export default function SyncedProductionApp() {
             });
         });
         
+        console.log('📊 Setting noteIdMap with', newNoteIdMap.size, 'entries');
         setNoteIdMap(newNoteIdMap);
         
         // Set camera
         editor.setCamera({ x: 0, y: 0, z: 0.8 });
     }, []);
+    
+    // Setup position sync
+    useEffect(() => {
+        if (!editor || !noteIdMap || noteIdMap.size === 0) return;
+        
+        console.log('🔗 Setting up position sync with noteIdMap:', noteIdMap.size, 'entries');
+        
+        // Debounced position update function
+        const positionUpdateQueue = new Map();
+        let updateTimer = null;
+        
+        const sendPositionUpdates = async () => {
+            if (positionUpdateQueue.size === 0) return;
+            
+            const updates = Array.from(positionUpdateQueue.entries());
+            positionUpdateQueue.clear();
+            
+            for (const [dbId, position] of updates) {
+                console.log(`📍 Sending position update for note ${dbId}:`, position);
+                
+                try {
+                    const response = await fetch(`${API_URL}/notes/${dbId}/position`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'user-id': USER_ID,
+                        },
+                        body: JSON.stringify(position),
+                    });
+                    
+                    if (response.ok) {
+                        const updatedNote = await response.json();
+                        console.log(`✅ Position updated, manuallyPositioned: ${updatedNote.manuallyPositioned}`);
+                        
+                        // Update local state to reflect manuallyPositioned status
+                        const shapeId = noteIdMap.get(dbId);
+                        if (shapeId) {
+                            const shape = editor.getShape(shapeId);
+                            if (shape) {
+                                editor.updateShape({
+                                    id: shapeId,
+                                    type: shape.type,
+                                    props: {
+                                        ...shape.props,
+                                        manuallyPositioned: updatedNote.manuallyPositioned,
+                                    },
+                                });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Error updating position:', error);
+                }
+            }
+        };
+        
+        // Subscribe to shape position changes
+        const unsubscribe = editor.store.listen((change) => {
+            console.log('🎯 Store change detected:', {
+                hasUpdates: Object.values(change.changes.updated).length > 0,
+                source: change.source,
+            });
+            
+            // Handle position updates
+            for (const [from, to] of Object.values(change.changes.updated)) {
+                if (from.typeName === 'shape' && to.typeName === 'shape') {
+                    console.log('📦 Shape update:', {
+                        type: to.type,
+                        id: to.id,
+                        movedX: from.x !== to.x,
+                        movedY: from.y !== to.y,
+                        props: to.props,
+                    });
+                    
+                    if (to.type === 'custom-note' && (from.x !== to.x || from.y !== to.y)) {
+                        // Get DB ID from shape props
+                        const dbId = to.props?.dbId;
+                        
+                        console.log(`🔍 Looking for dbId in props:`, dbId);
+                        
+                        if (dbId) {
+                            console.log(`🔄 Shape moved, queueing update for ${dbId}`);
+                            // Add to update queue
+                            positionUpdateQueue.set(dbId, { x: to.x, y: to.y });
+                            
+                            // Clear existing timer and set new one (debounce)
+                            if (updateTimer) clearTimeout(updateTimer);
+                            updateTimer = setTimeout(sendPositionUpdates, 300); // 300ms debounce
+                        } else {
+                            console.warn('⚠️ No dbId found in shape props!', to.props);
+                        }
+                    }
+                }
+            }
+        }, { source: 'user', scope: 'document' });
+        
+        return () => {
+            console.log('🔌 Cleaning up position sync');
+            if (updateTimer) clearTimeout(updateTimer);
+            unsubscribe();
+        };
+    }, [editor, noteIdMap]);
     
     // Handle editor mount
     const handleMount = useCallback(async (editor) => {
@@ -274,53 +384,54 @@ export default function SyncedProductionApp() {
         } else {
             createShapesFromNotes(notesData, editor);
         }
-        
-        // Subscribe to shape position changes
-        const unsubscribe = editor.store.listen(async (change) => {
-            // Handle position updates
-            for (const [from, to] of Object.values(change.changes.updated)) {
-                if (from.typeName === 'shape' && to.typeName === 'shape') {
-                    if (from.x !== to.x || from.y !== to.y) {
-                        // Find the DB ID for this shape
-                        const dbId = [...noteIdMap.entries()].find(([_, shapeId]) => shapeId === to.id)?.[0];
-                        
-                        if (dbId) {
-                            console.log(`📍 Updating position for note ${dbId}`);
-                            
-                            // Update position in backend
-                            try {
-                                await fetch(`${API_URL}/notes/${dbId}/position`, {
-                                    method: 'PATCH',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'user-id': USER_ID,
-                                    },
-                                    body: JSON.stringify({
-                                        x: to.x,
-                                        y: to.y,
-                                    }),
-                                });
-                            } catch (error) {
-                                console.error('❌ Error updating position:', error);
-                            }
-                        }
-                    }
-                }
-            }
-        }, { source: 'user', scope: 'document' });
-        
-        return () => unsubscribe();
-    }, [loadNotes, createShapesFromNotes, noteIdMap]);
+    }, [loadNotes, createShapesFromNotes]);
     
-    // Add random note
-    const handleAddNote = async () => {
+    // Add note with selected date
+    const handleAddNote = async (selectedDate) => {
         setIsSyncing(true);
         try {
-            const response = await fetch(`${API_URL}/notes/random`, {
+            // Generate random content
+            const types = ['voice', 'text'];
+            const titles = [
+                'Утренний стендап',
+                'Идея для проекта',
+                'Заметка с встречи',
+                'TODO на завтра',
+                'Важная мысль',
+                'Код ревью',
+                'Планы на неделю',
+                'Обратная связь',
+            ];
+            
+            const contents = [
+                'Обсуждение текущих задач',
+                'Нужно не забыть реализовать',
+                'Интересная концепция для улучшения',
+                'Список важных пунктов',
+                'Требует дополнительного анализа',
+            ];
+            
+            const noteType = types[Math.floor(Math.random() * types.length)];
+            
+            // Format date as YYYY-MM-DD to avoid timezone issues
+            const year = selectedDate.getFullYear();
+            const month = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+            const day = selectedDate.getDate().toString().padStart(2, '0');
+            const dateString = `${year}-${month}-${day}`;
+            
+            const response = await fetch(`${API_URL}/notes`, {
                 method: 'POST',
                 headers: {
+                    'Content-Type': 'application/json',
                     'user-id': USER_ID,
                 },
+                body: JSON.stringify({
+                    title: titles[Math.floor(Math.random() * titles.length)],
+                    content: contents[Math.floor(Math.random() * contents.length)],
+                    type: noteType,
+                    date: dateString,
+                    voiceDuration: noteType === 'voice' ? Math.floor(Math.random() * 300) : undefined,
+                }),
             });
             
             if (!response.ok) {
@@ -339,6 +450,11 @@ export default function SyncedProductionApp() {
         } finally {
             setIsSyncing(false);
         }
+    };
+    
+    // Open date picker
+    const handleOpenDatePicker = () => {
+        setIsDatePickerOpen(true);
     };
     
     // Periodic sync
@@ -368,10 +484,16 @@ export default function SyncedProductionApp() {
                     onMount={handleMount}
                 >
                     <SyncedControls 
-                        onAddNote={handleAddNote}
+                        onAddNote={handleOpenDatePicker}
                         isSyncing={isSyncing}
                     />
                 </Tldraw>
+                
+                <DatePickerModal
+                    isOpen={isDatePickerOpen}
+                    onClose={() => setIsDatePickerOpen(false)}
+                    onSelectDate={handleAddNote}
+                />
             </div>
         </>
     );

@@ -41,7 +41,7 @@ export class NotesController {
   ): Promise<Note> {
     return this.notesService.createNote(userId, {
       ...createNoteDto,
-      date: createNoteDto.date ? new Date(createNoteDto.date) : undefined,
+      date: createNoteDto.date,
     });
   }
 

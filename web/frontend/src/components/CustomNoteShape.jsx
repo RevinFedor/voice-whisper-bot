@@ -49,6 +49,8 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         noteType: T.string, // добавляем тип заметки
         time: T.string,     // время создания
         duration: T.string, // длительность для голосовых
+        manuallyPositioned: T.boolean, // флаг перетаскивания
+        dbId: T.string,     // ID из базы данных
     };
 
     getDefaultProps() {
@@ -69,6 +71,8 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             noteType: 'text',
             time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
             duration: '',
+            manuallyPositioned: false,
+            dbId: '',
         };
     }
 
@@ -85,7 +89,7 @@ export class CustomNoteShapeUtil extends ShapeUtil {
     }
 
     component(shape) {
-        const { richText, noteType, time, duration, color } = shape.props;
+        const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
         
         // Извлекаем текст из richText
         let displayText = '';
@@ -101,8 +105,12 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             }
         }
 
-        // Определяем цвет границы по типу
-        const borderColor = NOTE_COLORS[noteType] || NOTE_COLORS.default;
+        // Определяем цвет границы по типу и статусу
+        let borderColor = NOTE_COLORS[noteType] || NOTE_COLORS.default;
+        // Если заметка перетащена, делаем границу оранжевой
+        if (manuallyPositioned) {
+            borderColor = '#ff9500';
+        }
         
         // Иконка по типу
         const typeIcon = {
@@ -134,7 +142,18 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                     alignItems: 'flex-start',
                     marginBottom: '8px',
                 }}>
-                    <span style={{ fontSize: '16px' }}>{typeIcon}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '16px' }}>{typeIcon}</span>
+                        {manuallyPositioned && (
+                            <span style={{ 
+                                fontSize: '12px', 
+                                color: '#ff9500',
+                                title: 'Заметка перемещена'
+                            }}>
+                                📍
+                            </span>
+                        )}
+                    </div>
                     <span style={{ fontSize: '11px', color: '#666' }}>{time}</span>
                 </div>
                 
