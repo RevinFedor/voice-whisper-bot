@@ -3,7 +3,6 @@
 
 [https://claude.ai/](https://claude.ai/chat/a61c6d6d-0fb4-4dec-8a59-0806ddac2f96)
 
-
 проверяй логи на фронте пиши приложение с учетом правильного дебага
 
 back проверяй через curl
