@@ -13,6 +13,7 @@ import './index.css'
 import ProductionApp from './ProductionApp.jsx' // ФИНАЛЬНАЯ PRODUCTION ВЕРСИЯ
 import TestPositionSync from './TestPositionSync.jsx' // TEST: Position tracking
 import TestDateLayout from './TestDateLayout.jsx' // TEST: Date-based layout
+import SyncedProductionApp from './SyncedProductionApp.jsx' // PRODUCTION with backend sync
 
 // Test without StrictMode to check if it resolves canvas issues
 // StrictMode can cause double-rendering issues with tldraw (see: https://github.com/tldraw/tldraw/issues/5611)
@@ -21,9 +22,11 @@ const USE_STRICT_MODE = false; // Set to true to enable StrictMode
 // Choose which app to run based on URL params:
 // ?test=position - Test position tracking and sync
 // ?test=date - Test date-based layout algorithm
-// default - Production app
+// ?sync=true - Production app with backend sync
+// default - Production app (standalone)
 const params = new URLSearchParams(window.location.search);
 const testMode = params.get('test');
+const syncMode = params.get('sync');
 
 let AppComponent = ProductionApp;
 if (testMode === 'position') {
@@ -32,6 +35,9 @@ if (testMode === 'position') {
 } else if (testMode === 'date') {
   AppComponent = TestDateLayout;
   console.log('🧪 Running TestDateLayout');
+} else if (syncMode === 'true') {
+  AppComponent = SyncedProductionApp;
+  console.log('🔄 Running SyncedProductionApp with backend');
 }
 
 createRoot(document.getElementById('root')).render(

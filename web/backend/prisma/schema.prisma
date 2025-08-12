@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  telegramId      BigInt   @unique
+  telegramUsername String?
+  firstName       String?
+  lastName        String?
+  languageCode    String   @default("ru")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  notes           Note[]
+}
+
+model Note {
+  id              String   @id @default(uuid())
+  
+  // User relation
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Content
+  title           String
+  content         String?
+  type            NoteType
+  
+  // Position data (for tldraw)
+  date            DateTime @db.Date
+  x               Float    // Actual position in tldraw
+  y               Float    // Actual position in tldraw
+  manuallyPositioned Boolean @default(false) // Flag if user dragged the note
+  
+  // Voice note specific
+  voiceDuration   Int?     // Duration in seconds
+  voiceFileUrl    String?  // URL to voice file
+  
+  // Telegram metadata
+  telegramMessageId BigInt?
+  telegramChatId    BigInt?
+  
+  // Status
+  isArchived      Boolean  @default(false)
+  isPinned        Boolean  @default(false)
+  tags            String[]
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId, date])
+  @@index([date])
+  @@index([isArchived])
+}
+
+enum NoteType {
+  voice
+  text
+  collection
+}

@@ -1,0 +1,19 @@
+import { NotesService } from './notes.service';
+import { CreateNoteDto } from './dto/create-note.dto';
+import { UpdatePositionDto } from './dto/update-position.dto';
+import { Note } from '@prisma/client';
+export declare class NotesController {
+    private readonly notesService;
+    constructor(notesService: NotesService);
+    getNotes(userId?: string, days?: string): Promise<Note[]>;
+    createNote(userId: string, createNoteDto: CreateNoteDto): Promise<Note>;
+    createRandomNote(userId?: string): Promise<Note>;
+    initializeDemoData(userId?: string): Promise<{
+        message: string;
+    }>;
+    updatePosition(noteId: string, updatePositionDto: UpdatePositionDto): Promise<Note>;
+    deleteNote(noteId: string): Promise<{
+        message: string;
+    }>;
+    getUniqueDates(userId?: string): Promise<Date[]>;
+}
