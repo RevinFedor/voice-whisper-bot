@@ -38,5 +38,7 @@ back проверяй через curl
 
 
 
- При разработке используй REAL_DEVELOPMENT_METHODOLOGY.md для процесса работы и TROUBLESHOOTING_GUIDE.md для решения 
-  проблем с tldraw. Запускай субагентов согласно методологии.
+# ПРИ РАЗРАБОТКЕ
+При разработке используй REAL_DEVELOPMENT_METHODOLOGY.md для процесса работы и TROUBLESHOOTING_GUIDE.md для решения 
+проблем с tldraw. Запускай субагентов согласно методологии.
+ultrathink think harder
