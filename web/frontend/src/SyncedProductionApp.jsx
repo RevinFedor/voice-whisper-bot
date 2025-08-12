@@ -179,10 +179,17 @@ export default function SyncedProductionApp() {
     }, []);
     
     // Create shapes from notes
-    const createShapesFromNotes = useCallback((notesData, editor) => {
+    const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false) => {
         if (!editor || !notesData.length) return;
         
         console.log('🎨 Creating shapes from notes:', notesData.length);
+        
+        // Save current camera position if needed
+        let savedCamera = null;
+        if (preserveCamera) {
+            savedCamera = editor.getCamera();
+            console.log('📸 Saved camera position:', savedCamera);
+        }
         
         // Clear existing shapes
         const existingShapes = editor.getCurrentPageShapes();
@@ -254,8 +261,14 @@ export default function SyncedProductionApp() {
         console.log('📊 Setting noteIdMap with', newNoteIdMap.size, 'entries');
         setNoteIdMap(newNoteIdMap);
         
-        // Set camera
-        editor.setCamera({ x: 0, y: 0, z: 0.8 });
+        // Restore camera position or set default
+        if (savedCamera) {
+            console.log('📸 Restoring camera position:', savedCamera);
+            editor.setCamera(savedCamera);
+        } else {
+            // Only set default camera on initial load
+            editor.setCamera({ x: 0, y: 0, z: 0.8 });
+        }
     }, []);
     
     // Setup position sync
@@ -380,11 +393,48 @@ export default function SyncedProductionApp() {
                 },
             });
             const newNotes = await loadNotes();
-            createShapesFromNotes(newNotes, editor);
+            createShapesFromNotes(newNotes, editor, false); // Initial load, don't preserve camera
         } else {
-            createShapesFromNotes(notesData, editor);
+            createShapesFromNotes(notesData, editor, false); // Initial load, don't preserve camera
         }
     }, [loadNotes, createShapesFromNotes]);
+    
+    // Add single note shape without full reload
+    const addSingleNoteShape = useCallback((note, editor) => {
+        const shapeId = createShapeId();
+        
+        // Update noteIdMap
+        setNoteIdMap(prev => {
+            const newMap = new Map(prev);
+            newMap.set(note.id, shapeId);
+            return newMap;
+        });
+        
+        // Create the shape
+        editor.createShape({
+            id: shapeId,
+            type: 'custom-note',
+            x: note.x,
+            y: note.y,
+            props: {
+                w: 180,
+                h: 150,
+                richText: toRichText(note.title + '\n\n' + (note.content || '')),
+                noteType: note.type,
+                time: new Date(note.createdAt).toLocaleTimeString('ru-RU', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                }),
+                duration: note.voiceDuration ? 
+                    `${Math.floor(note.voiceDuration / 60)}:${(note.voiceDuration % 60).toString().padStart(2, '0')}` : 
+                    '',
+                manuallyPositioned: note.manuallyPositioned || false,
+                dbId: note.id,
+            },
+        });
+        
+        console.log(`✨ Added single note shape without full reload`);
+    }, []);
     
     // Add note with selected date
     const handleAddNote = async (selectedDate) => {
@@ -441,9 +491,14 @@ export default function SyncedProductionApp() {
             const newNote = await response.json();
             console.log('✨ Created new note:', newNote);
             
-            // Reload all notes to get proper positioning
-            const allNotes = await loadNotes();
-            createShapesFromNotes(allNotes, editor);
+            // Just add the single new note without full reload
+            addSingleNoteShape(newNote, editor);
+            
+            // Optional: Full sync after a delay to ensure consistency
+            setTimeout(async () => {
+                const allNotes = await loadNotes();
+                createShapesFromNotes(allNotes, editor, true);
+            }, 5000); // Sync after 5 seconds
             
         } catch (error) {
             console.error('❌ Error creating note:', error);
@@ -464,7 +519,7 @@ export default function SyncedProductionApp() {
         const interval = setInterval(async () => {
             console.log('🔄 Periodic sync...');
             const notesData = await loadNotes();
-            createShapesFromNotes(notesData, editor);
+            createShapesFromNotes(notesData, editor, true); // Preserve camera during periodic sync
         }, 30000); // Every 30 seconds
         
         return () => clearInterval(interval);
