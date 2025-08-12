@@ -25,23 +25,12 @@ let NotesService = class NotesService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    calculateColumnX(date, baseDate) {
-        const normalizedDate = new Date(date);
-        normalizedDate.setHours(0, 0, 0, 0);
-        const normalizedBase = new Date(baseDate);
-        normalizedBase.setHours(0, 0, 0, 0);
-        const daysDiff = Math.floor((normalizedDate.getTime() - normalizedBase.getTime()) / (24 * 60 * 60 * 1000));
-        return LAYOUT_CONFIG.startX + (daysDiff * (LAYOUT_CONFIG.columnWidth + LAYOUT_CONFIG.columnSpacing));
-    }
-    async findNextAvailableY(userId, date, columnX) {
+    async findNextAvailableY(userId, date) {
         const notesInColumn = await this.prisma.note.findMany({
             where: {
                 userId,
                 date,
-                OR: [
-                    { manuallyPositioned: false },
-                    { x: columnX },
-                ],
+                manuallyPositioned: false,
                 isArchived: false,
             },
             orderBy: { y: 'asc' },
@@ -59,19 +48,6 @@ let NotesService = class NotesService {
             previousY = note.y;
         }
         return notesInColumn[notesInColumn.length - 1].y + LAYOUT_CONFIG.rowHeight + LAYOUT_CONFIG.rowSpacing;
-    }
-    async getBaseDate(userId) {
-        const earliestNote = await this.prisma.note.findFirst({
-            where: { userId, isArchived: false },
-            orderBy: { date: 'asc' },
-            select: { date: true },
-        });
-        if (!earliestNote) {
-            const date = new Date();
-            date.setDate(date.getDate() - 7);
-            return date;
-        }
-        return earliestNote.date;
     }
     async createNote(userId, data) {
         let user = await this.prisma.user.findUnique({
@@ -103,9 +79,7 @@ let NotesService = class NotesService {
             noteDate = new Date();
         }
         noteDate.setHours(0, 0, 0, 0);
-        const baseDate = await this.getBaseDate(userId);
-        const columnX = this.calculateColumnX(noteDate, baseDate);
-        const y = await this.findNextAvailableY(userId, noteDate, columnX);
+        const y = await this.findNextAvailableY(userId, noteDate);
         return this.prisma.note.create({
             data: {
                 userId,
@@ -113,7 +87,7 @@ let NotesService = class NotesService {
                 content: data.content,
                 type: data.type,
                 date: noteDate,
-                x: columnX,
+                x: 0,
                 y,
                 manuallyPositioned: false,
                 voiceDuration: data.voiceDuration,
@@ -175,22 +149,15 @@ let NotesService = class NotesService {
         if (!note) {
             throw new Error('Note not found');
         }
-        const baseDate = await this.getBaseDate(note.userId);
-        const originalColumnX = this.calculateColumnX(note.date, baseDate);
-        const columnThreshold = LAYOUT_CONFIG.columnWidth / 2;
-        const isBackInColumn = Math.abs(x - originalColumnX) < columnThreshold;
         console.log(`📍 Position update for note ${noteId}:`, {
             newPosition: { x, y },
-            originalColumnX,
-            isBackInColumn,
-            manuallyPositioned: !isBackInColumn,
         });
         return this.prisma.note.update({
             where: { id: noteId },
             data: {
                 x,
                 y,
-                manuallyPositioned: !isBackInColumn,
+                manuallyPositioned: true,
             },
         });
     }

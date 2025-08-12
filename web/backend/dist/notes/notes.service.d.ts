@@ -3,9 +3,7 @@ import { Note, NoteType } from '@prisma/client';
 export declare class NotesService {
     private prisma;
     constructor(prisma: PrismaService);
-    private calculateColumnX;
     private findNextAvailableY;
-    private getBaseDate;
     createNote(userId: string, data: {
         title: string;
         content?: string;

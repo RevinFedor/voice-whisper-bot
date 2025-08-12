@@ -105,11 +105,12 @@ const modalStyles = {
 export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
     const [selectedDate, setSelectedDate] = useState(null);
     const [customDate, setCustomDate] = useState('');
+    const [customTime, setCustomTime] = useState('01:00'); // Default time 01:00
     const [hoveredDate, setHoveredDate] = useState(null);
     
     if (!isOpen) return null;
     
-    // Generate dates for last 7 days and next 3 days
+    // Generate dates for last 7 days and today (no future dates)
     const generateDates = () => {
         const dates = [];
         const today = new Date();
@@ -122,12 +123,8 @@ export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
             dates.push(date);
         }
         
-        // Today and next 3 days
-        for (let i = 0; i <= 3; i++) {
-            const date = new Date(today);
-            date.setDate(date.getDate() + i);
-            dates.push(date);
-        }
+        // Today only (no future dates)
+        dates.push(new Date(today));
         
         return dates;
     };
@@ -169,6 +166,15 @@ export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
         }
         
         finalDate.setHours(0, 0, 0, 0);
+        
+        // Prevent future dates
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (finalDate > today) {
+            alert('Нельзя создавать заметки для будущих дат');
+            return;
+        }
+        
         onSelectDate(finalDate);
         onClose();
         

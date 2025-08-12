@@ -17,34 +17,18 @@ const LAYOUT_CONFIG = {
 export class NotesService {
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Calculate X position for a date column
-   */
-  private calculateColumnX(date: Date, baseDate: Date): number {
-    // Normalize both dates to start of day to avoid time component issues
-    const normalizedDate = new Date(date);
-    normalizedDate.setHours(0, 0, 0, 0);
-    
-    const normalizedBase = new Date(baseDate);
-    normalizedBase.setHours(0, 0, 0, 0);
-    
-    const daysDiff = Math.floor((normalizedDate.getTime() - normalizedBase.getTime()) / (24 * 60 * 60 * 1000));
-    return LAYOUT_CONFIG.startX + (daysDiff * (LAYOUT_CONFIG.columnWidth + LAYOUT_CONFIG.columnSpacing));
-  }
+  // X position calculation removed - now handled by frontend
 
   /**
    * Find the next available Y position in a column (fills gaps)
    */
-  private async findNextAvailableY(userId: string, date: Date, columnX: number): Promise<number> {
+  private async findNextAvailableY(userId: string, date: Date): Promise<number> {
     // Get all notes in this column that haven't been manually moved
     const notesInColumn = await this.prisma.note.findMany({
       where: {
         userId,
         date,
-        OR: [
-          { manuallyPositioned: false },
-          { x: columnX }, // Include notes that were moved back to column
-        ],
+        manuallyPositioned: false, // Only include notes that are in the column
         isArchived: false,
       },
       orderBy: { y: 'asc' },
@@ -73,25 +57,7 @@ export class NotesService {
     return notesInColumn[notesInColumn.length - 1].y + LAYOUT_CONFIG.rowHeight + LAYOUT_CONFIG.rowSpacing;
   }
 
-  /**
-   * Get earliest date from all notes (for base date calculation)
-   */
-  private async getBaseDate(userId: string): Promise<Date> {
-    const earliestNote = await this.prisma.note.findFirst({
-      where: { userId, isArchived: false },
-      orderBy: { date: 'asc' },
-      select: { date: true },
-    });
-
-    // If no notes, use today - 7 days
-    if (!earliestNote) {
-      const date = new Date();
-      date.setDate(date.getDate() - 7);
-      return date;
-    }
-
-    return earliestNote.date;
-  }
+  // Base date calculation removed - frontend uses TODAY=5000 as reference
 
   /**
    * Create a new note with automatic positioning
@@ -140,17 +106,12 @@ export class NotesService {
     }
     // Set to beginning of day in local timezone
     noteDate.setHours(0, 0, 0, 0);
-
-    // Get base date for column calculation
-    const baseDate = await this.getBaseDate(userId);
-    
-    // Calculate column X position
-    const columnX = this.calculateColumnX(noteDate, baseDate);
     
     // Find next available Y position (fills gaps)
-    const y = await this.findNextAvailableY(userId, noteDate, columnX);
+    const y = await this.findNextAvailableY(userId, noteDate);
 
     // Create the note
+    // X position is 0 for column notes (frontend will calculate actual position)
     return this.prisma.note.create({
       data: {
         userId,
@@ -158,7 +119,7 @@ export class NotesService {
         content: data.content,
         type: data.type,
         date: noteDate,
-        x: columnX,
+        x: 0, // X is calculated on frontend for column notes
         y,
         manuallyPositioned: false,
         voiceDuration: data.voiceDuration,
@@ -244,19 +205,11 @@ export class NotesService {
       throw new Error('Note not found');
     }
 
-    // Check if note is being moved back to its original column
-    const baseDate = await this.getBaseDate(note.userId);
-    const originalColumnX = this.calculateColumnX(note.date, baseDate);
-    
-    // Check if note is within column bounds (column width is 180)
-    const columnThreshold = LAYOUT_CONFIG.columnWidth / 2; // Allow some flexibility
-    const isBackInColumn = Math.abs(x - originalColumnX) < columnThreshold;
+    // Note: Column detection is now handled by frontend since X positions are calculated there
+    // When a note is dragged out of a column, frontend should set manuallyPositioned = true
     
     console.log(`📍 Position update for note ${noteId}:`, {
       newPosition: { x, y },
-      originalColumnX,
-      isBackInColumn,
-      manuallyPositioned: !isBackInColumn,
     });
 
     return this.prisma.note.update({
@@ -264,7 +217,7 @@ export class NotesService {
       data: {
         x,
         y,
-        manuallyPositioned: !isBackInColumn,
+        manuallyPositioned: true, // Any manual position update marks it as manually positioned
       },
     });
   }

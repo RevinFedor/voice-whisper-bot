@@ -178,9 +178,69 @@ export default function SyncedProductionApp() {
         }
     }, []);
     
+    // Calculate X position based on TODAY = 5000
+    const calculateColumnX = (dateStr) => {
+        const TODAY_X = 5000;
+        const COLUMN_SPACING = 230;
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const noteDate = new Date(dateStr);
+        noteDate.setHours(0, 0, 0, 0);
+        
+        const daysDiff = Math.floor((noteDate - today) / (24 * 60 * 60 * 1000));
+        return TODAY_X + (daysDiff * COLUMN_SPACING);
+    };
+    
+    // Generate date headers for visible range
+    const generateDateHeaders = useCallback((editor) => {
+        if (!editor) return;
+        
+        // Remove existing date headers
+        const existingTextShapes = editor.getCurrentPageShapes().filter(s => s.type === 'text');
+        editor.deleteShapes(existingTextShapes.map(s => s.id));
+        
+        const TODAY_X = 5000;
+        const COLUMN_SPACING = 230;
+        const DAYS_BACK = 7; // Show 7 days back
+        const DAYS_FORWARD = 0; // Don't show future dates
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        for (let i = -DAYS_BACK; i <= DAYS_FORWARD; i++) {
+            const date = new Date(today);
+            date.setDate(date.getDate() + i);
+            
+            const x = TODAY_X + (i * COLUMN_SPACING);
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase();
+            const isToday = i === 0;
+            
+            editor.createShape({
+                id: createShapeId(),
+                type: 'text',
+                x: x + 65, // Center the date
+                y: 50,
+                props: {
+                    richText: toRichText(`${day}\n${month}`),
+                    color: isToday ? 'green' : 'grey',
+                    size: 'xl',
+                    font: 'sans',
+                    autoSize: true,
+                    w: 50,
+                    textAlign: 'middle',
+                },
+            });
+        }
+        
+        console.log(`📅 Generated date headers for ${DAYS_BACK} days back`);
+    }, []);
+    
     // Create shapes from notes
     const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false) => {
-        if (!editor || !notesData.length) return;
+        if (!editor) return;
         
         console.log('🎨 Creating shapes from notes:', notesData.length);
         
@@ -203,12 +263,15 @@ export default function SyncedProductionApp() {
             const shapeId = createShapeId();
             newNoteIdMap.set(note.id, shapeId);
             
-            console.log(`📝 Creating shape for note ${note.id} with dbId in props`);
+            // Calculate X position for column notes, use saved X for manually positioned
+            const x = note.manuallyPositioned ? note.x : calculateColumnX(note.date);
+            
+            console.log(`📝 Creating shape for note ${note.id} at X=${x} (${note.manuallyPositioned ? 'manual' : 'column'})`);
             
             editor.createShape({
                 id: shapeId,
                 type: 'custom-note',
-                x: note.x,
+                x: x,
                 y: note.y,
                 props: {
                     w: 180,
@@ -228,35 +291,8 @@ export default function SyncedProductionApp() {
             });
         });
         
-        // Create date headers
-        const uniqueDates = [...new Set(notesData.map(n => n.date))];
-        const sortedDates = uniqueDates.sort((a, b) => new Date(a) - new Date(b));
-        
-        sortedDates.forEach((dateStr, index) => {
-            // Parse date string properly
-            const date = new Date(dateStr);
-            const day = date.getDate().toString().padStart(2, '0');
-            const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase();
-            
-            // Calculate X position based on column index
-            const columnX = 100 + (index * 230); // 180 width + 50 spacing
-            
-            editor.createShape({
-                id: createShapeId(),
-                type: 'text',
-                x: columnX + 65, // Center the date
-                y: 50,
-                props: {
-                    richText: toRichText(`${day}\n${month}`),
-                    color: index === sortedDates.length - 1 ? 'green' : 'grey',
-                    size: 'xl',
-                    font: 'sans',
-                    autoSize: true,
-                    w: 50,
-                    textAlign: 'middle',
-                },
-            });
-        });
+        // Generate date headers (always show them even if no notes)
+        generateDateHeaders(editor);
         
         console.log('📊 Setting noteIdMap with', newNoteIdMap.size, 'entries');
         setNoteIdMap(newNoteIdMap);
@@ -266,10 +302,13 @@ export default function SyncedProductionApp() {
             console.log('📸 Restoring camera position:', savedCamera);
             editor.setCamera(savedCamera);
         } else {
-            // Only set default camera on initial load
-            editor.setCamera({ x: 0, y: 0, z: 0.8 });
+            // Set camera to TODAY column (center on it)
+            const TODAY_X = 5000;
+            const viewportWidth = window.innerWidth;
+            // Center the camera on TODAY column
+            editor.setCamera({ x: TODAY_X - (viewportWidth / 2) + 90, y: 100, z: 0.8 });
         }
-    }, []);
+    }, [generateDateHeaders]);
     
     // Setup position sync
     useEffect(() => {
@@ -383,9 +422,14 @@ export default function SyncedProductionApp() {
         // Initial load
         const notesData = await loadNotes();
         
-        // Just load existing notes, don't create demo data
-        createShapesFromNotes(notesData, editor, false); // Initial load, don't preserve camera
-    }, [loadNotes, createShapesFromNotes]);
+        // Always generate date headers first (even if no notes)
+        generateDateHeaders(editor);
+        
+        // Then load existing notes if any
+        if (notesData.length > 0) {
+            createShapesFromNotes(notesData, editor, false); // Initial load, don't preserve camera
+        }
+    }, [loadNotes, createShapesFromNotes, generateDateHeaders]);
     
     // Add single note shape without full reload
     const addSingleNoteShape = useCallback((note, editor) => {
@@ -398,11 +442,16 @@ export default function SyncedProductionApp() {
             return newMap;
         });
         
+        // Calculate X position (note from backend has x=0 for column notes)
+        const x = note.manuallyPositioned ? note.x : calculateColumnX(note.date);
+        
+        console.log(`📝 Adding single note at calculated X=${x}, Y=${note.y}, date: ${note.date}`);
+        
         // Create the shape
         editor.createShape({
             id: shapeId,
             type: 'custom-note',
-            x: note.x,
+            x: x,
             y: note.y,
             props: {
                 w: 180,
