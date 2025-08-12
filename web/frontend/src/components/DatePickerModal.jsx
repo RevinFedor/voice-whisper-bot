@@ -157,7 +157,9 @@ export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
         let finalDate;
         
         if (customDate) {
-            finalDate = new Date(customDate);
+            // Parse YYYY-MM-DD as local date, not UTC
+            const [year, month, day] = customDate.split('-').map(Number);
+            finalDate = new Date(year, month - 1, day);
         } else if (selectedDate) {
             finalDate = selectedDate;
         } else {

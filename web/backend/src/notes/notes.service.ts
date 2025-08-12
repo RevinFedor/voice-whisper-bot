@@ -92,20 +92,23 @@ export class NotesService {
     if (data.date) {
       // Handle both Date object and string format
       if (typeof data.date === 'string') {
-        // Parse YYYY-MM-DD format
-        noteDate = new Date(data.date);
+        // Parse YYYY-MM-DD format as UTC midnight to avoid timezone shifts
+        const [year, month, day] = data.date.split('-').map(Number);
+        noteDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
       } else {
         noteDate = new Date(data.date);
       }
     } else {
-      noteDate = new Date();
+      // Default to today at UTC midnight
+      const today = new Date();
+      noteDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
     }
     // Ensure it's a valid date
     if (isNaN(noteDate.getTime())) {
-      noteDate = new Date();
+      const today = new Date();
+      noteDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
     }
-    // Set to beginning of day in local timezone
-    noteDate.setHours(0, 0, 0, 0);
+    // Don't call setHours for UTC dates - they're already at midnight UTC
     
     // Find next available Y position (fills gaps)
     const y = await this.findNextAvailableY(userId, noteDate);

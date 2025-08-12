@@ -66,19 +66,21 @@ let NotesService = class NotesService {
         let noteDate;
         if (data.date) {
             if (typeof data.date === 'string') {
-                noteDate = new Date(data.date);
+                const [year, month, day] = data.date.split('-').map(Number);
+                noteDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
             }
             else {
                 noteDate = new Date(data.date);
             }
         }
         else {
-            noteDate = new Date();
+            const today = new Date();
+            noteDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
         }
         if (isNaN(noteDate.getTime())) {
-            noteDate = new Date();
+            const today = new Date();
+            noteDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
         }
-        noteDate.setHours(0, 0, 0, 0);
         const y = await this.findNextAvailableY(userId, noteDate);
         return this.prisma.note.create({
             data: {
