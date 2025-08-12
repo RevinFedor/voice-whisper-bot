@@ -3,6 +3,7 @@ import { Tldraw, createShapeId } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
 import { CustomControls } from './components/CustomControls';
+import './utils/debugHelpers'; // Автоматически загружает debug функции
 
 // Полные стили как в index-d.html
 const customStyles = `
@@ -106,6 +107,10 @@ function toRichText(text) {
 export default function ProductionApp() {
     const handleMount = (editor) => {
         console.log('🚀 ProductionApp: Initializing...');
+        
+        // Сохраняем editor для debug функций
+        window.editor = editor;
+        window.saveEditor(editor);
         
         // Создаем много заметок разных типов
         setTimeout(() => {
