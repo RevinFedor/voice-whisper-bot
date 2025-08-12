@@ -383,20 +383,8 @@ export default function SyncedProductionApp() {
         // Initial load
         const notesData = await loadNotes();
         
-        // Initialize demo data if no notes
-        if (notesData.length === 0) {
-            console.log('📝 Initializing demo data...');
-            await fetch(`${API_URL}/notes/initialize`, {
-                method: 'POST',
-                headers: {
-                    'user-id': USER_ID,
-                },
-            });
-            const newNotes = await loadNotes();
-            createShapesFromNotes(newNotes, editor, false); // Initial load, don't preserve camera
-        } else {
-            createShapesFromNotes(notesData, editor, false); // Initial load, don't preserve camera
-        }
+        // Just load existing notes, don't create demo data
+        createShapesFromNotes(notesData, editor, false); // Initial load, don't preserve camera
     }, [loadNotes, createShapesFromNotes]);
     
     // Add single note shape without full reload
