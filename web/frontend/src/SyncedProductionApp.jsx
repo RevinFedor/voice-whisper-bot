@@ -829,7 +829,7 @@ export default function SyncedProductionApp() {
         } catch (error) {
             console.error('❌ Error fetching note for modal:', error);
         }
-    }, [editor, noteIdMap]);
+    }, [editor]);
     
     // Save handleNoteClick to window for ShapeUtil access
     useEffect(() => {
