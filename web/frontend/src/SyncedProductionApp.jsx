@@ -258,7 +258,7 @@ export default function SyncedProductionApp() {
                 id: createShapeId(),
                 type: 'text',
                 x: x + 65, // Center the date
-                y: 50,
+                y: 0,
                 props: {
                     richText: toRichText(`${day}\n${month}`),
                     color: isToday ? 'green' : 'grey',
