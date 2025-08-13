@@ -1,0 +1,40 @@
+/* Анимация пульсации для индикатора сохранения */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Кастомный скроллбар для textarea заголовка */
+.title-textarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.title-textarea::-webkit-scrollbar-track {
+  background: #222;
+  border-radius: 3px;
+}
+
+.title-textarea::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.title-textarea::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Для Firefox */
+.title-textarea {
+  scrollbar-width: thin;
+  scrollbar-color: #444 #222;
+}
