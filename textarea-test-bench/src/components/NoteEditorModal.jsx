@@ -13,6 +13,7 @@ const NoteEditorModal = ({
 }) => {
   // === СОСТОЯНИЕ ЗАГОЛОВКА ===
   const [title, setTitle] = useState(initialTitle);
+  const [originalTitle] = useState(initialTitle); // Для отслеживания изменений
   const [isExpanded, setIsExpanded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
@@ -22,6 +23,7 @@ const NoteEditorModal = ({
   
   // === СОСТОЯНИЕ КОНТЕНТА ===
   const [content, setContent] = useState(initialContent);
+  const [originalContent] = useState(initialContent); // Для отслеживания изменений
   const [contentCursor, setContentCursor] = useState(0);
   const [contentScrollTop, setContentScrollTop] = useState(0);
   const [isFirstInteraction, setIsFirstInteraction] = useState(true);
@@ -183,7 +185,8 @@ const NoteEditorModal = ({
   const handleTitleChange = (e) => {
     const newValue = sanitizeForObsidian(e.target.value);
     setTitle(newValue);
-    setTitleChanged(true);
+    // Отслеживаем изменения относительно оригинала
+    setTitleChanged(newValue !== originalTitle);
     if (isExpanded) {
       adjustTitleHeight(e.target);
     }
@@ -205,7 +208,9 @@ const NoteEditorModal = ({
       // Опционально: можно добавить пробел вместо Enter
       const pos = e.target.selectionStart;
       const newValue = title.slice(0, pos) + ' ' + title.slice(pos);
-      setTitle(sanitizeForObsidian(newValue));
+      const sanitizedValue = sanitizeForObsidian(newValue);
+      setTitle(sanitizedValue);
+      setTitleChanged(sanitizedValue !== originalTitle);
       
       // Устанавливаем курсор после пробела
       requestAnimationFrame(() => {
@@ -270,8 +275,9 @@ const NoteEditorModal = ({
     setContentCursor(selectionStart);
     setContentScrollTop(currentScroll);
     setContent(newValue);
-    setContentChanged(true);
-  }, []);
+    // Отслеживаем изменения относительно оригинала
+    setContentChanged(newValue !== originalContent);
+  }, [originalContent]);
 
   const handleContentClick = useCallback((e) => {
     if (isFirstInteraction) {
