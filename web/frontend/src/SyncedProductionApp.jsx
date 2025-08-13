@@ -304,9 +304,13 @@ export default function SyncedProductionApp() {
         } else {
             // Set camera to TODAY column (center on it)
             const TODAY_X = 5000;
-            const viewportWidth = window.innerWidth;
-            // Center the camera on TODAY column
-            editor.setCamera({ x: TODAY_X - (viewportWidth / 2) + 90, y: 100, z: 0.8 });
+            const COLUMN_WIDTH = 180;
+            // Use centerOnPoint for proper centering
+            editor.centerOnPoint({ 
+                x: TODAY_X + (COLUMN_WIDTH / 2), // Center of the column
+                y: 200 // Approximate vertical center of content
+            });
+            console.log('📸 Centered camera on TODAY column');
         }
     }, [generateDateHeaders]);
     
@@ -428,6 +432,18 @@ export default function SyncedProductionApp() {
         // Then load existing notes if any
         if (notesData.length > 0) {
             createShapesFromNotes(notesData, editor, false); // Initial load, don't preserve camera
+        } else {
+            // No notes - still need to center camera on TODAY
+            const TODAY_X = 5000;
+            const COLUMN_WIDTH = 180;
+            // Small delay to ensure canvas is ready
+            setTimeout(() => {
+                editor.centerOnPoint({ 
+                    x: TODAY_X + (COLUMN_WIDTH / 2),
+                    y: 200 
+                });
+                console.log('📸 No notes found, centered on TODAY column');
+            }, 100);
         }
     }, [loadNotes, createShapesFromNotes, generateDateHeaders]);
     
