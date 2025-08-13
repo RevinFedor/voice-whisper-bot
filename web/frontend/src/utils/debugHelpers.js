@@ -152,6 +152,26 @@ window.addEventListener('error', (event) => {
     console.log('💡 Run window.collectLogs() to gather debug info');
 });
 
+// Debug helper для клик/перетаскивание
+window.debugClickDrag = () => {
+    console.group('🖱️ CLICK vs DRAG DEBUG');
+    console.log('📋 How it works:');
+    console.log('  • Click (move < 4px) = Opens modal');
+    console.log('  • Drag (move > 4px) = Moves note immediately');
+    console.log('  • No delays, based on movement distance');
+    
+    if (window.editor) {
+        const editor = window.editor;
+        console.log('');
+        console.log('📊 Current state:');
+        console.log(`  • isDragging: ${editor.inputs.isDragging}`);
+        console.log(`  • isPointing: ${editor.inputs.isPointing}`);
+        console.log(`  • Selected shapes: ${editor.getSelectedShapes().length}`);
+        console.log(`  • Drag threshold: 4px (mouse), 6px (touch)`);
+    }
+    console.groupEnd();
+};
+
 // Debug helper для функции объединения заметок
 window.debugMerge = () => {
     console.group('🔀 MERGE NOTES DEBUG');
@@ -180,6 +200,29 @@ window.debugMerge = () => {
     console.groupEnd();
 };
 
+// Debug helper для проверки кликов
+window.debugClicks = () => {
+    console.group('🖱️ CLICK/DRAG DEBUG');
+    console.log('📋 Current behavior:');
+    console.log('  • Single click = Open modal');
+    console.log('  • Drag = Move note');
+    console.log('  • Double click = Also opens modal');
+    console.log('');
+    console.log('🔍 Check console for:');
+    console.log('  • "👇 Pointer down" - when you press');
+    console.log('  • "🔄 Drag started" - if drag detected');
+    console.log('  • "👆 Pointer up" - when you release');
+    console.log('  • "🎯 Single click" - if click detected');
+    console.log('  • "🔓 Opening modal" - when modal opens');
+    console.log('');
+    if (window.editor) {
+        console.log('✅ Editor is loaded');
+        console.log('  isDragging:', window.editor.inputs.isDragging);
+        console.log('  Selected shapes:', window.editor.getSelectedShapeIds());
+    }
+    console.groupEnd();
+};
+
 // Информация при загрузке
 console.log(`
 ╔════════════════════════════════════════╗
@@ -187,10 +230,11 @@ console.log(`
 ╠════════════════════════════════════════╣
 ║ Available commands:                     ║
 ║                                        ║
-║ window.collectLogs() - Full diagnostic ║
-║ window.checkShapes() - Quick shapes    ║
-║ window.perfCheck()   - Performance     ║
-║ window.debugMerge()  - Merge notes info║
+║ window.collectLogs()  - Full diagnostic║
+║ window.checkShapes()  - Quick shapes   ║
+║ window.perfCheck()    - Performance    ║
+║ window.debugMerge()   - Merge notes    ║
+║ window.debugClickDrag() - Click/Drag   ║
 ║                                        ║
 ║ Logs auto-copy to clipboard!           ║
 ╚════════════════════════════════════════╝

@@ -3,7 +3,11 @@ import { Tldraw, createShapeId } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
 import DatePickerModal from './components/DatePickerModal';
+import NoteModal from './components/NoteModal';
 import './utils/debugHelpers';
+import './utils/debugShapes';
+import './utils/quickTest';
+import './utils/finalTest';
 
 // API configuration
 const API_URL = 'http://localhost:3001/api';
@@ -93,6 +97,24 @@ const customStyles = `
         50% { transform: scale(1.03); }
         100% { transform: scale(1); }
     }
+    
+    /* Fix z-index for dragging shapes */
+    .tl-dragging-from-the-canvas .tl-shape.selected {
+        z-index: 999 !important;
+    }
+    
+    .tl-shape[data-shape-type="custom-note"].selected {
+        z-index: 998 !important;
+    }
+    
+    /* Ensure dragged shape is always on top */
+    .tl-dragging {
+        z-index: 1000 !important;
+    }
+    
+    .tl-shape-indicator[data-shape-type="custom-note"] {
+        z-index: 997 !important;
+    }
 `;
 
 // Helper function to convert text to richText format
@@ -163,6 +185,8 @@ export default function SyncedProductionApp() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [noteIdMap, setNoteIdMap] = useState(new Map()); // Map DB ID to Shape ID
     const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+    const [selectedNote, setSelectedNote] = useState(null);
+    const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
     
     // Load notes from backend
     const loadNotes = useCallback(async () => {
@@ -280,7 +304,7 @@ export default function SyncedProductionApp() {
             
             console.log(`📝 Creating shape for note ${note.id} at X=${x} (${note.manuallyPositioned ? 'manual' : 'column'})`);
             
-            editor.createShape({
+            const shapeData = {
                 id: shapeId,
                 type: 'custom-note',
                 x: x,
@@ -300,7 +324,14 @@ export default function SyncedProductionApp() {
                     manuallyPositioned: note.manuallyPositioned || false,
                     dbId: note.id,
                 },
-            });
+            };
+            
+            console.log('📝 Creating shape with data:', shapeData);
+            editor.createShape(shapeData);
+            
+            // Verify the shape was created
+            const createdShape = editor.getShape(shapeId);
+            console.log('✅ Shape created?', !!createdShape, createdShape);
         });
         
         // Generate date headers (always show them even if no notes)
@@ -606,6 +637,12 @@ export default function SyncedProductionApp() {
                             // Store the moving shape for merge check
                             potentialMerge = to;
                             
+                            // Update z-index for dragging shape
+                            const draggedElement = document.querySelector(`[data-shape="${to.id}"]`);
+                            if (draggedElement) {
+                                draggedElement.style.zIndex = '1000';
+                            }
+                            
                             // Real-time merge target highlighting
                             const selectedShapes = editor.getSelectedShapes();
                             if (selectedShapes.length === 1) {
@@ -656,6 +693,12 @@ export default function SyncedProductionApp() {
                             
                             mergeCheckTimer = setTimeout(() => {
                                 console.log('🔍 Checking for merge after drag stop');
+                                
+                                // Reset z-index for all shapes after drag
+                                const allElements = document.querySelectorAll('[data-shape]');
+                                allElements.forEach(el => {
+                                    el.style.zIndex = '';
+                                });
                                 
                                 // Get all shapes
                                 const allShapes = editor.getCurrentPageShapes();
@@ -719,12 +762,202 @@ export default function SyncedProductionApp() {
         };
     }, [editor, noteIdMap]);
     
+    // Handle note click - open modal (moved before handleMount)
+    const handleNoteClick = useCallback(async (shapeId) => {
+        console.log('📱 handleNoteClick called with:', shapeId);
+        if (!editor) {
+            console.error('❌ No editor');
+            return;
+        }
+        
+        // Get shape
+        const shape = editor.getShape(shapeId);
+        console.log('📋 Found shape:', shape);
+        if (!shape || shape.type !== 'custom-note') {
+            console.error('❌ Shape not found or wrong type');
+            return;
+        }
+        
+        // Get DB ID from shape
+        const dbId = shape.props?.dbId;
+        console.log('🔑 DB ID from shape:', dbId);
+        if (!dbId) {
+            console.error('❌ No dbId in shape props');
+            return;
+        }
+        
+        try {
+            // Fetch full note data from backend
+            const response = await fetch(`${API_URL}/notes/${dbId}`, {
+                headers: { 'user-id': USER_ID }
+            });
+            
+            if (response.ok) {
+                const noteData = await response.json();
+                setSelectedNote(noteData);
+                setIsNoteModalOpen(true);
+            } else {
+                // Fallback to shape data if backend fails
+                const extractTextFromRichText = (richText) => {
+                    if (!richText || !richText.content) return { title: '', content: '' };
+                    const paragraphs = richText.content
+                        .filter(p => p.content && p.content[0])
+                        .map(p => p.content[0].text || '');
+                    return {
+                        title: paragraphs[0] || '',
+                        content: paragraphs.slice(1).join('\n')
+                    };
+                };
+                
+                const text = extractTextFromRichText(shape.props.richText);
+                
+                setSelectedNote({
+                    id: dbId,
+                    title: text.title,
+                    content: text.content,
+                    type: shape.props.noteType || 'text',
+                    x: shape.x,
+                    y: shape.y,
+                    manuallyPositioned: shape.props.manuallyPositioned || false,
+                    voiceDuration: shape.props.duration ? parseInt(shape.props.duration.split(':')[0]) * 60 + parseInt(shape.props.duration.split(':')[1]) : null,
+                    date: new Date().toISOString(),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                });
+                setIsNoteModalOpen(true);
+            }
+        } catch (error) {
+            console.error('❌ Error fetching note for modal:', error);
+        }
+    }, [editor, noteIdMap]);
+    
+    // Save handleNoteClick to window for ShapeUtil access
+    useEffect(() => {
+        window.handleNoteClick = handleNoteClick;
+        return () => {
+            delete window.handleNoteClick;
+        };
+    }, [handleNoteClick]);
+    
     // Handle editor mount
     const handleMount = useCallback(async (editor) => {
         console.log('🚀 SyncedProductionApp: Editor mounted');
         setEditor(editor);
         window.editor = editor;
         window.saveEditor(editor);
+        
+        // Verify CustomNoteShapeUtil is registered
+        try {
+            const customNoteUtil = editor.getShapeUtil('custom-note');
+            console.log('✅ CustomNoteShapeUtil registered:', !!customNoteUtil);
+            if (customNoteUtil) {
+                console.log('   Shape util details:', customNoteUtil);
+            }
+        } catch (e) {
+            console.error('❌ Failed to get CustomNoteShapeUtil:', e);
+        }
+        
+        // Store the shape that was clicked on pointer down
+        let clickedShapeId = null;
+        let dragStarted = false;
+        
+        // Correct event handler using editor.on('event', callback)
+        const handleEditorEvents = (eventInfo) => {
+            console.log('📡 EVENT RECEIVED:', eventInfo.name, eventInfo.target);
+            
+            if (eventInfo.name === 'pointer_down') {
+                console.log('👇 POINTER DOWN EVENT:', {
+                    target: eventInfo.target,
+                    shape: eventInfo.shape?.type,
+                    shapeId: eventInfo.shape?.id,
+                    clientPoint: eventInfo.point,
+                    pagePoint: editor.inputs.currentPagePoint
+                });
+                
+                dragStarted = false;
+                clickedShapeId = null;
+                
+                // If target is canvas, try to find shape at point
+                if (eventInfo.target === 'canvas') {
+                    // Use currentPagePoint which is already in page space coordinates
+                    const pagePoint = editor.inputs.currentPagePoint;
+                    console.log('📍 Click point in page space:', pagePoint);
+                    
+                    const hitShape = editor.getShapeAtPoint(pagePoint, {
+                        hitInside: true,
+                        margin: 10,
+                    });
+                    console.log('🔍 Canvas click - checking for shape at point:', hitShape);
+                    
+                    if (hitShape && hitShape.type === 'custom-note') {
+                        // Manually set the clicked shape
+                        clickedShapeId = hitShape.id;
+                        console.log('✅ FOUND CUSTOM NOTE at canvas point:', clickedShapeId);
+                        console.log('📌 Will open modal on pointer up if no drag');
+                    }
+                }
+                // Check if clicked on a custom note directly
+                else if (eventInfo.target === 'shape' && eventInfo.shape?.type === 'custom-note') {
+                    clickedShapeId = eventInfo.shape.id;
+                    console.log('✅ CLICKED ON CUSTOM NOTE:', clickedShapeId);
+                    console.log('📌 Will open modal on pointer up if no drag');
+                }
+            }
+            else if (eventInfo.name === 'pointer_move') {
+                if (clickedShapeId && editor.inputs.isDragging) {
+                    dragStarted = true;
+                    console.log('🔄 DRAG STARTED for shape:', clickedShapeId);
+                }
+            }
+            else if (eventInfo.name === 'pointer_up') {
+                console.log('👆 POINTER UP EVENT:', {
+                    clickedShapeId,
+                    dragStarted,
+                    isDragging: editor.inputs.isDragging
+                });
+                
+                // If no shape was clicked, ignore
+                if (!clickedShapeId) {
+                    console.log('⚠️ No shape was clicked, ignoring');
+                    return;
+                }
+                
+                // If we started dragging, don't open modal
+                if (dragStarted || editor.inputs.isDragging) {
+                    console.log('🔄 Was dragging, not opening modal');
+                    clickedShapeId = null;
+                    dragStarted = false;
+                    return;
+                }
+                
+                // It's a click! Open the modal
+                console.log('🎯 SINGLE CLICK DETECTED on:', clickedShapeId);
+                console.log('📊 handleNoteClick exists:', !!handleNoteClick);
+                
+                // Open modal immediately - no delays like in Miro/Notion!
+                if (handleNoteClick && clickedShapeId) {
+                    console.log('🔓 OPENING MODAL for:', clickedShapeId);
+                    handleNoteClick(clickedShapeId);
+                } else {
+                    console.error('❌ handleNoteClick is not defined or no shape clicked!');
+                }
+                
+                // Reset
+                clickedShapeId = null;
+                dragStarted = false;
+            }
+        };
+        
+        // Subscribe to events using the correct API
+        console.log('🔧 SUBSCRIBING TO EDITOR EVENTS');
+        editor.on('event', handleEditorEvents);
+        console.log('✅ Event subscription successful');
+        
+        // Store cleanup function
+        editor._modalCleanup = () => {
+            console.log('🧹 Cleaning up event subscription');
+            editor.off('event', handleEditorEvents);
+        };
         
         // Initial load
         const notesData = await loadNotes();
@@ -748,7 +981,7 @@ export default function SyncedProductionApp() {
                 console.log('📸 No notes found, centered on TODAY column');
             }, 100);
         }
-    }, [loadNotes, createShapesFromNotes, generateDateHeaders]);
+    }, [loadNotes, createShapesFromNotes, generateDateHeaders, handleNoteClick]);
     
     // Add single note shape without full reload
     const addSingleNoteShape = useCallback((note, editor) => {
@@ -878,7 +1111,13 @@ export default function SyncedProductionApp() {
             createShapesFromNotes(notesData, editor, true); // Preserve camera during periodic sync
         }, 30000); // Every 30 seconds
         
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            // Clean up modal click handler on unmount
+            if (editor._modalCleanup) {
+                editor._modalCleanup();
+            }
+        };
     }, [editor, loadNotes, createShapesFromNotes]);
     
     return (
@@ -904,6 +1143,15 @@ export default function SyncedProductionApp() {
                     isOpen={isDatePickerOpen}
                     onClose={() => setIsDatePickerOpen(false)}
                     onSelectDate={handleAddNote}
+                />
+                
+                <NoteModal
+                    isOpen={isNoteModalOpen}
+                    onClose={() => {
+                        setIsNoteModalOpen(false);
+                        setSelectedNote(null);
+                    }}
+                    note={selectedNote}
                 />
             </div>
         </>

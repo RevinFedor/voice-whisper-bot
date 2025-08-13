@@ -77,16 +77,23 @@ export class CustomNoteShapeUtil extends ShapeUtil {
     }
 
     getGeometry(shape) {
-        return new Rectangle2d({
+        // Simple Rectangle2d first to test hit detection
+        const rect = new Rectangle2d({
             width: shape.props.w,
             height: shape.props.h,
             isFilled: true,
         });
+        console.log('🔷 getGeometry called for shape:', shape.id, 'Rectangle created:', rect);
+        return rect;
     }
 
     onResize(shape, info) {
         return resizeBox(shape, info);
     }
+
+    // УБИРАЕМ onClick чтобы не блокировать выделение на pointerDown
+    // Теперь клики обрабатываются на уровне editor в SyncedProductionApp
+    // УБИРАЕМ canEdit и onDoubleClick - они могут мешать правильной обработке
 
     component(shape) {
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
