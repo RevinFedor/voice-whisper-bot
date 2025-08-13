@@ -8,3 +8,5 @@ dist
 # Editor directories and files
 .DS_Store
 
+tests/screenshots
+tests/test-results

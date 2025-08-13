@@ -310,6 +310,8 @@ export default function SyncedProductionApp() {
                 props: {
                     w: 180,
                     h: 150,
+                    color: 'black',
+                    labelColor: 'black',
                     richText: toRichText(note.title + '\n\n' + (note.content || '')),
                     noteType: note.type,
                     time: new Date(note.createdAt).toLocaleTimeString('ru-RU', { 
@@ -1089,6 +1091,8 @@ export default function SyncedProductionApp() {
             props: {
                 w: 180,
                 h: 150,
+                color: 'black',
+                labelColor: 'black',
                 richText: toRichText(note.title + '\n\n' + (note.content || '')),
                 noteType: note.type,
                 time: new Date(note.createdAt).toLocaleTimeString('ru-RU', { 
