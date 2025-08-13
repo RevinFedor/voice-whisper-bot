@@ -282,8 +282,8 @@ export default function SyncedProductionApp() {
             editor.createShape({
                 id: createShapeId(),
                 type: 'static-date-header',
-                x: x + 20, // Позиционируем еще левее от заметок
-                y: 15, // Немного отступаем сверху
+                x: x - 14, // Позиционируем еще левее от заметок
+                y: 60, // Немного отступаем сверху
                 props: {
                     w: 70, // Немного уже
                     h: 55, // Немного ниже
