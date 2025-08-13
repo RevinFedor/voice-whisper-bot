@@ -120,7 +120,7 @@ export class StaticDateHeaderShapeUtil extends ShapeUtil {
                 <div style={{
                     fontSize: '32px', // Увеличили размер числа
                     color: dayColor,
-                    marginBottom: '0px', // Убрали отступ между числом и месяцем
+                    marginBottom: '3px', // Небольшой отступ между числом и месяцем
                     fontWeight: '800', // Более жирный шрифт
                     lineHeight: '0.9', // Плотная линия
                 }}>
@@ -134,7 +134,7 @@ export class StaticDateHeaderShapeUtil extends ShapeUtil {
                     fontWeight: '700', // Более жирный
                     letterSpacing: '0.3px', // Меньше расстояние между буквами
                     lineHeight: '1',
-                    marginTop: '-2px', // Приближаем к числу
+                    marginTop: '0px', // Нормальный отступ от числа
                 }}>
                     {month}
                 </div>
