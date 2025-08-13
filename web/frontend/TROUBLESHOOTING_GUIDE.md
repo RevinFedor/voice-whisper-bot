@@ -12,6 +12,11 @@
 6. [Custom Shapes Not Visible](#6-custom-shapes-not-visible)
 7. [useCoalescedEvents Error](#7-usecoalescedevents-error)
 8. [Shape Type Conflicts](#8-shape-type-conflicts)
+9. [Custom Shape Clicks Not Working](#9-custom-shape-clicks-not-working)
+10. [Wrong Coordinate Space in Events](#10-wrong-coordinate-space-in-events)
+11. [React Closure Problems in Callbacks](#11-react-closure-problems-in-callbacks)
+12. [Double Click Editing State Error](#12-double-click-editing-state-error)
+13. [Note Not Found Backend Error](#13-note-not-found-backend-error)
 
 ---
 
@@ -349,6 +354,257 @@ console.log('Existing types:', defaultShapeUtils.map(u => u.type));
 
 ---
 
+## 9. Custom Shape Clicks Not Working
+
+### ❌ Симптомы:
+- Клики на custom shapes не открывают модалку
+- События приходят с `target: 'canvas'` вместо `target: 'shape'`
+- `getShapeAtPoint()` возвращает undefined
+- onClick в ShapeUtil блокирует выделение
+
+### ✅ Решение:
+```javascript
+// ❌ НЕПРАВИЛЬНО - onClick в ShapeUtil блокирует selection
+class CustomNoteShapeUtil extends ShapeUtil {
+    onClick(shape) {
+        // Блокирует выделение на pointerDown!
+        handleNoteClick(shape.id);
+        return undefined;
+    }
+}
+
+// ✅ ПРАВИЛЬНО - обработка на уровне editor
+const handleMount = (editor) => {
+    const handleEditorEvents = (eventInfo) => {
+        if (eventInfo.name === 'pointer_down') {
+            if (eventInfo.target === 'canvas') {
+                // Используем currentPagePoint для hit detection
+                const pagePoint = editor.inputs.currentPagePoint;
+                const hitShape = editor.getShapeAtPoint(pagePoint, {
+                    hitInside: true,
+                    margin: 10,
+                });
+                
+                if (hitShape && hitShape.type === 'custom-note') {
+                    clickedShapeId = hitShape.id;
+                }
+            }
+        }
+        
+        if (eventInfo.name === 'pointer_up') {
+            if (clickedShapeId && !editor.inputs.isDragging) {
+                // Это клик, не drag
+                handleNoteClick(clickedShapeId);
+            }
+        }
+    };
+    
+    editor.on('event', handleEditorEvents);
+};
+```
+
+### 📝 Почему это работает:
+- onClick в ShapeUtil нарушает стандартный flow выделения tldraw
+- editor.on('event') позволяет обрабатывать события без блокировки
+- editor.inputs.isDragging определяет drag после 4px движения (как в Miro)
+
+---
+
+## 10. Wrong Coordinate Space in Events
+
+### ❌ Симптомы:
+- `getShapeAtPoint(eventInfo.point)` всегда возвращает undefined
+- Координаты клика не совпадают с позицией shapes
+- Hit detection не работает
+
+### ✅ Решение:
+```javascript
+// ❌ НЕПРАВИЛЬНО - eventInfo.point в client space
+const handleEditorEvents = (eventInfo) => {
+    if (eventInfo.name === 'pointer_down') {
+        const shape = editor.getShapeAtPoint(eventInfo.point); // undefined!
+    }
+};
+
+// ✅ ПРАВИЛЬНО - используем currentPagePoint (page space)
+const handleEditorEvents = (eventInfo) => {
+    if (eventInfo.name === 'pointer_down') {
+        const pagePoint = editor.inputs.currentPagePoint;
+        const shape = editor.getShapeAtPoint(pagePoint); // работает!
+        
+        // Для логирования
+        console.log('Client point:', eventInfo.point);
+        console.log('Page point:', pagePoint);
+        console.log('Camera:', editor.getCamera());
+    }
+};
+```
+
+### 📝 Разница координатных систем:
+- **Client space**: координаты относительно viewport браузера
+- **Page space**: координаты относительно canvas с учетом camera (zoom, pan)
+- **Shape space**: координаты относительно конкретного shape
+
+---
+
+## 11. React Closure Problems in Callbacks
+
+### ❌ Симптомы:
+- Переменные в setTimeout/callbacks имеют старые значения
+- `editor` undefined в callback функциях
+- State не обновляется в event handlers
+- Логи показывают: "Opening modal for: null"
+
+### ✅ Решение:
+```javascript
+// ❌ НЕПРАВИЛЬНО - замыкание теряет значение
+let clickedShapeId = null;
+
+if (eventInfo.name === 'pointer_up') {
+    setTimeout(() => {
+        console.log(clickedShapeId); // null! (уже сброшено)
+        handleNoteClick(clickedShapeId);
+    }, 10);
+    
+    clickedShapeId = null; // Сбрасываем сразу
+}
+
+// ✅ ПРАВИЛЬНО - сохраняем в локальную константу
+if (eventInfo.name === 'pointer_up') {
+    const shapeIdToOpen = clickedShapeId; // Сохраняем!
+    
+    setTimeout(() => {
+        console.log(shapeIdToOpen); // Правильное значение
+        handleNoteClick(shapeIdToOpen);
+    }, 10);
+    
+    clickedShapeId = null;
+}
+
+// ✅ ЕЩЕ ЛУЧШЕ - без setTimeout (как в Miro)
+if (eventInfo.name === 'pointer_up') {
+    if (clickedShapeId && !editor.inputs.isDragging) {
+        handleNoteClick(clickedShapeId); // Сразу!
+    }
+    clickedShapeId = null;
+}
+
+// ✅ ДЛЯ ДОСТУПА К EDITOR - определяем функцию внутри handleMount
+const handleMount = (editor) => {
+    const handleNoteModalOpen = async (shapeId) => {
+        // editor доступен здесь через замыкание
+        const shape = editor.getShape(shapeId);
+        // ...
+    };
+    
+    const handleEditorEvents = (eventInfo) => {
+        // Используем handleNoteModalOpen с доступом к editor
+        handleNoteModalOpen(shapeId);
+    };
+};
+```
+
+### 📝 Правила для замыканий:
+1. Сохраняй значения в локальные константы перед async операциями
+2. Определяй функции внутри scope где есть нужные переменные
+3. Избегай setTimeout если возможно
+4. Используй useCallback с правильными зависимостями
+
+---
+
+## 12. Double Click Editing State Error
+
+### ❌ Симптомы:
+```
+Error: Entered editing state without an editing shape
+    at EditingShape.onEnter (tldraw.js:100656:30)
+```
+
+### ✅ Решение:
+```javascript
+// ❌ НЕПРАВИЛЬНО - canEdit() возвращает true для custom shapes
+class CustomNoteShapeUtil extends ShapeUtil {
+    canEdit() {
+        return true; // tldraw пытается редактировать
+    }
+    
+    onDoubleClick(shape) {
+        handleNoteClick(shape.id);
+        return undefined;
+    }
+}
+
+// ✅ ПРАВИЛЬНО - отключаем редактирование
+class CustomNoteShapeUtil extends ShapeUtil {
+    // Удаляем canEdit() или возвращаем false
+    // canEdit() { return false; }
+    
+    // Удаляем onDoubleClick - обрабатываем на уровне editor
+}
+```
+
+### 📝 Почему это работает:
+- tldraw пытается перейти в editing state при двойном клике
+- Custom shapes без текстового редактора вызывают ошибку
+- Лучше обрабатывать клики через editor events
+
+---
+
+## 13. Note Not Found Backend Error
+
+### ❌ Симптомы:
+- Backend возвращает 404: "Note not found"
+- При обновлении позиции shape
+- ID существует в noteIdMap но не на backend
+
+### ✅ Решение:
+```javascript
+// ❌ НЕПРАВИЛЬНО - используем shape ID вместо note ID
+const handlePositionUpdate = (shapeId, x, y) => {
+    fetch(`/api/notes/${shapeId}/position`, { // Неправильный ID!
+        method: 'PATCH',
+        body: JSON.stringify({ x, y })
+    });
+};
+
+// ✅ ПРАВИЛЬНО - конвертируем shape ID в note ID
+const handlePositionUpdate = (shapeId, x, y) => {
+    // Находим note ID по shape ID
+    const noteId = Array.from(noteIdMap.entries())
+        .find(([nId, sId]) => sId === shapeId)?.[0];
+    
+    if (!noteId) {
+        console.error('Note ID not found for shape:', shapeId);
+        return;
+    }
+    
+    fetch(`/api/notes/${noteId}/position`, {
+        method: 'PATCH',
+        body: JSON.stringify({ x, y })
+    });
+};
+
+// ✅ АЛЬТЕРНАТИВА - храним dbId в shape props
+editor.createShape({
+    type: 'custom-note',
+    props: {
+        dbId: noteId, // Сохраняем ID из базы
+        // ...
+    }
+});
+
+// Потом используем
+const noteId = shape.props.dbId;
+```
+
+### 📝 Важно помнить:
+- Shape ID (tldraw) ≠ Note ID (backend)
+- noteIdMap хранит соответствие
+- При periodic sync noteIdMap обновляется
+- Лучше хранить dbId прямо в shape.props
+
+---
+
 ## 🔍 Диагностические команды
 
 ### Проверка в консоли браузера:
@@ -363,10 +619,43 @@ window.debugTldraw = () => {
     console.log('Container size:', document.querySelector('.tl-container')?.getBoundingClientRect());
     if (editor) {
         console.log('Shapes in store:', editor.getCurrentPageShapes().length);
+        console.log('Custom shapes:', editor.getCurrentPageShapes().filter(s => s.type === 'custom-note').length);
         console.log('Camera:', editor.getCamera());
         console.log('Viewport:', editor.getViewportScreenBounds());
+        
+        // Тест hit detection
+        const testPoint = editor.inputs.currentPagePoint;
+        const hitShape = editor.getShapeAtPoint(testPoint, { hitInside: true });
+        console.log('Shape at current point:', hitShape);
     }
     console.groupEnd();
+};
+
+// Диагностика кликов
+window.debugClicks = () => {
+    const editor = window.editor;
+    console.log('🎯 Click debugging started for 10 seconds...');
+    
+    const handler = (e) => {
+        if (e.name === 'pointer_down') {
+            console.group('📍 POINTER DOWN');
+            console.log('Target:', e.target);
+            console.log('Client point:', e.point);
+            console.log('Page point:', editor.inputs.currentPagePoint);
+            console.log('Shape at point:', editor.getShapeAtPoint(editor.inputs.currentPagePoint));
+            console.log('isDragging:', editor.inputs.isDragging);
+            console.groupEnd();
+        }
+        if (e.name === 'pointer_up') {
+            console.log('📍 POINTER UP - isDragging:', editor.inputs.isDragging);
+        }
+    };
+    
+    editor.on('event', handler);
+    setTimeout(() => {
+        editor.off('event', handler);
+        console.log('✅ Click debugging stopped');
+    }, 10000);
 };
 
 // Запускать после загрузки
@@ -382,6 +671,29 @@ setTimeout(() => window.debugTldraw(), 2000);
 3. **StrictMode включен**: выключите для tldraw
 4. **Не spread defaultShapeUtils**: используйте `[...defaultShapeUtils, Custom]`
 5. **Конфликт типов shapes**: используйте уникальные имена
+6. **onClick в ShapeUtil**: блокирует selection, используйте editor.on('event')
+7. **Неправильные координаты**: используйте editor.inputs.currentPagePoint
+8. **Замыкания в callbacks**: сохраняйте в локальные константы
+9. **setTimeout для кликов**: не нужны! Используйте editor.inputs.isDragging
+10. **Shape ID vs Note ID**: храните dbId в shape.props
+
+---
+
+## 🎯 Главные уроки
+
+### Обработка кликов в tldraw:
+1. **НЕ используй onClick в ShapeUtil** - блокирует selection
+2. **Используй editor.on('event', handler)** для обработки событий
+3. **editor.inputs.isDragging** определяет drag (порог 4px как в Miro)
+4. **editor.inputs.currentPagePoint** для правильных координат
+5. **Никаких setTimeout** - работай синхронно как профессиональные приложения
+
+### Отладка проблем:
+1. **Сначала логи, потом теория** - логи показывают реальную проблему
+2. **Добавляй console.log везде** - на входе функций, в событиях, для переменных
+3. **Проверяй координатные системы** - client space ≠ page space
+4. **Следи за замыканиями** - React callbacks могут терять контекст
+5. **Используй debug-утилиты** - создавай их сразу при разработке
 
 ---
 
@@ -390,9 +702,12 @@ setTimeout(() => window.debugTldraw(), 2000);
 - [tldraw GitHub Issues](https://github.com/tldraw/tldraw/issues)
 - [tldraw v3 Migration](https://tldraw.dev/docs/migration)
 - [TipTap Rich Text Format](https://tiptap.dev/docs/editor/guide/output#json)
+- [tldraw Events Documentation](https://tldraw.dev/docs/editor#events)
+- [React Closures Pitfalls](https://dmitripavlutin.com/react-hooks-stale-closures/)
 
 ---
 
-> **Последнее обновление**: После 20+ попыток все заработало!
+> **Последнее обновление**: После 25+ попыток все заработало включая клики!
 > **Версия tldraw**: 3.15.1
 > **React**: 19.1.1 (работает, но лучше 18.x)
+> **Добавлены проблемы**: #9-13 (клики, координаты, замыкания)
