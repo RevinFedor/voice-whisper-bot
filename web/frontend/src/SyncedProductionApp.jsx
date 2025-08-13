@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Tldraw, createShapeId } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
-import { CustomControls } from './components/CustomControls';
 import DatePickerModal from './components/DatePickerModal';
 import './utils/debugHelpers';
 
