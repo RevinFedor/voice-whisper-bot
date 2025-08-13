@@ -542,9 +542,9 @@ export default function SyncedProductionApp() {
         // Debounced position update function
         const positionUpdateQueue = new Map();
         let updateTimer = null;
-        let mergeCheckTimer = null;
         let potentialMerge = null;
         let highlightedTarget = null;
+        let wasDragging = false; // Флаг для отслеживания отпускания
         
         const sendPositionUpdates = async () => {
             if (positionUpdateQueue.size === 0) return;
@@ -592,22 +592,25 @@ export default function SyncedProductionApp() {
         };
         
         // Subscribe to shape position changes
-        const unsubscribe = editor.store.listen((change) => {
-            console.log('🎯 Store change detected:', {
-                hasUpdates: Object.values(change.changes.updated).length > 0,
-                source: change.source,
-            });
+        let unsubscribe;
+        unsubscribe = editor.store.listen((change) => {
+            // Убираем лишние логи для компактности
+            // console.log('🎯 Store change detected:', {
+            //     hasUpdates: Object.values(change.changes.updated).length > 0,
+            //     source: change.source,
+            // });
             
             // Handle position updates
             for (const [from, to] of Object.values(change.changes.updated)) {
                 if (from.typeName === 'shape' && to.typeName === 'shape') {
-                    console.log('📦 Shape update:', {
-                        type: to.type,
-                        id: to.id,
-                        movedX: from.x !== to.x,
-                        movedY: from.y !== to.y,
-                        props: to.props,
-                    });
+                    // Компактный лог
+                    // console.log('📦 Shape update:', {
+                    //     type: to.type,
+                    //     id: to.id,
+                    //     movedX: from.x !== to.x,
+                    //     movedY: from.y !== to.y,
+                    //     props: to.props,
+                    // });
                     
                     if (to.type === 'custom-note' && (from.x !== to.x || from.y !== to.y)) {
                         // Get DB ID from shape props
@@ -623,9 +626,6 @@ export default function SyncedProductionApp() {
                             // Clear existing timer and set new one (debounce)
                             if (updateTimer) clearTimeout(updateTimer);
                             updateTimer = setTimeout(sendPositionUpdates, 300); // 300ms debounce
-                            
-                            // Check for potential merge when movement stops
-                            if (mergeCheckTimer) clearTimeout(mergeCheckTimer);
                             
                             // Store the moving shape for merge check
                             potentialMerge = to;
@@ -684,63 +684,11 @@ export default function SyncedProductionApp() {
                                 }
                             }
                             
-                            const checkMerge = () => {
-                                // ВАЖНО: Проверяем что пользователь действительно отпустил мышь!
-                                if (editor.inputs.isDragging) {
-                                    console.log('⏸️ Still dragging, postponing merge check');
-                                    // Перезапускаем таймер если еще перетаскиваем
-                                    clearTimeout(mergeCheckTimer);
-                                    mergeCheckTimer = setTimeout(checkMerge, 500);
-                                    return;
-                                }
-                                
-                                console.log('🔍 Checking for merge after drag stop');
-                                
-                                // Reset z-index for all shapes after drag
-                                const allElements = document.querySelectorAll('[data-shape]');
-                                allElements.forEach(el => {
-                                    el.style.zIndex = '';
-                                });
-                                
-                                // Get all shapes
-                                const allShapes = editor.getCurrentPageShapes();
-                                const customNotes = allShapes.filter(s => s.type === 'custom-note');
-                                
-                                // Check only single selection (not multi-select)
-                                const selectedShapes = editor.getSelectedShapes();
-                                if (selectedShapes.length !== 1) {
-                                    console.log('⚠️ Skipping merge: not single selection');
-                                    return;
-                                }
-                                
-                                // Find overlapping notes
-                                for (const shape of customNotes) {
-                                    if (shape.id === potentialMerge.id) continue; // Skip self
-                                    
-                                    const overlap = calculateOverlap(potentialMerge, shape);
-                                    
-                                    if (overlap >= 0.3) { // 30% overlap threshold
-                                        console.log(`🎯 Found merge candidate with ${(overlap * 100).toFixed(1)}% overlap`);
-                                        
-                                        // Remove highlight before merge
-                                        if (highlightedTarget) {
-                                            const element = document.querySelector(`[data-shape="${highlightedTarget}"]`);
-                                            if (element) {
-                                                element.classList.remove('merge-target');
-                                            }
-                                            highlightedTarget = null;
-                                        }
-                                        
-                                        // Perform merge
-                                        mergeNotes(potentialMerge, shape);
-                                        
-                                        // Only merge with first overlapping note
-                                        break;
-                                    }
-                                }
-                            };
-                            
-                            mergeCheckTimer = setTimeout(checkMerge, 400); // Check for merge after 400ms of no movement
+                            // Отслеживаем состояние перетаскивания
+                            if (!wasDragging) {
+                                console.log(`⏱ T+${Date.now() % 100000}: START_DRAG`);
+                            }
+                            wasDragging = true;
                         } else {
                             console.warn('⚠️ No dbId found in shape props!', to.props);
                         }
@@ -749,10 +697,95 @@ export default function SyncedProductionApp() {
             }
         }, { source: 'user', scope: 'document' });
         
+        // 🎯 Мгновенная проверка слияния без задержек
+        const performInstantMergeCheck = () => {
+            console.log(`⏱ T+${Date.now() % 100000}: performInstantMergeCheck`);
+            
+            if (!potentialMerge) {
+                console.log(`⏱ T+${Date.now() % 100000}: no potentialMerge`);
+                return;
+            }
+            
+            const allShapes = editor.getCurrentPageShapes();
+            const customNotes = allShapes.filter(s => s.type === 'custom-note');
+            const selectedShapes = editor.getSelectedShapes();
+            
+            console.log(`⏱ T+${Date.now() % 100000}: shapes=${customNotes.length} selected=${selectedShapes.length}`);
+            
+            if (selectedShapes.length === 1) {
+                for (const shape of customNotes) {
+                    if (shape.id === potentialMerge.id) continue;
+                    
+                    const overlap = calculateOverlap(potentialMerge, shape);
+                    
+                    if (overlap >= 0.3) {
+                        console.log(`⏱ T+${Date.now() % 100000}: MERGE! overlap=${(overlap * 100).toFixed(1)}%`);
+                        
+                        // Убираем подсветку
+                        if (highlightedTarget) {
+                            const element = document.querySelector(`[data-shape="${highlightedTarget}"]`);
+                            if (element) {
+                                element.classList.remove('merge-target');
+                            }
+                            highlightedTarget = null;
+                        }
+                        
+                        // Слияние
+                        mergeNotes(potentialMerge, shape);
+                        potentialMerge = null;
+                        break;
+                    }
+                }
+            }
+            
+            // Очищаем
+            potentialMerge = null;
+            
+            // Очищаем z-index
+            const allElements = document.querySelectorAll('[data-shape]');
+            allElements.forEach(el => {
+                el.style.zIndex = '';
+            });
+        };
+        
+        // Вариант 1: Подписка на document pointerup
+        const handlePointerUp = (e) => {
+            console.log(`⏱ T+${Date.now() % 100000}: DOC_POINTER_UP wasDrag=${wasDragging}`);
+            
+            if (wasDragging) {
+                wasDragging = false;
+                console.log(`⏱ T+${Date.now() % 100000}: INSTANT_CHECK`);
+                performInstantMergeCheck();
+            }
+        };
+        
+        document.addEventListener('pointerup', handlePointerUp);
+        console.log(`⏱ T+${Date.now() % 100000}: LISTENER_ADDED`);
+        
+        // Вариант 2: Попробуем editor.on если поддерживается
+        try {
+            if (editor.on) {
+                console.log(`⏱ T+${Date.now() % 100000}: editor.on EXISTS`);
+                
+                const unsubscribePointerUp = editor.on('pointer_up', (info) => {
+                    console.log(`⏱ T+${Date.now() % 100000}: EDITOR_POINTER_UP`);
+                    if (wasDragging) {
+                        wasDragging = false;
+                        performInstantMergeCheck();
+                    }
+                });
+            } else {
+                console.log(`⏱ T+${Date.now() % 100000}: editor.on NOT_FOUND`);
+            }
+        } catch (err) {
+            console.log(`⏱ T+${Date.now() % 100000}: editor.on ERROR:`, err.message);
+        }
+        
         return () => {
             // console.log('🔌 Cleaning up position sync');
             if (updateTimer) clearTimeout(updateTimer);
-            if (mergeCheckTimer) clearTimeout(mergeCheckTimer);
+            document.removeEventListener('pointerup', handlePointerUp);
+            console.log(`⏱ T+${Date.now() % 100000}: CLEANUP`);
             
             // Clean up any remaining highlight
             if (highlightedTarget) {
@@ -762,6 +795,7 @@ export default function SyncedProductionApp() {
                 }
             }
             
+            // Unsubscribe from store changes
             unsubscribe();
         };
     }, [editor, noteIdMap]);
@@ -841,6 +875,27 @@ export default function SyncedProductionApp() {
         setEditor(editor);
         window.editor = editor;
         window.saveEditor(editor);
+        
+        // Debug: измерение задержки drag-to-merge
+        window.measureDragDelay = () => {
+            const logs = [];
+            const originalLog = console.log;
+            console.log = (...args) => {
+                const msg = args.join(' ');
+                if (msg.includes('T+') || msg.includes('DRAG') || msg.includes('MERGE')) {
+                    logs.push(msg);
+                }
+                originalLog(...args);
+            };
+            
+            setTimeout(() => {
+                console.log = originalLog;
+                console.log('📋 Timing:');
+                logs.forEach(l => console.log(l));
+            }, 5000);
+            
+            console.log('⏱ Recording for 5s...');
+        };
         
         // Verify CustomNoteShapeUtil is registered
         try {
