@@ -204,7 +204,7 @@ export default function SyncedProductionApp() {
             
             const data = await response.json();
             setNotes(data);
-            console.log('📊 Loaded notes from backend:', data.length);
+            // console.log('📊 Loaded notes from backend:', data.length);
             return data;
         } catch (error) {
             console.error('❌ Error loading notes:', error);
@@ -271,20 +271,20 @@ export default function SyncedProductionApp() {
             });
         }
         
-        console.log(`📅 Generated date headers for ${DAYS_BACK} days back`);
+        // console.log(`📅 Generated date headers for ${DAYS_BACK} days back`);
     }, []);
     
     // Create shapes from notes
     const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false) => {
         if (!editor) return;
         
-        console.log('🎨 Creating shapes from notes:', notesData.length);
+        // console.log('🎨 Creating shapes from notes:', notesData.length);
         
         // Save current camera position if needed
         let savedCamera = null;
         if (preserveCamera) {
             savedCamera = editor.getCamera();
-            console.log('📸 Saved camera position:', savedCamera);
+            // console.log('📸 Saved camera position:', savedCamera);
         }
         
         // Clear existing shapes
@@ -301,8 +301,6 @@ export default function SyncedProductionApp() {
             
             // Calculate X position for column notes, use saved X for manually positioned
             const x = note.manuallyPositioned ? note.x : calculateColumnX(note.date);
-            
-            console.log(`📝 Creating shape for note ${note.id} at X=${x} (${note.manuallyPositioned ? 'manual' : 'column'})`);
             
             const shapeData = {
                 id: shapeId,
@@ -326,23 +324,18 @@ export default function SyncedProductionApp() {
                 },
             };
             
-            console.log('📝 Creating shape with data:', shapeData);
             editor.createShape(shapeData);
-            
-            // Verify the shape was created
-            const createdShape = editor.getShape(shapeId);
-            console.log('✅ Shape created?', !!createdShape, createdShape);
         });
         
         // Generate date headers (always show them even if no notes)
         generateDateHeaders(editor);
         
-        console.log('📊 Setting noteIdMap with', newNoteIdMap.size, 'entries');
+        // console.log('📊 Setting noteIdMap with', newNoteIdMap.size, 'entries');
         setNoteIdMap(newNoteIdMap);
         
         // Restore camera position or set default
         if (savedCamera) {
-            console.log('📸 Restoring camera position:', savedCamera);
+            // console.log('📸 Restoring camera position:', savedCamera);
             editor.setCamera(savedCamera);
         } else {
             // Set camera to TODAY column (center on it)
@@ -353,7 +346,7 @@ export default function SyncedProductionApp() {
                 x: TODAY_X + (COLUMN_WIDTH / 2), // Center of the column
                 y: 200 // Approximate vertical center of content
             });
-            console.log('📸 Centered camera on TODAY column');
+            // console.log('📸 Centered camera on TODAY column');
         }
     }, [generateDateHeaders]);
     
@@ -544,7 +537,7 @@ export default function SyncedProductionApp() {
     useEffect(() => {
         if (!editor || !noteIdMap || noteIdMap.size === 0) return;
         
-        console.log('🔗 Setting up position sync with noteIdMap:', noteIdMap.size, 'entries');
+        // console.log('🔗 Setting up position sync with noteIdMap:', noteIdMap.size, 'entries');
         
         // Debounced position update function
         const positionUpdateQueue = new Map();
@@ -746,7 +739,7 @@ export default function SyncedProductionApp() {
         }, { source: 'user', scope: 'document' });
         
         return () => {
-            console.log('🔌 Cleaning up position sync');
+            // console.log('🔌 Cleaning up position sync');
             if (updateTimer) clearTimeout(updateTimer);
             if (mergeCheckTimer) clearTimeout(mergeCheckTimer);
             
@@ -772,19 +765,11 @@ export default function SyncedProductionApp() {
         
         // Get shape
         const shape = editor.getShape(shapeId);
-        console.log('📋 Found shape:', shape);
-        if (!shape || shape.type !== 'custom-note') {
-            console.error('❌ Shape not found or wrong type');
-            return;
-        }
+        if (!shape || shape.type !== 'custom-note') return;
         
         // Get DB ID from shape
         const dbId = shape.props?.dbId;
-        console.log('🔑 DB ID from shape:', dbId);
-        if (!dbId) {
-            console.error('❌ No dbId in shape props');
-            return;
-        }
+        if (!dbId) return;
         
         try {
             // Fetch full note data from backend
@@ -859,7 +844,6 @@ export default function SyncedProductionApp() {
         
         // Function to open modal - defined inside handleMount to access setters
         const handleNoteModalOpen = async (dbId, shape) => {
-            console.log('📂 Opening modal for note:', dbId);
             
             try {
                 // Fetch full note data from backend
@@ -869,12 +853,10 @@ export default function SyncedProductionApp() {
                 
                 if (response.ok) {
                     const noteData = await response.json();
-                    console.log('✅ Note data fetched:', noteData);
                     setSelectedNote(noteData);
                     setIsNoteModalOpen(true);
                 } else {
                     // Fallback to shape data if backend fails
-                    console.log('⚠️ Backend failed, using shape data');
                     const extractTextFromRichText = (richText) => {
                         if (!richText || !richText.content) return { title: '', content: '' };
                         const paragraphs = richText.content
@@ -914,16 +896,12 @@ export default function SyncedProductionApp() {
         
         // Correct event handler using editor.on('event', callback)
         const handleEditorEvents = (eventInfo) => {
-            console.log('📡 EVENT RECEIVED:', eventInfo.name, eventInfo.target);
+            // Skip logging for frequent events
+            if (eventInfo.name !== 'pointer_move') {
+                // console.log('📡 EVENT:', eventInfo.name); // Uncomment for debugging
+            }
             
             if (eventInfo.name === 'pointer_down') {
-                console.log('👇 POINTER DOWN EVENT:', {
-                    target: eventInfo.target,
-                    shape: eventInfo.shape?.type,
-                    shapeId: eventInfo.shape?.id,
-                    clientPoint: eventInfo.point,
-                    pagePoint: editor.inputs.currentPagePoint
-                });
                 
                 dragStarted = false;
                 clickedShapeId = null;
@@ -932,75 +910,53 @@ export default function SyncedProductionApp() {
                 if (eventInfo.target === 'canvas') {
                     // Use currentPagePoint which is already in page space coordinates
                     const pagePoint = editor.inputs.currentPagePoint;
-                    console.log('📍 Click point in page space:', pagePoint);
-                    
                     const hitShape = editor.getShapeAtPoint(pagePoint, {
                         hitInside: true,
                         margin: 10,
                     });
-                    console.log('🔍 Canvas click - checking for shape at point:', hitShape);
                     
                     if (hitShape && hitShape.type === 'custom-note') {
                         // Manually set the clicked shape
                         clickedShapeId = hitShape.id;
-                        console.log('✅ FOUND CUSTOM NOTE at canvas point:', clickedShapeId);
-                        console.log('📌 Will open modal on pointer up if no drag');
                     }
                 }
                 // Check if clicked on a custom note directly
                 else if (eventInfo.target === 'shape' && eventInfo.shape?.type === 'custom-note') {
                     clickedShapeId = eventInfo.shape.id;
-                    console.log('✅ CLICKED ON CUSTOM NOTE:', clickedShapeId);
-                    console.log('📌 Will open modal on pointer up if no drag');
                 }
             }
             else if (eventInfo.name === 'pointer_move') {
                 if (clickedShapeId && editor.inputs.isDragging) {
                     dragStarted = true;
-                    console.log('🔄 DRAG STARTED for shape:', clickedShapeId);
                 }
             }
             else if (eventInfo.name === 'pointer_up') {
-                console.log('👆 POINTER UP EVENT:', {
-                    clickedShapeId,
-                    dragStarted,
-                    isDragging: editor.inputs.isDragging
-                });
-                
                 // If no shape was clicked, ignore
                 if (!clickedShapeId) {
-                    console.log('⚠️ No shape was clicked, ignoring');
                     return;
                 }
                 
                 // If we started dragging, don't open modal
                 if (dragStarted || editor.inputs.isDragging) {
-                    console.log('🔄 Was dragging, not opening modal');
                     clickedShapeId = null;
                     dragStarted = false;
                     return;
                 }
                 
                 // It's a click! Open the modal
-                console.log('🎯 SINGLE CLICK DETECTED on:', clickedShapeId);
-                
-                // Get shape directly from editor
                 const shape = editor.getShape(clickedShapeId);
                 if (!shape || shape.type !== 'custom-note') {
-                    console.error('❌ Shape not found or wrong type');
                     return;
                 }
                 
                 // Get DB ID from shape
                 const dbId = shape.props?.dbId;
-                console.log('🔑 DB ID from shape:', dbId);
                 
                 if (dbId) {
-                    console.log('🔓 OPENING MODAL for note:', dbId);
-                    // Call the function directly with everything we need
+                    // Extract title for logging
+                    const title = shape.props.richText?.content?.[0]?.content?.[0]?.text || 'Untitled';
+                    console.log(`🖾️ Click on note: "${title}" → Opening modal`);
                     handleNoteModalOpen(dbId, shape);
-                } else {
-                    console.error('❌ No dbId in shape props');
                 }
                 
                 // Reset
@@ -1010,9 +966,7 @@ export default function SyncedProductionApp() {
         };
         
         // Subscribe to events using the correct API
-        console.log('🔧 SUBSCRIBING TO EDITOR EVENTS');
         editor.on('event', handleEditorEvents);
-        console.log('✅ Event subscription successful');
         
         // Store cleanup function
         editor._modalCleanup = () => {
@@ -1167,7 +1121,7 @@ export default function SyncedProductionApp() {
         if (!editor) return;
         
         const interval = setInterval(async () => {
-            console.log('🔄 Periodic sync...');
+            // console.log('🔄 Periodic sync...');
             const notesData = await loadNotes();
             createShapesFromNotes(notesData, editor, true); // Preserve camera during periodic sync
         }, 30000); // Every 30 seconds

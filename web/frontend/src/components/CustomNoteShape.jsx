@@ -77,14 +77,12 @@ export class CustomNoteShapeUtil extends ShapeUtil {
     }
 
     getGeometry(shape) {
-        // Simple Rectangle2d first to test hit detection
-        const rect = new Rectangle2d({
+        // Simple Rectangle2d for hit detection
+        return new Rectangle2d({
             width: shape.props.w,
             height: shape.props.h,
             isFilled: true,
         });
-        console.log('🔷 getGeometry called for shape:', shape.id, 'Rectangle created:', rect);
-        return rect;
     }
 
     onResize(shape, info) {

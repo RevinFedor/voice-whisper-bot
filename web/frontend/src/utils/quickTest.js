@@ -37,6 +37,6 @@ window.testClicks = () => {
 };
 
 // Auto-run if editor exists
-if (window.editor) {
-    window.testClicks();
-}
+// if (window.editor) {
+//     window.testClicks();
+// }

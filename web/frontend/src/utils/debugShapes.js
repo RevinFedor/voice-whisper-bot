@@ -143,9 +143,9 @@ window.debugShapeDetection = () => {
 };
 
 // Auto-run on load
-if (window.editor) {
-    console.log('🚀 Running shape detection debug...');
-    window.debugShapeDetection();
-} else {
-    console.log('⏳ Editor not ready. Run window.debugShapeDetection() when ready.');
-}
+// if (window.editor) {
+//     console.log('🚀 Running shape detection debug...');
+//     window.debugShapeDetection();
+// } else {
+//     console.log('⏳ Editor not ready. Run window.debugShapeDetection() when ready.');
+// }

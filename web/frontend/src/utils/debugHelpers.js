@@ -143,7 +143,7 @@ window.perfCheck = () => {
 // Сохранение editor в window для доступа
 window.saveEditor = (editor) => {
     window.editor = editor;
-    console.log('✅ Editor saved to window.editor');
+    // console.log('✅ Editor saved to window.editor');
 };
 
 // Автоматический сбор логов при ошибках
