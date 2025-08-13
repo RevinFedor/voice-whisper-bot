@@ -1116,24 +1116,17 @@ export default function SyncedProductionApp() {
         setIsDatePickerOpen(true);
     };
     
-    // Periodic sync
+    // Cleanup on unmount
     useEffect(() => {
         if (!editor) return;
         
-        const interval = setInterval(async () => {
-            // console.log('🔄 Periodic sync...');
-            const notesData = await loadNotes();
-            createShapesFromNotes(notesData, editor, true); // Preserve camera during periodic sync
-        }, 30000); // Every 30 seconds
-        
         return () => {
-            clearInterval(interval);
             // Clean up modal click handler on unmount
             if (editor._modalCleanup) {
                 editor._modalCleanup();
             }
         };
-    }, [editor, loadNotes, createShapesFromNotes]);
+    }, [editor]);
     
     return (
         <>
