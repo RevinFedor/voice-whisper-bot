@@ -11,9 +11,13 @@ export declare class NotesService {
         date?: Date | string;
         voiceDuration?: number;
         voiceFileUrl?: string;
+        x?: number;
+        y?: number;
+        manuallyPositioned?: boolean;
     }): Promise<Note>;
     createRandomNote(userId: string): Promise<Note>;
     getNotes(userId: string, days?: number): Promise<Note[]>;
+    getNoteById(noteId: string, userId: string): Promise<Note>;
     updateNotePosition(noteId: string, x: number, y: number): Promise<Note>;
     deleteNote(noteId: string): Promise<void>;
     getUniqueDates(userId: string): Promise<Date[]>;

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsNumber, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, IsDateString, IsBoolean } from 'class-validator';
 import { NoteType } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -30,4 +30,19 @@ export class CreateNoteDto {
   @IsOptional()
   @IsString()
   voiceFileUrl?: string;
+
+  @ApiProperty({ description: 'X position for manually positioned notes', required: false })
+  @IsOptional()
+  @IsNumber()
+  x?: number;
+
+  @ApiProperty({ description: 'Y position for manually positioned notes', required: false })
+  @IsOptional()
+  @IsNumber()
+  y?: number;
+
+  @ApiProperty({ description: 'Whether the note was manually positioned', required: false })
+  @IsOptional()
+  @IsBoolean()
+  manuallyPositioned?: boolean;
 }

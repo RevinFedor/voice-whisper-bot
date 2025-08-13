@@ -152,6 +152,34 @@ window.addEventListener('error', (event) => {
     console.log('💡 Run window.collectLogs() to gather debug info');
 });
 
+// Debug helper для функции объединения заметок
+window.debugMerge = () => {
+    console.group('🔀 MERGE NOTES DEBUG');
+    console.log('📋 How to merge notes:');
+    console.log('  1. Select a single note');
+    console.log('  2. Drag it over another note');
+    console.log('  3. 30% overlap triggers merge');
+    console.log('  4. Yellow highlight = merge target');
+    console.log('');
+    console.log('📝 Merge result:');
+    console.log('  • Title: "Note1 / Note2"');
+    console.log('  • Content separated by: /////');
+    console.log('  • Position: target note location');
+    console.log('  • Type: text');
+    
+    if (window.editor) {
+        const shapes = window.editor.getCurrentPageShapes();
+        const customNotes = shapes.filter(s => s.type === 'custom-note');
+        console.log('');
+        console.log(`📊 Current notes: ${customNotes.length}`);
+        customNotes.forEach(note => {
+            const title = note.props?.richText?.content?.[0]?.content?.[0]?.text || 'Untitled';
+            console.log(`  - ${note.props?.dbId}: ${title}`);
+        });
+    }
+    console.groupEnd();
+};
+
 // Информация при загрузке
 console.log(`
 ╔════════════════════════════════════════╗
@@ -162,6 +190,7 @@ console.log(`
 ║ window.collectLogs() - Full diagnostic ║
 ║ window.checkShapes() - Quick shapes    ║
 ║ window.perfCheck()   - Performance     ║
+║ window.debugMerge()  - Merge notes info║
 ║                                        ║
 ║ Logs auto-copy to clipboard!           ║
 ╚════════════════════════════════════════╝

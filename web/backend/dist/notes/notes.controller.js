@@ -26,6 +26,9 @@ let NotesController = class NotesController {
         const daysNumber = days ? parseInt(days, 10) : 14;
         return this.notesService.getNotes(userId, daysNumber);
     }
+    async getNoteById(noteId, userId = 'test-user-id') {
+        return this.notesService.getNoteById(noteId, userId);
+    }
     async createNote(userId = 'test-user-id', createNoteDto) {
         return this.notesService.createNote(userId, {
             ...createNoteDto,
@@ -62,6 +65,17 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)
 ], NotesController.prototype, "getNotes", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    (0, swagger_1.ApiOperation)({ summary: 'Get a single note by ID' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: 'Returns the note' }),
+    (0, swagger_1.ApiResponse)({ status: 404, description: 'Note not found' }),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Headers)('user-id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], NotesController.prototype, "getNoteById", null);
 __decorate([
     (0, common_1.Post)(),
     (0, swagger_1.ApiOperation)({ summary: 'Create a new note' }),

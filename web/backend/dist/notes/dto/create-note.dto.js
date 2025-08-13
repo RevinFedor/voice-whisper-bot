@@ -50,4 +50,22 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateNoteDto.prototype, "voiceFileUrl", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'X position for manually positioned notes', required: false }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], CreateNoteDto.prototype, "x", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Y position for manually positioned notes', required: false }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], CreateNoteDto.prototype, "y", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Whether the note was manually positioned', required: false }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], CreateNoteDto.prototype, "manuallyPositioned", void 0);
 //# sourceMappingURL=create-note.dto.js.map

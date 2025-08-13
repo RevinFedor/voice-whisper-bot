@@ -69,6 +69,9 @@ export class NotesService {
     date?: Date | string;
     voiceDuration?: number;
     voiceFileUrl?: string;
+    x?: number;
+    y?: number;
+    manuallyPositioned?: boolean;
   }): Promise<Note> {
     // Get or create test user if needed (for development)
     let user = await this.prisma.user.findUnique({
@@ -110,11 +113,24 @@ export class NotesService {
     }
     // Don't call setHours for UTC dates - they're already at midnight UTC
     
-    // Find next available Y position (fills gaps)
-    const y = await this.findNextAvailableY(userId, noteDate);
+    // Check if position is provided (for merged notes)
+    let x: number;
+    let y: number;
+    let manuallyPositioned: boolean;
+    
+    if (data.x !== undefined && data.y !== undefined) {
+      // Use provided position (for merged notes)
+      x = data.x;
+      y = data.y;
+      manuallyPositioned = data.manuallyPositioned ?? true;
+    } else {
+      // Find next available Y position (fills gaps)
+      x = 0; // X is calculated on frontend for column notes
+      y = await this.findNextAvailableY(userId, noteDate);
+      manuallyPositioned = false;
+    }
 
     // Create the note
-    // X position is 0 for column notes (frontend will calculate actual position)
     return this.prisma.note.create({
       data: {
         userId,
@@ -122,9 +138,9 @@ export class NotesService {
         content: data.content,
         type: data.type,
         date: noteDate,
-        x: 0, // X is calculated on frontend for column notes
+        x,
         y,
-        manuallyPositioned: false,
+        manuallyPositioned,
         voiceDuration: data.voiceDuration,
         voiceFileUrl: data.voiceFileUrl,
       },
@@ -190,6 +206,24 @@ export class NotesService {
         { y: 'asc' },
       ],
     });
+  }
+
+  /**
+   * Get a single note by ID
+   */
+  async getNoteById(noteId: string, userId: string): Promise<Note> {
+    const note = await this.prisma.note.findFirst({
+      where: {
+        id: noteId,
+        userId,
+      },
+    });
+
+    if (!note) {
+      throw new Error(`Note with ID ${noteId} not found`);
+    }
+
+    return note;
   }
 
   /**

@@ -32,6 +32,17 @@ export class NotesController {
     return this.notesService.getNotes(userId, daysNumber);
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a single note by ID' })
+  @ApiResponse({ status: 200, description: 'Returns the note' })
+  @ApiResponse({ status: 404, description: 'Note not found' })
+  async getNoteById(
+    @Param('id') noteId: string,
+    @Headers('user-id') userId: string = 'test-user-id',
+  ): Promise<Note> {
+    return this.notesService.getNoteById(noteId, userId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new note' })
   @ApiResponse({ status: 201, description: 'Note created successfully' })

@@ -80,6 +80,19 @@ const customStyles = `
         transform: scale(1.02);
         z-index: 100;
     }
+    
+    .merge-target {
+        box-shadow: 0 0 20px rgba(255, 200, 0, 0.8) !important;
+        border-color: #ffc800 !important;
+        border-width: 3px !important;
+        animation: pulse 0.5s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.03); }
+        100% { transform: scale(1); }
+    }
 `;
 
 // Helper function to convert text to richText format
@@ -313,6 +326,189 @@ export default function SyncedProductionApp() {
         }
     }, [generateDateHeaders]);
     
+    // Helper functions for note merging
+    const calculateOverlap = (shape1, shape2) => {
+        // Get bounds for both shapes
+        const bounds1 = {
+            left: shape1.x,
+            right: shape1.x + (shape1.props?.w || 180),
+            top: shape1.y,
+            bottom: shape1.y + (shape1.props?.h || 150)
+        };
+        
+        const bounds2 = {
+            left: shape2.x,
+            right: shape2.x + (shape2.props?.w || 180),
+            top: shape2.y,
+            bottom: shape2.y + (shape2.props?.h || 150)
+        };
+        
+        // Calculate intersection
+        const intersectLeft = Math.max(bounds1.left, bounds2.left);
+        const intersectRight = Math.min(bounds1.right, bounds2.right);
+        const intersectTop = Math.max(bounds1.top, bounds2.top);
+        const intersectBottom = Math.min(bounds1.bottom, bounds2.bottom);
+        
+        // Check if there is an intersection
+        if (intersectLeft < intersectRight && intersectTop < intersectBottom) {
+            const intersectionArea = (intersectRight - intersectLeft) * (intersectBottom - intersectTop);
+            const shape1Area = (bounds1.right - bounds1.left) * (bounds1.bottom - bounds1.top);
+            const overlapPercentage = intersectionArea / shape1Area;
+            
+            console.log(`📐 Overlap calculation:`, {
+                shape1Id: shape1.id,
+                shape2Id: shape2.id,
+                intersectionArea,
+                shape1Area,
+                overlapPercentage: (overlapPercentage * 100).toFixed(1) + '%'
+            });
+            
+            return overlapPercentage;
+        }
+        
+        return 0;
+    };
+    
+    const mergeNotes = async (draggedNote, targetNote) => {
+        console.log('🔀 Starting merge operation:', {
+            dragged: draggedNote.props?.dbId,
+            target: targetNote.props?.dbId
+        });
+        
+        const draggedDbId = draggedNote.props?.dbId;
+        const targetDbId = targetNote.props?.dbId;
+        
+        if (!draggedDbId || !targetDbId) {
+            console.error('❌ Cannot merge: missing DB IDs');
+            return;
+        }
+        
+        try {
+            // Small delay to ensure position updates are synced
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Get note data from backend
+            const [draggedResponse, targetResponse] = await Promise.all([
+                fetch(`${API_URL}/notes/${draggedDbId}`, {
+                    headers: { 'user-id': USER_ID }
+                }),
+                fetch(`${API_URL}/notes/${targetDbId}`, {
+                    headers: { 'user-id': USER_ID }
+                })
+            ]);
+            
+            if (!draggedResponse.ok || !targetResponse.ok) {
+                console.error('❌ Failed to fetch notes:', {
+                    dragged: { id: draggedDbId, status: draggedResponse.status },
+                    target: { id: targetDbId, status: targetResponse.status }
+                });
+                
+                // Try to use data from shapes if backend fetch fails
+                const draggedShape = editor.getShape(draggedNote.id);
+                const targetShape = editor.getShape(targetNote.id);
+                
+                if (!draggedShape || !targetShape) {
+                    throw new Error('Failed to fetch notes and no local data available');
+                }
+                
+                // Extract title and content from richText
+                const extractTextFromRichText = (richText) => {
+                    if (!richText || !richText.content) return { title: '', content: '' };
+                    const paragraphs = richText.content
+                        .filter(p => p.content && p.content[0])
+                        .map(p => p.content[0].text || '');
+                    return {
+                        title: paragraphs[0] || '',
+                        content: paragraphs.slice(1).join('\n')
+                    };
+                };
+                
+                const draggedText = extractTextFromRichText(draggedShape.props.richText);
+                const targetText = extractTextFromRichText(targetShape.props.richText);
+                
+                // Use shape data as fallback
+                var draggedData = {
+                    title: draggedText.title,
+                    content: draggedText.content,
+                    date: new Date().toISOString() // Use today as fallback
+                };
+                
+                var targetData = {
+                    title: targetText.title,
+                    content: targetText.content,
+                    date: new Date().toISOString(), // Use today as fallback
+                    manuallyPositioned: targetShape.props.manuallyPositioned || false
+                };
+            } else {
+                var draggedData = await draggedResponse.json();
+                var targetData = await targetResponse.json();
+            }
+            
+            // Create merged note
+            const mergedTitle = draggedData.title + ' / ' + targetData.title;
+            const mergedContent = draggedData.content + '\n/////\n' + targetData.content;
+            
+            console.log('📝 Creating merged note:', {
+                title: mergedTitle,
+                x: targetNote.x,
+                y: targetNote.y,
+                date: targetData.date
+            });
+            
+            // Format date as string for backend (YYYY-MM-DD)
+            const targetDate = new Date(targetData.date);
+            const dateString = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}-${targetDate.getDate().toString().padStart(2, '0')}`;
+            
+            // Create new merged note with target's position
+            const createResponse = await fetch(`${API_URL}/notes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'user-id': USER_ID,
+                },
+                body: JSON.stringify({
+                    title: mergedTitle,
+                    content: mergedContent,
+                    type: 'text',
+                    date: dateString,
+                    x: targetNote.x,
+                    y: targetNote.y,
+                    manuallyPositioned: targetData.manuallyPositioned || false,
+                }),
+            });
+            
+            if (!createResponse.ok) {
+                throw new Error('Failed to create merged note');
+            }
+            
+            const mergedNote = await createResponse.json();
+            console.log('✅ Merged note created:', mergedNote.id);
+            
+            // Delete original notes
+            await Promise.all([
+                fetch(`${API_URL}/notes/${draggedDbId}`, {
+                    method: 'DELETE',
+                    headers: { 'user-id': USER_ID }
+                }),
+                fetch(`${API_URL}/notes/${targetDbId}`, {
+                    method: 'DELETE',
+                    headers: { 'user-id': USER_ID }
+                })
+            ]);
+            
+            console.log('🗑️ Original notes deleted');
+            
+            // Reload all notes to sync UI
+            const allNotes = await loadNotes();
+            createShapesFromNotes(allNotes, editor, true);
+            
+            console.log('✨ Merge completed successfully');
+            
+        } catch (error) {
+            console.error('❌ Error during merge:', error);
+        }
+    };
+    
     // Setup position sync
     useEffect(() => {
         if (!editor || !noteIdMap || noteIdMap.size === 0) return;
@@ -322,6 +518,9 @@ export default function SyncedProductionApp() {
         // Debounced position update function
         const positionUpdateQueue = new Map();
         let updateTimer = null;
+        let mergeCheckTimer = null;
+        let potentialMerge = null;
+        let highlightedTarget = null;
         
         const sendPositionUpdates = async () => {
             if (positionUpdateQueue.size === 0) return;
@@ -400,6 +599,101 @@ export default function SyncedProductionApp() {
                             // Clear existing timer and set new one (debounce)
                             if (updateTimer) clearTimeout(updateTimer);
                             updateTimer = setTimeout(sendPositionUpdates, 300); // 300ms debounce
+                            
+                            // Check for potential merge when movement stops
+                            if (mergeCheckTimer) clearTimeout(mergeCheckTimer);
+                            
+                            // Store the moving shape for merge check
+                            potentialMerge = to;
+                            
+                            // Real-time merge target highlighting
+                            const selectedShapes = editor.getSelectedShapes();
+                            if (selectedShapes.length === 1) {
+                                const allShapes = editor.getCurrentPageShapes();
+                                const customNotes = allShapes.filter(s => s.type === 'custom-note');
+                                
+                                let foundTarget = null;
+                                let maxOverlap = 0;
+                                
+                                // Find the best merge target
+                                for (const shape of customNotes) {
+                                    if (shape.id === to.id) continue; // Skip self
+                                    
+                                    const overlap = calculateOverlap(to, shape);
+                                    
+                                    if (overlap >= 0.3 && overlap > maxOverlap) {
+                                        maxOverlap = overlap;
+                                        foundTarget = shape;
+                                    }
+                                }
+                                
+                                // Update highlighting
+                                if (foundTarget) {
+                                    // Remove old highlight
+                                    if (highlightedTarget && highlightedTarget !== foundTarget.id) {
+                                        const oldElement = document.querySelector(`[data-shape="${highlightedTarget}"]`);
+                                        if (oldElement) {
+                                            oldElement.classList.remove('merge-target');
+                                        }
+                                    }
+                                    
+                                    // Add new highlight
+                                    const targetElement = document.querySelector(`[data-shape="${foundTarget.id}"]`);
+                                    if (targetElement) {
+                                        targetElement.classList.add('merge-target');
+                                        highlightedTarget = foundTarget.id;
+                                        console.log(`💡 Highlighting merge target: ${foundTarget.id} (${(maxOverlap * 100).toFixed(1)}% overlap)`);
+                                    }
+                                } else if (highlightedTarget) {
+                                    // Remove highlight if no target found
+                                    const oldElement = document.querySelector(`[data-shape="${highlightedTarget}"]`);
+                                    if (oldElement) {
+                                        oldElement.classList.remove('merge-target');
+                                    }
+                                    highlightedTarget = null;
+                                }
+                            }
+                            
+                            mergeCheckTimer = setTimeout(() => {
+                                console.log('🔍 Checking for merge after drag stop');
+                                
+                                // Get all shapes
+                                const allShapes = editor.getCurrentPageShapes();
+                                const customNotes = allShapes.filter(s => s.type === 'custom-note');
+                                
+                                // Check only single selection (not multi-select)
+                                const selectedShapes = editor.getSelectedShapes();
+                                if (selectedShapes.length !== 1) {
+                                    console.log('⚠️ Skipping merge: not single selection');
+                                    return;
+                                }
+                                
+                                // Find overlapping notes
+                                for (const shape of customNotes) {
+                                    if (shape.id === potentialMerge.id) continue; // Skip self
+                                    
+                                    const overlap = calculateOverlap(potentialMerge, shape);
+                                    
+                                    if (overlap >= 0.3) { // 30% overlap threshold
+                                        console.log(`🎯 Found merge candidate with ${(overlap * 100).toFixed(1)}% overlap`);
+                                        
+                                        // Remove highlight before merge
+                                        if (highlightedTarget) {
+                                            const element = document.querySelector(`[data-shape="${highlightedTarget}"]`);
+                                            if (element) {
+                                                element.classList.remove('merge-target');
+                                            }
+                                            highlightedTarget = null;
+                                        }
+                                        
+                                        // Perform merge
+                                        mergeNotes(potentialMerge, shape);
+                                        
+                                        // Only merge with first overlapping note
+                                        break;
+                                    }
+                                }
+                            }, 400); // Check for merge after 400ms of no movement
                         } else {
                             console.warn('⚠️ No dbId found in shape props!', to.props);
                         }
@@ -411,6 +705,16 @@ export default function SyncedProductionApp() {
         return () => {
             console.log('🔌 Cleaning up position sync');
             if (updateTimer) clearTimeout(updateTimer);
+            if (mergeCheckTimer) clearTimeout(mergeCheckTimer);
+            
+            // Clean up any remaining highlight
+            if (highlightedTarget) {
+                const element = document.querySelector(`[data-shape="${highlightedTarget}"]`);
+                if (element) {
+                    element.classList.remove('merge-target');
+                }
+            }
+            
             unsubscribe();
         };
     }, [editor, noteIdMap]);

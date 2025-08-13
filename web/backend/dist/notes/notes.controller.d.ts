@@ -6,6 +6,7 @@ export declare class NotesController {
     private readonly notesService;
     constructor(notesService: NotesService);
     getNotes(userId?: string, days?: string): Promise<Note[]>;
+    getNoteById(noteId: string, userId?: string): Promise<Note>;
     createNote(userId: string, createNoteDto: CreateNoteDto): Promise<Note>;
     createRandomNote(userId?: string): Promise<Note>;
     initializeDemoData(userId?: string): Promise<{

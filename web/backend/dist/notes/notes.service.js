@@ -81,7 +81,19 @@ let NotesService = class NotesService {
             const today = new Date();
             noteDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
         }
-        const y = await this.findNextAvailableY(userId, noteDate);
+        let x;
+        let y;
+        let manuallyPositioned;
+        if (data.x !== undefined && data.y !== undefined) {
+            x = data.x;
+            y = data.y;
+            manuallyPositioned = data.manuallyPositioned ?? true;
+        }
+        else {
+            x = 0;
+            y = await this.findNextAvailableY(userId, noteDate);
+            manuallyPositioned = false;
+        }
         return this.prisma.note.create({
             data: {
                 userId,
@@ -89,9 +101,9 @@ let NotesService = class NotesService {
                 content: data.content,
                 type: data.type,
                 date: noteDate,
-                x: 0,
+                x,
                 y,
-                manuallyPositioned: false,
+                manuallyPositioned,
                 voiceDuration: data.voiceDuration,
                 voiceFileUrl: data.voiceFileUrl,
             },
@@ -143,6 +155,18 @@ let NotesService = class NotesService {
                 { y: 'asc' },
             ],
         });
+    }
+    async getNoteById(noteId, userId) {
+        const note = await this.prisma.note.findFirst({
+            where: {
+                id: noteId,
+                userId,
+            },
+        });
+        if (!note) {
+            throw new Error(`Note with ID ${noteId} not found`);
+        }
+        return note;
     }
     async updateNotePosition(noteId, x, y) {
         const note = await this.prisma.note.findUnique({

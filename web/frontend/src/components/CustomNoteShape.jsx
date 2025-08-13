@@ -90,6 +90,29 @@ export class CustomNoteShapeUtil extends ShapeUtil {
 
     component(shape) {
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
+        const [isMergeTarget, setIsMergeTarget] = React.useState(false);
+        
+        // Listen for merge target highlighting
+        React.useEffect(() => {
+            const checkMergeTarget = () => {
+                const element = document.querySelector(`[data-shape="${shape.id}"]`);
+                if (element && element.classList.contains('merge-target')) {
+                    setIsMergeTarget(true);
+                } else {
+                    setIsMergeTarget(false);
+                }
+            };
+            
+            // Check initially and on mutations
+            checkMergeTarget();
+            const observer = new MutationObserver(checkMergeTarget);
+            const element = document.querySelector(`[data-shape="${shape.id}"]`);
+            if (element) {
+                observer.observe(element, { attributes: true, attributeFilter: ['class'] });
+            }
+            
+            return () => observer.disconnect();
+        }, [shape.id]);
         
         // Извлекаем текст из richText
         let displayText = '';
@@ -111,6 +134,10 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         if (manuallyPositioned) {
             borderColor = '#ff9500';
         }
+        // Если это цель для слияния, делаем границу желтой
+        if (isMergeTarget) {
+            borderColor = '#ffc800';
+        }
         
         // Иконка по типу
         const typeIcon = {
@@ -121,18 +148,24 @@ export class CustomNoteShapeUtil extends ShapeUtil {
 
         return (
             <HTMLContainer
+                data-shape={shape.id}
+                className={isMergeTarget ? 'merge-target' : ''}
                 style={{
                     width: shape.props.w,
                     height: shape.props.h,
                     backgroundColor: '#1a1a1a',
-                    border: '1px solid #333',
+                    border: isMergeTarget ? `3px solid ${borderColor}` : '1px solid #333',
                     borderLeft: `3px solid ${borderColor}`,
                     borderRadius: '12px',
                     padding: '15px',
                     color: '#e0e0e0',
                     fontSize: '12px',
                     overflow: 'hidden',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                    boxShadow: isMergeTarget 
+                        ? '0 0 20px rgba(255, 200, 0, 0.8)' 
+                        : '0 2px 8px rgba(0, 0, 0, 0.3)',
+                    transform: isMergeTarget ? 'scale(1.03)' : 'scale(1)',
+                    transition: 'all 0.3s ease',
                 }}
             >
                 {/* Заголовок */}
