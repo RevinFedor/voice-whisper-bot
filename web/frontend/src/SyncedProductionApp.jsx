@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Tldraw, createShapeId } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
+import { StaticDateHeaderShapeUtil } from './components/StaticDateHeaderShape';
 import DatePickerModal from './components/DatePickerModal';
 import NoteModal from './components/NoteModal';
 import './utils/debugHelpers';
@@ -114,6 +115,27 @@ const customStyles = `
     
     .tl-shape-indicator[data-shape-type="custom-note"] {
         z-index: 997 !important;
+    }
+    
+    /* Static date header styles */
+    .tl-shape[data-shape-type="static-date-header"] {
+        pointer-events: none !important;
+        user-select: none !important;
+    }
+    
+    .tl-shape[data-shape-type="static-date-header"] .tl-shape-indicator {
+        display: none !important;
+    }
+    
+    .tl-shape[data-shape-type="static-date-header"]:hover {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    
+    /* Отключаем все интерактивности для date headers */
+    .tl-shape[data-shape-type="static-date-header"] * {
+        pointer-events: none !important;
+        user-select: none !important;
     }
 `;
 
@@ -233,9 +255,11 @@ export default function SyncedProductionApp() {
     const generateDateHeaders = useCallback((editor) => {
         if (!editor) return;
         
-        // Remove existing date headers
-        const existingTextShapes = editor.getCurrentPageShapes().filter(s => s.type === 'text');
-        editor.deleteShapes(existingTextShapes.map(s => s.id));
+        // Remove existing date headers (both text and static-date-header types)
+        const existingHeaders = editor.getCurrentPageShapes().filter(s => 
+            s.type === 'text' || s.type === 'static-date-header'
+        );
+        editor.deleteShapes(existingHeaders.map(s => s.id));
         
         const TODAY_X = 5000;
         const COLUMN_SPACING = 230;
@@ -251,27 +275,26 @@ export default function SyncedProductionApp() {
             
             const x = TODAY_X + (i * COLUMN_SPACING);
             const day = date.getDate().toString().padStart(2, '0');
-            const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase();
+            const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase().replace('.', ''); // Убираем точку
             const isToday = i === 0;
             
+            // Используем новый StaticDateHeaderShapeUtil
             editor.createShape({
                 id: createShapeId(),
-                type: 'text',
-                x: x + 65, // Center the date
-                y: 0,
+                type: 'static-date-header',
+                x: x + 20, // Позиционируем еще левее от заметок
+                y: 15, // Немного отступаем сверху
                 props: {
-                    richText: toRichText(`${day}\n${month}`),
-                    color: isToday ? 'green' : 'grey',
-                    size: 'xl',
-                    font: 'sans',
-                    autoSize: true,
-                    w: 50,
-                    textAlign: 'middle',
+                    w: 70, // Немного уже
+                    h: 55, // Немного ниже
+                    day: day,
+                    month: month,
+                    isToday: isToday,
                 },
             });
         }
         
-        // console.log(`📅 Generated date headers for ${DAYS_BACK} days back`);
+        console.log(`📅 Generated ${DAYS_BACK + DAYS_FORWARD + 1} static date headers`);
     }, []);
     
     // Create shapes from notes
@@ -1208,7 +1231,7 @@ export default function SyncedProductionApp() {
                 overflow: 'hidden'
             }}>
                 <Tldraw
-                    shapeUtils={[CustomNoteShapeUtil]}
+                    shapeUtils={[CustomNoteShapeUtil, StaticDateHeaderShapeUtil]}
                     onMount={handleMount}
                 >
                     <SyncedControls 
