@@ -3,6 +3,8 @@ import ControlledTextarea from './solutions/ControlledTextarea';
 import ContentEditableEditor from './solutions/ContentEditableEditor';
 import HybridEditor from './solutions/HybridEditor';
 import OptimizedLargeText from './solutions/OptimizedLargeText';
+import FixedCursorTextarea from './solutions/FixedCursorTextarea';
+import FinalTextareaSolution from './solutions/FinalTextareaSolution';
 import PerformanceMonitor from './components/PerformanceMonitor';
 import { generateTestText } from './utils/testData';
 
@@ -11,6 +13,11 @@ const SOLUTIONS = {
     name: 'Controlled Textarea с фиксом скролла',
     description: 'useLayoutEffect + сохранение scrollTop и позиции курсора',
     component: ControlledTextarea
+  },
+  fixedcursor: {
+    name: 'Фикс позиции курсора 0 при первом клике',
+    description: 'Решение проблемы сброса курсора на позицию 0 при первом взаимодействии',
+    component: FixedCursorTextarea
   },
   contenteditable: {
     name: 'ContentEditable решение',
@@ -26,12 +33,17 @@ const SOLUTIONS = {
     name: 'Оптимизированный для больших текстов',
     description: 'С debounce и requestAnimationFrame для 5000+ символов',
     component: OptimizedLargeText
+  },
+  final: {
+    name: '🎯 ФИНАЛЬНОЕ РЕШЕНИЕ (рекомендуется)',
+    description: 'Все фиксы: скролл, курсор 0, Enter, большие тексты. Готово для production',
+    component: FinalTextareaSolution
   }
 };
 
 function App() {
-  const [selectedSolution, setSelectedSolution] = useState('controlled');
-  const [text, setText] = useState(generateTestText(1000));
+  const [selectedSolution, setSelectedSolution] = useState('final');
+  const [text, setText] = useState(generateTestText(5000));
   const [metrics, setMetrics] = useState({
     fps: 60,
     inputLag: 0,

@@ -1,23 +1,25 @@
-import React, { useRef, useLayoutEffect, useState } from 'react';
+import React, { useRef, useLayoutEffect, useState, useCallback } from 'react';
 
-// РЕШЕНИЕ 1: Полное сохранение состояния textarea
+// РЕШЕНИЕ 1: Полное сохранение состояния textarea с фиксом первого клика
 const ControlledTextarea = ({ value, onChange }) => {
   const textAreaRef = useRef(null);
   const [cursor, setCursor] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
+  const [isFirstInteraction, setIsFirstInteraction] = useState(true);
 
   // useLayoutEffect выполняется СИНХРОННО после изменения DOM
   // но ПЕРЕД отрисовкой браузером - это критично!
   useLayoutEffect(() => {
     const textArea = textAreaRef.current;
-    if (textArea) {
+    // НЕ восстанавливаем позицию при первом взаимодействии
+    if (textArea && !isFirstInteraction) {
       console.log('🔄 Восстанавливаем позицию:', { cursor, scrollTop });
       // Восстанавливаем позицию курсора
       textArea.setSelectionRange(cursor, cursor);
       // Восстанавливаем позицию скролла
       textArea.scrollTop = scrollTop;
     }
-  }, [value, cursor, scrollTop]);
+  }, [value, cursor, scrollTop, isFirstInteraction]);
 
   const handleChange = (e) => {
     console.log('✏️ Изменение текста, сохраняем состояние');
@@ -39,6 +41,40 @@ const ControlledTextarea = ({ value, onChange }) => {
     setCursor(e.target.selectionStart);
   };
 
+  // КРИТИЧНО: Обработка первого клика с requestAnimationFrame
+  const handleClick = useCallback((e) => {
+    if (isFirstInteraction) {
+      console.log('🎯 Первый клик, фиксим позицию курсора');
+      requestAnimationFrame(() => {
+        const realPosition = e.target.selectionStart;
+        if (realPosition >= 0) {
+          console.log('📍 Реальная позиция курсора:', realPosition);
+          e.target.setSelectionRange(realPosition, realPosition);
+          setCursor(realPosition);
+          setScrollTop(e.target.scrollTop);
+        }
+      });
+      setIsFirstInteraction(false);
+    } else {
+      // Обычное сохранение позиции при клике
+      setCursor(e.target.selectionStart);
+      setScrollTop(e.target.scrollTop);
+    }
+  }, [isFirstInteraction]);
+
+  // Фикс для программного фокуса
+  const handleFocus = useCallback((e) => {
+    if (isFirstInteraction) {
+      console.log('🔍 Первый фокус на textarea');
+      setTimeout(() => {
+        const currentPos = e.target.selectionStart;
+        setCursor(currentPos);
+        setScrollTop(e.target.scrollTop);
+        setIsFirstInteraction(false);
+      }, 0);
+    }
+  }, [isFirstInteraction]);
+
   return (
     <div>
       <textarea
@@ -47,6 +83,8 @@ const ControlledTextarea = ({ value, onChange }) => {
         onChange={handleChange}
         onScroll={handleScroll}
         onSelect={handleSelect}
+        onClick={handleClick}
+        onFocus={handleFocus}
         placeholder="Начните вводить текст... Скролл и позиция курсора будут сохранены!"
         style={{
           width: '100%',
