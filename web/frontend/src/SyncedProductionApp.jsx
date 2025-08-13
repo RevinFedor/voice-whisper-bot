@@ -857,6 +857,57 @@ export default function SyncedProductionApp() {
             console.error('❌ Failed to get CustomNoteShapeUtil:', e);
         }
         
+        // Function to open modal - defined inside handleMount to access setters
+        const handleNoteModalOpen = async (dbId, shape) => {
+            console.log('📂 Opening modal for note:', dbId);
+            
+            try {
+                // Fetch full note data from backend
+                const response = await fetch(`${API_URL}/notes/${dbId}`, {
+                    headers: { 'user-id': USER_ID }
+                });
+                
+                if (response.ok) {
+                    const noteData = await response.json();
+                    console.log('✅ Note data fetched:', noteData);
+                    setSelectedNote(noteData);
+                    setIsNoteModalOpen(true);
+                } else {
+                    // Fallback to shape data if backend fails
+                    console.log('⚠️ Backend failed, using shape data');
+                    const extractTextFromRichText = (richText) => {
+                        if (!richText || !richText.content) return { title: '', content: '' };
+                        const paragraphs = richText.content
+                            .filter(p => p.content && p.content[0])
+                            .map(p => p.content[0].text || '');
+                        return {
+                            title: paragraphs[0] || '',
+                            content: paragraphs.slice(1).join('\n')
+                        };
+                    };
+                    
+                    const text = extractTextFromRichText(shape.props.richText);
+                    
+                    setSelectedNote({
+                        id: dbId,
+                        title: text.title,
+                        content: text.content,
+                        type: shape.props.noteType || 'text',
+                        x: shape.x,
+                        y: shape.y,
+                        manuallyPositioned: shape.props.manuallyPositioned || false,
+                        voiceDuration: shape.props.duration ? parseInt(shape.props.duration.split(':')[0]) * 60 + parseInt(shape.props.duration.split(':')[1]) : null,
+                        date: new Date().toISOString(),
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    });
+                    setIsNoteModalOpen(true);
+                }
+            } catch (error) {
+                console.error('❌ Error fetching note for modal:', error);
+            }
+        };
+        
         // Store the shape that was clicked on pointer down
         let clickedShapeId = null;
         let dragStarted = false;
@@ -932,14 +983,24 @@ export default function SyncedProductionApp() {
                 
                 // It's a click! Open the modal
                 console.log('🎯 SINGLE CLICK DETECTED on:', clickedShapeId);
-                console.log('📊 handleNoteClick exists:', !!handleNoteClick);
                 
-                // Open modal immediately - no delays like in Miro/Notion!
-                if (handleNoteClick && clickedShapeId) {
-                    console.log('🔓 OPENING MODAL for:', clickedShapeId);
-                    handleNoteClick(clickedShapeId);
+                // Get shape directly from editor
+                const shape = editor.getShape(clickedShapeId);
+                if (!shape || shape.type !== 'custom-note') {
+                    console.error('❌ Shape not found or wrong type');
+                    return;
+                }
+                
+                // Get DB ID from shape
+                const dbId = shape.props?.dbId;
+                console.log('🔑 DB ID from shape:', dbId);
+                
+                if (dbId) {
+                    console.log('🔓 OPENING MODAL for note:', dbId);
+                    // Call the function directly with everything we need
+                    handleNoteModalOpen(dbId, shape);
                 } else {
-                    console.error('❌ handleNoteClick is not defined or no shape clicked!');
+                    console.error('❌ No dbId in shape props');
                 }
                 
                 // Reset
