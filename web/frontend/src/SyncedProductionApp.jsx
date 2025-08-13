@@ -684,7 +684,16 @@ export default function SyncedProductionApp() {
                                 }
                             }
                             
-                            mergeCheckTimer = setTimeout(() => {
+                            const checkMerge = () => {
+                                // ВАЖНО: Проверяем что пользователь действительно отпустил мышь!
+                                if (editor.inputs.isDragging) {
+                                    console.log('⏸️ Still dragging, postponing merge check');
+                                    // Перезапускаем таймер если еще перетаскиваем
+                                    clearTimeout(mergeCheckTimer);
+                                    mergeCheckTimer = setTimeout(checkMerge, 500);
+                                    return;
+                                }
+                                
                                 console.log('🔍 Checking for merge after drag stop');
                                 
                                 // Reset z-index for all shapes after drag
@@ -729,7 +738,9 @@ export default function SyncedProductionApp() {
                                         break;
                                     }
                                 }
-                            }, 400); // Check for merge after 400ms of no movement
+                            };
+                            
+                            mergeCheckTimer = setTimeout(checkMerge, 400); // Check for merge after 400ms of no movement
                         } else {
                             console.warn('⚠️ No dbId found in shape props!', to.props);
                         }
