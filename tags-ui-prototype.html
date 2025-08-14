@@ -165,6 +165,18 @@
             background: #2bc255;
         }
         
+        .generate-btn:not(.primary) {
+            background: #2a2a2a;
+            border-color: #444;
+            color: #888;
+        }
+        
+        .generate-btn:not(.primary):hover {
+            background: #333;
+            border-color: #555;
+            color: #aaa;
+        }
+        
         .btn-icon {
             width: 40px;
             height: 40px;
@@ -493,17 +505,16 @@
             </div>
             
             <!-- AI предложения -->
-            <div class="tags-group ai-suggestions-group" style="display: none; margin-top: 16px;">
+            <div class="tags-group ai-suggestions-group" style="margin-top: 16px;">
                 <div class="tags-group-label">
                     <span style="color: #ff9500;">✨</span> AI предложения
                 </div>
                 <div class="ai-suggestions-list">
-                    <div class="tag suggestion-tag new" onclick="addTag(this)">#nestjs</div>
-                    <div class="tag suggestion-tag new" onclick="addTag(this)">#prisma</div>
-                    <div class="tag suggestion-tag existing" onclick="addTag(this)">#архитектура</div>
-                    <div class="tag suggestion-tag new" onclick="addTag(this)">#api</div>
-                    <div class="tag suggestion-tag existing" onclick="addTag(this)">#backend</div>
-                    <div class="tag suggestion-tag new" onclick="addTag(this)">#typescript</div>
+                    <!-- Пустое состояние -->
+                    <div class="empty-suggestions" style="color: #666; font-size: 13px; font-style: italic;">
+                        Нажмите ✨ или используйте чат для генерации предложений
+                    </div>
+                    <!-- Теги будут добавляться динамически -->
                 </div>
             </div>
         </div>
@@ -511,10 +522,13 @@
         <!-- AI Chat панель (скрыта по умолчанию) -->
         <div class="ai-chat-panel" style="display: none;">
             <div class="chat-input-group">
-                <input class="chat-input" placeholder="Опишите, какие теги нужны..." />
-                <button class="btn primary">
+                <input class="chat-input" 
+                       placeholder="Опишите стиль тегов..." 
+                       onkeyup="updateGenerateButton(this)"
+                       onkeydown="handleChatInput(event)" />
+                <button class="btn generate-btn" onclick="generateTags()" title="Использовать стандартную генерацию">
                     <span class="spinner" style="display: none;"></span>
-                    <span>Генерировать</span>
+                    <span class="btn-text">Default</span>
                 </button>
             </div>
         </div>
@@ -523,32 +537,12 @@
         <div class="chat-history" style="display: none;">
             <div class="history-header">
                 <span style="color: #888; font-size: 14px;">📜 История генераций</span>
-                <button class="btn clear-history">Очистить</button>
+                <button class="btn clear-history" onclick="clearHistory()">Очистить</button>
             </div>
             
-            <div class="chat-message">
-                <div class="chat-message-header">
-                    <span>🤖 AI генерация</span>
-                    <span>10:45</span>
-                </div>
-                <div class="chat-message-prompt">"Добавь теги для технической документации"</div>
-                <div class="chat-message-tags">
-                    <div class="tag new">#documentation</div>
-                    <div class="tag new">#tech-specs</div>
-                    <div class="tag new">#readme</div>
-                </div>
-            </div>
-            
-            <div class="chat-message">
-                <div class="chat-message-header">
-                    <span>✨ Стандартная генерация</span>
-                    <span>10:30</span>
-                </div>
-                <div class="chat-message-tags">
-                    <div class="tag new">#nestjs</div>
-                    <div class="tag new">#prisma</div>
-                    <div class="tag existing">#backend</div>
-                </div>
+            <!-- История будет добавляться динамически -->
+            <div class="history-messages">
+                <!-- Сообщения будут здесь -->
             </div>
         </div>
     </div>
@@ -623,28 +617,158 @@
             console.log('Добавлен тег:', element.textContent.trim());
         }
         
-        // Получить AI предложения
+        // Получить AI предложения (кнопка ✨)
         function getAISuggestions() {
-            // Показываем блок с AI предложениями
-            const suggestionsGroup = document.querySelector('.ai-suggestions-group');
-            const suggestions = suggestionsGroup.querySelectorAll('.suggestion-tag');
+            // Это просто вызывает Default генерацию без сохранения в историю
+            generateTags(true); // true = default prompt
+        }
+        
+        // Обновить кнопку генерации
+        function updateGenerateButton(input) {
+            const btn = document.querySelector('.generate-btn');
+            const btnText = btn.querySelector('.btn-text');
             
-            // Показываем блок предложений
-            suggestionsGroup.style.display = 'block';
+            if (input.value.trim()) {
+                btnText.textContent = 'Генерировать';
+                btn.classList.add('primary');
+                btn.title = '';
+            } else {
+                btnText.textContent = 'Default';
+                btn.classList.remove('primary');
+                btn.title = 'Использовать стандартную генерацию';
+            }
+        }
+        
+        // Обработка Enter в чате
+        function handleChatInput(event) {
+            if (event.key === 'Enter') {
+                generateTags();
+            }
+        }
+        
+        // Генерация тегов
+        function generateTags(isDefault = false) {
+            const input = document.querySelector('.chat-input');
+            const prompt = input.value.trim();
+            const btn = document.querySelector('.generate-btn');
+            const spinner = btn.querySelector('.spinner');
+            const btnText = btn.querySelector('.btn-text');
             
-            // Сначала скрываем все предложения и показываем с анимацией
-            suggestions.forEach(tag => {
-                tag.style.display = 'inline-flex';
-                tag.style.opacity = '1'; // Сбрасываем если были скрыты
-                tag.style.transform = 'scale(1)';
-            });
+            // Показываем загрузку
+            spinner.style.display = 'inline-block';
+            btnText.textContent = 'Генерирую...';
+            btn.disabled = true;
             
-            // Анимация появления блока
-            suggestionsGroup.style.opacity = '0';
+            // Определяем используем ли Default или кастомный промпт
+            const useDefault = isDefault || !prompt;
+            
+            // Симуляция генерации
             setTimeout(() => {
-                suggestionsGroup.style.opacity = '1';
-                suggestionsGroup.style.transition = 'opacity 0.3s';
-            }, 100);
+                // Добавляем новые предложения
+                addAISuggestions([
+                    { text: '#nestjs', isNew: true },
+                    { text: '#prisma', isNew: true },
+                    { text: '#архитектура', isNew: false },
+                    { text: '#api', isNew: true },
+                    { text: '#backend', isNew: false },
+                    { text: '#typescript', isNew: true }
+                ]);
+                
+                // Если использовался кастомный промпт - добавляем в историю
+                if (!useDefault && prompt) {
+                    addToHistory(prompt, [
+                        { text: '#nestjs', isNew: true },
+                        { text: '#prisma', isNew: true },
+                        { text: '#архитектура', isNew: false },
+                        { text: '#api', isNew: true },
+                        { text: '#backend', isNew: false },
+                        { text: '#typescript', isNew: true }
+                    ]);
+                }
+                
+                // Восстанавливаем кнопку
+                spinner.style.display = 'none';
+                updateGenerateButton(input);
+                btn.disabled = false;
+                
+                // Очищаем input если был Default
+                if (useDefault) {
+                    input.value = '';
+                }
+                
+                // Закрываем чат панель если был вызов через кнопку ✨
+                if (isDefault) {
+                    const chatPanel = document.querySelector('.ai-chat-panel');
+                    chatPanel.style.display = 'none';
+                    document.getElementById('chatBtn').classList.remove('active');
+                }
+            }, 1000);
+        }
+        
+        // Добавить AI предложения в список
+        function addAISuggestions(tags) {
+            const suggestionsList = document.querySelector('.ai-suggestions-list');
+            const emptyMessage = suggestionsList.querySelector('.empty-suggestions');
+            
+            // Скрываем пустое сообщение
+            if (emptyMessage) {
+                emptyMessage.style.display = 'none';
+            }
+            
+            // Добавляем теги
+            tags.forEach((tagData, index) => {
+                setTimeout(() => {
+                    const tag = document.createElement('div');
+                    tag.className = `tag suggestion-tag ${tagData.isNew ? 'new' : 'existing'}`;
+                    tag.textContent = tagData.text;
+                    tag.onclick = () => addTag(tag);
+                    tag.style.opacity = '0';
+                    tag.style.transform = 'translateY(-5px)';
+                    
+                    suggestionsList.appendChild(tag);
+                    
+                    // Анимация появления
+                    setTimeout(() => {
+                        tag.style.opacity = '0.9';
+                        tag.style.transform = 'translateY(0)';
+                        tag.style.transition = 'all 0.3s ease';
+                    }, 50);
+                }, index * 50);
+            });
+        }
+        
+        // Добавить в историю
+        function addToHistory(prompt, tags) {
+            const historyMessages = document.querySelector('.history-messages');
+            
+            // Создаем новое сообщение в истории
+            const message = document.createElement('div');
+            message.className = 'chat-message';
+            
+            const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            
+            message.innerHTML = `
+                <div class="chat-message-header">
+                    <span>💬 Кастомная генерация</span>
+                    <span>${time}</span>
+                </div>
+                <div class="chat-message-prompt">"${prompt}"</div>
+                <div class="chat-message-tags">
+                    ${tags.map(tag => 
+                        `<div class="tag ${tag.isNew ? 'new' : 'existing'}">${tag.text}</div>`
+                    ).join('')}
+                </div>
+            `;
+            
+            // Добавляем в начало истории
+            historyMessages.insertBefore(message, historyMessages.firstChild);
+        }
+        
+        // Очистить историю
+        function clearHistory() {
+            const historyMessages = document.querySelector('.history-messages');
+            historyMessages.innerHTML = '';
+            console.log('История очищена');
         }
         
         // Переключить чат (закрывает историю)
