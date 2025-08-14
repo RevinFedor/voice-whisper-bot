@@ -729,10 +729,12 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                         background: 'transparent',
                                                         border: 'none',
                                                         color: '#ff4444',
-                                                        fontSize: '16px',
+                                                        fontSize: '20px',
                                                         cursor: 'pointer',
-                                                        padding: '4px',
-                                                        marginLeft: '8px'
+                                                        padding: '4px 8px',
+                                                        marginLeft: '8px',
+                                                        lineHeight: '1',
+                                                        fontWeight: 'bold'
                                                     }}
                                                 >
                                                     ×
@@ -974,50 +976,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                         </div>
                     )}
                     
-                    {/* Статус сохранения */}
-                    {(titleSaveStatus !== 'idle' || contentSaveStatus !== 'idle') && (
-                        <div style={{
-                            marginTop: '16px',
-                            display: 'flex',
-                            gap: '12px',
-                            justifyContent: 'center'
-                        }}>
-                            {titleSaveStatus !== 'idle' && (
-                                <div style={{
-                                    padding: '8px 12px',
-                                    borderRadius: '6px',
-                                    backgroundColor: titleSaveStatus === 'saving' ? '#ff95001a' : 
-                                                   titleSaveStatus === 'success' ? '#30d1581a' : '#ff3b301a',
-                                    border: `1px solid ${titleSaveStatus === 'saving' ? '#ff950033' : 
-                                                        titleSaveStatus === 'success' ? '#30d15833' : '#ff3b3033'}`,
-                                    color: titleSaveStatus === 'saving' ? '#ff9500' : 
-                                          titleSaveStatus === 'success' ? '#30d158' : '#ff3b30',
-                                    fontSize: '12px',
-                                    transition: 'all 0.3s ease'
-                                }}>
-                                    {titleSaveStatus === 'saving' ? '💾 Сохранение заголовка...' : 
-                                     titleSaveStatus === 'success' ? '✅ Заголовок сохранен' : '❌ Ошибка сохранения'}
-                                </div>
-                            )}
-                            {contentSaveStatus !== 'idle' && (
-                                <div style={{
-                                    padding: '8px 12px',
-                                    borderRadius: '6px',
-                                    backgroundColor: contentSaveStatus === 'saving' ? '#ff95001a' : 
-                                                   contentSaveStatus === 'success' ? '#30d1581a' : '#ff3b301a',
-                                    border: `1px solid ${contentSaveStatus === 'saving' ? '#ff950033' : 
-                                                        contentSaveStatus === 'success' ? '#30d15833' : '#ff3b3033'}`,
-                                    color: contentSaveStatus === 'saving' ? '#ff9500' : 
-                                          contentSaveStatus === 'success' ? '#30d158' : '#ff3b30',
-                                    fontSize: '12px',
-                                    transition: 'all 0.3s ease'
-                                }}>
-                                    {contentSaveStatus === 'saving' ? '💾 Сохранение контента...' : 
-                                     contentSaveStatus === 'success' ? '✅ Контент сохранен' : '❌ Ошибка сохранения'}
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
                 
                 {/* Metadata Footer */}
