@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const notes_module_1 = require("./notes/notes.module");
 const prisma_module_1 = require("./prisma/prisma.module");
+const ai_titles_module_1 = require("./ai-titles/ai-titles.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -22,6 +23,7 @@ exports.AppModule = AppModule = __decorate([
             }),
             prisma_module_1.PrismaModule,
             notes_module_1.NotesModule,
+            ai_titles_module_1.AiTitlesModule,
         ],
     })
 ], AppModule);

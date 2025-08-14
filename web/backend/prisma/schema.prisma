@@ -56,13 +56,43 @@ model Note {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
+  // Relations
+  titleHistory    TitleHistory[]
+  
   @@index([userId, date])
   @@index([date])
   @@index([isArchived])
+}
+
+model TitleHistory {
+  id              String   @id @default(uuid())
+  
+  // Note relation
+  noteId          String
+  note            Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  
+  // Title data
+  title           String
+  type            TitleType @default(manual) // manual or ai
+  
+  // AI generation metadata (optional)
+  prompt          String?  // User's custom prompt if provided
+  model           String?  // AI model used (e.g., "gpt-4")
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([noteId])
+  @@index([createdAt])
 }
 
 enum NoteType {
   voice
   text
   collection
+}
+
+enum TitleType {
+  manual
+  ai
 }

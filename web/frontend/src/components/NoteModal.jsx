@@ -19,6 +19,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const [promptInput, setPromptInput] = useState('');
     const [titleCursorPos, setTitleCursorPos] = useState(0);
     const [titleHeight, setTitleHeight] = useState(44);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [newlyGeneratedId, setNewlyGeneratedId] = useState(null);
     
     // === СОСТОЯНИЕ ФОКУСА ===
     const [isTitleFocused, setIsTitleFocused] = useState(false);
@@ -38,13 +40,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     // === ХУКИ ДЛЯ TEXTAREA ===
     const contentTextarea = useScrollPreservingTextarea();
     
-    // === МОКОВЫЕ ДАННЫЕ ДЛЯ ИСТОРИИ ===
-    const [titleHistory] = useState([
-        { title: localTitle || 'Текущий заголовок', time: 'текущий', current: true },
-        { title: 'Архитектура системы заметок', time: '10:30', current: false },
-        { title: 'Интеграция Telegram и Obsidian', time: '10:28', current: false },
-        { title: 'Система управления контентом', time: '10:25', current: false }
-    ]);
+    // === ИСТОРИЯ ЗАГОЛОВКОВ ===
+    const [titleHistory, setTitleHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
     
     // Обновляем локальное состояние при изменении заметки
     useEffect(() => {
@@ -54,7 +52,34 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         setServerContent(note.content || '');
         setTitleChanged(false);
         setContentChanged(false);
+        // Сбрасываем историю при смене заметки
+        setTitleHistory([]);
+        setShowHistory(false);
+        setShowPrompt(false);
     }, [note]);
+    
+    // Загрузка истории заголовков
+    const loadTitleHistory = useCallback(async () => {
+        if (!note?.id) return;
+        
+        setHistoryLoading(true);
+        try {
+            const response = await fetch(`http://localhost:3001/api/ai-titles/history/${note.id}`, {
+                headers: {
+                    'user-id': 'test-user-id'
+                }
+            });
+            
+            if (response.ok) {
+                const history = await response.json();
+                setTitleHistory(history);
+            }
+        } catch (error) {
+            console.error('Failed to load title history:', error);
+        } finally {
+            setHistoryLoading(false);
+        }
+    }, [note?.id]);
     
     // === ОПТИМИСТИЧНЫЕ ОБНОВЛЕНИЯ ===
     const saveToServer = useCallback(async (field, value) => {
@@ -226,9 +251,84 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         }
     };
     
-    const toggleHistory = () => {
-        setShowHistory(!showHistory);
+    // === AI ГЕНЕРАЦИЯ ===
+    const generateAITitle = useCallback(async (customPrompt = null) => {
+        if (!note?.id || isGenerating) return;
+        
+        setIsGenerating(true);
+        
+        // Сохраняем текущий заголовок в историю если он не пустой и изменился
+        if (localTitle && localTitle !== serverTitle) {
+            try {
+                await fetch(`http://localhost:3001/api/ai-titles/save-current/${note.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'user-id': 'test-user-id'
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to save current title:', error);
+            }
+        }
+        
+        try {
+            const response = await fetch('http://localhost:3001/api/ai-titles/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'user-id': 'test-user-id'
+                },
+                body: JSON.stringify({
+                    noteId: note.id,
+                    prompt: customPrompt
+                })
+            });
+            
+            if (response.ok) {
+                const generatedTitle = await response.json();
+                
+                // Закрываем панель промпта
+                setShowPrompt(false);
+                setPromptInput('');
+                
+                // Загружаем обновленную историю
+                await loadTitleHistory();
+                
+                // Открываем вкладку истории с анимацией
+                setShowHistory(true);
+                setNewlyGeneratedId(generatedTitle.id);
+                
+                // Убираем подсветку через 1 секунду
+                setTimeout(() => {
+                    setNewlyGeneratedId(null);
+                }, 1000);
+                
+                // Обновляем локальный заголовок
+                setLocalTitle(generatedTitle.title);
+                setServerTitle(generatedTitle.title);
+                setTitleChanged(false);
+                
+                // Вызываем callback обновления если есть
+                if (onNoteUpdate) {
+                    onNoteUpdate({ ...note, title: generatedTitle.title });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to generate title:', error);
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [note, localTitle, serverTitle, isGenerating, loadTitleHistory, onNoteUpdate]);
+    
+    const toggleHistory = async () => {
+        const newShowHistory = !showHistory;
+        setShowHistory(newShowHistory);
         setShowPrompt(false);
+        
+        // Загружаем историю при открытии
+        if (newShowHistory && titleHistory.length === 0) {
+            await loadTitleHistory();
+        }
     };
     
     const togglePrompt = () => {
@@ -239,27 +339,39 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const useHistoryTitle = (historyItem) => {
         setLocalTitle(historyItem.title);
         setTitleChanged(historyItem.title !== serverTitle);
-        setShowHistory(false);
-        // Сразу сохраняем при выборе из истории
+        // НЕ закрываем историю согласно требованиям
+        // Сохраняем при выборе из истории
         if (historyItem.title !== serverTitle) {
             saveToServer('title', historyItem.title);
         }
     };
     
+    const deleteFromHistory = async (historyId, e) => {
+        e.stopPropagation(); // Предотвращаем выбор элемента
+        
+        try {
+            const response = await fetch(`http://localhost:3001/api/ai-titles/history/${historyId}`, {
+                method: 'DELETE',
+                headers: {
+                    'user-id': 'test-user-id'
+                }
+            });
+            
+            if (response.ok) {
+                // Удаляем из локального состояния с анимацией
+                setTitleHistory(prev => prev.filter(item => item.id !== historyId));
+            }
+        } catch (error) {
+            console.error('Failed to delete from history:', error);
+        }
+    };
+    
     const applyPrompt = () => {
-        const newTitles = [
-            'Система управления заметками с AI',
-            'Интеграция сервисов для заметок',
-            'Проект: Notes Management System'
-        ];
-        const newTitle = newTitles[Math.floor(Math.random() * newTitles.length)];
-        setLocalTitle(newTitle);
-        setTitleChanged(newTitle !== serverTitle);
-        setPromptInput('');
-        setShowPrompt(false);
-        // Сразу сохраняем при применении промпта
-        if (newTitle !== serverTitle) {
-            saveToServer('title', newTitle);
+        if (promptInput.trim()) {
+            generateAITitle(promptInput.trim());
+        } else {
+            // Default prompt
+            generateAITitle();
         }
     };
     
@@ -541,31 +653,79 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                     marginTop: '10px',
                                     padding: '12px',
                                     borderRadius: '8px',
-                                    maxHeight: '144px',
+                                    maxHeight: '250px',
                                     overflowY: 'auto',
                                     backgroundColor: '#181818',
                                     border: '1px solid #333'
                                 }}>
-                                    {titleHistory.map((item, index) => (
-                                        <div
-                                            key={index}
-                                            onClick={() => useHistoryTitle(item)}
-                                            style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '8px',
-                                                marginBottom: '6px',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer',
-                                                backgroundColor: '#222',
-                                                border: item.current ? '1px solid #22aa44' : '1px solid transparent'
-                                            }}
-                                        >
-                                            <span style={{ color: 'white', fontSize: '14px' }}>{item.title}</span>
-                                            <span style={{ fontSize: '12px', color: '#666' }}>{item.time}</span>
+                                    {historyLoading ? (
+                                        <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
+                                            Загрузка...
                                         </div>
-                                    ))}
+                                    ) : titleHistory.length === 0 ? (
+                                        <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
+                                            История пуста. Сгенерируйте первые варианты!
+                                        </div>
+                                    ) : (
+                                        titleHistory.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                onClick={() => useHistoryTitle(item)}
+                                                onMouseEnter={(e) => e.currentTarget.querySelector('.delete-btn').style.opacity = '1'}
+                                                onMouseLeave={(e) => e.currentTarget.querySelector('.delete-btn').style.opacity = '0'}
+                                                style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    padding: '8px 12px',
+                                                    marginBottom: '6px',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    backgroundColor: newlyGeneratedId === item.id ? '#1a3d1a' : '#222',
+                                                    border: newlyGeneratedId === item.id ? '1px solid #22aa44' : '1px solid transparent',
+                                                    transition: 'all 0.3s ease',
+                                                    animation: newlyGeneratedId === item.id ? 'fadeIn 0.3s ease' : 'none',
+                                                    position: 'relative'
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                                    <span style={{ fontSize: '14px' }}>
+                                                        {item.type === 'ai' ? '✨' : '✋'}
+                                                    </span>
+                                                    <span 
+                                                        style={{ 
+                                                            color: 'white', 
+                                                            fontSize: '14px',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            flex: 1
+                                                        }}
+                                                        title={item.title.length > 40 ? item.title : undefined}
+                                                    >
+                                                        {item.title}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    className="delete-btn"
+                                                    onClick={(e) => deleteFromHistory(item.id, e)}
+                                                    style={{
+                                                        opacity: 0,
+                                                        transition: 'opacity 0.2s',
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#ff4444',
+                                                        fontSize: '16px',
+                                                        cursor: 'pointer',
+                                                        padding: '4px',
+                                                        marginLeft: '8px'
+                                                    }}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
                             )}
                             
@@ -583,8 +743,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             type="text"
                                             value={promptInput}
                                             onChange={(e) => setPromptInput(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && applyPrompt()}
-                                            placeholder="Сделай заголовок в стиле..."
+                                            onKeyDown={(e) => e.key === 'Enter' && !isGenerating && applyPrompt()}
+                                            placeholder="Опишите стиль заголовка..."
+                                            disabled={isGenerating}
                                             style={{
                                                 flex: 1,
                                                 padding: '8px 12px',
@@ -594,22 +755,46 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                 backgroundColor: '#222',
                                                 border: '1px solid #444',
                                                 outline: 'none',
-                                                boxSizing: 'border-box'
+                                                boxSizing: 'border-box',
+                                                opacity: isGenerating ? 0.5 : 1
                                             }}
                                         />
                                         <button
                                             onClick={applyPrompt}
+                                            disabled={isGenerating}
                                             style={{
                                                 padding: '8px 16px',
                                                 color: 'white',
                                                 fontSize: '14px',
                                                 borderRadius: '4px',
-                                                backgroundColor: '#22aa44',
+                                                backgroundColor: promptInput.trim() ? '#22aa44' : '#666',
                                                 border: 'none',
-                                                cursor: 'pointer'
+                                                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                                                opacity: isGenerating ? 0.5 : 1,
+                                                minWidth: '100px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '6px'
                                             }}
+                                            title={!promptInput.trim() ? 'Использовать стандартную генерацию' : undefined}
                                         >
-                                            Применить
+                                            {isGenerating ? (
+                                                <>
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        width: '12px',
+                                                        height: '12px',
+                                                        border: '2px solid #ffffff30',
+                                                        borderTopColor: 'white',
+                                                        borderRadius: '50%',
+                                                        animation: 'spin 0.6s linear infinite'
+                                                    }}></span>
+                                                    <span>Генерирую...</span>
+                                                </>
+                                            ) : (
+                                                <span>{promptInput.trim() ? 'Применить' : 'Default'}</span>
+                                            )}
                                         </button>
                                     </div>
                                 </div>
@@ -870,6 +1055,46 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                 @keyframes pulse {
                     0%, 100% { opacity: 1; }
                     50% { opacity: 0.5; }
+                }
+                
+                @keyframes fadeIn {
+                    from {
+                        opacity: 0;
+                        transform: translateY(-10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+                
+                @keyframes spin {
+                    to {
+                        transform: rotate(360deg);
+                    }
+                }
+                
+                .delete-btn {
+                    transition: opacity 0.2s ease;
+                }
+                
+                /* Скроллбар для истории */
+                div::-webkit-scrollbar {
+                    width: 6px;
+                }
+                
+                div::-webkit-scrollbar-track {
+                    background: #1a1a1a;
+                    border-radius: 3px;
+                }
+                
+                div::-webkit-scrollbar-thumb {
+                    background: #444;
+                    border-radius: 3px;
+                }
+                
+                div::-webkit-scrollbar-thumb:hover {
+                    background: #555;
                 }
             `}</style>
         </>
