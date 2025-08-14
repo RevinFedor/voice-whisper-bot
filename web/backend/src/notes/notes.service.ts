@@ -71,23 +71,14 @@ export class NotesService {
     y?: number;
     manuallyPositioned?: boolean;
   }): Promise<Note> {
-    // Get or create test user if needed (for development)
-    let user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      // Create test user for development
-      user = await this.prisma.user.create({
-        data: {
-          id: userId,
-          telegramId: BigInt(123456789),
-          telegramUsername: 'test_user',
-          firstName: 'Test',
-        },
-      });
-    }
-
+    console.log('🔨 [NotesService] Creating note...');
+    console.log('   userId:', userId);
+    console.log('   title:', data.title);
+    console.log('   type:', data.type);
+    
+    // No user management needed - app is local
+    // Skip user creation completely - just use the userId as string identifier
+    
     // Use provided date or today
     let noteDate: Date;
     if (data.date) {
@@ -121,15 +112,18 @@ export class NotesService {
       x = data.x;
       y = data.y;
       manuallyPositioned = data.manuallyPositioned ?? true;
+      console.log('   📍 Using provided position: x=' + x + ', y=' + y);
     } else {
       // Find next available Y position (fills gaps)
       x = 0; // X is calculated on frontend for column notes
       y = await this.findNextAvailableY(userId, noteDate);
       manuallyPositioned = false;
+      console.log('   🎯 Auto-positioning: x=0 (frontend will calculate), y=' + y);
+      console.log('   📅 For date:', noteDate.toISOString());
     }
 
     // Create the note
-    return this.prisma.note.create({
+    const createdNote = await this.prisma.note.create({
       data: {
         userId,
         title: data.title,
@@ -141,6 +135,13 @@ export class NotesService {
         manuallyPositioned,
       },
     });
+    
+    console.log('✅ [NotesService] Note created successfully!');
+    console.log('   Note ID:', createdNote.id);
+    console.log('   Position: x=' + x + ', y=' + y);
+    console.log('   Date:', noteDate.toISOString());
+    
+    return createdNote;
   }
 
   /**

@@ -50,19 +50,10 @@ let NotesService = class NotesService {
         return notesInColumn[notesInColumn.length - 1].y + LAYOUT_CONFIG.rowHeight + LAYOUT_CONFIG.rowSpacing;
     }
     async createNote(userId, data) {
-        let user = await this.prisma.user.findUnique({
-            where: { id: userId },
-        });
-        if (!user) {
-            user = await this.prisma.user.create({
-                data: {
-                    id: userId,
-                    telegramId: BigInt(123456789),
-                    telegramUsername: 'test_user',
-                    firstName: 'Test',
-                },
-            });
-        }
+        console.log('🔨 [NotesService] Creating note...');
+        console.log('   userId:', userId);
+        console.log('   title:', data.title);
+        console.log('   type:', data.type);
         let noteDate;
         if (data.date) {
             if (typeof data.date === 'string') {
@@ -88,13 +79,16 @@ let NotesService = class NotesService {
             x = data.x;
             y = data.y;
             manuallyPositioned = data.manuallyPositioned ?? true;
+            console.log('   📍 Using provided position: x=' + x + ', y=' + y);
         }
         else {
             x = 0;
             y = await this.findNextAvailableY(userId, noteDate);
             manuallyPositioned = false;
+            console.log('   🎯 Auto-positioning: x=0 (frontend will calculate), y=' + y);
+            console.log('   📅 For date:', noteDate.toISOString());
         }
-        return this.prisma.note.create({
+        const createdNote = await this.prisma.note.create({
             data: {
                 userId,
                 title: data.title,
@@ -106,6 +100,11 @@ let NotesService = class NotesService {
                 manuallyPositioned,
             },
         });
+        console.log('✅ [NotesService] Note created successfully!');
+        console.log('   Note ID:', createdNote.id);
+        console.log('   Position: x=' + x + ', y=' + y);
+        console.log('   Date:', noteDate.toISOString());
+        return createdNote;
     }
     async createRandomNote(userId) {
         const types = ['voice', 'text'];

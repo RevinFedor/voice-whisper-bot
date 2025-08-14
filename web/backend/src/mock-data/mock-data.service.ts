@@ -129,26 +129,7 @@ export class MockDataService {
   }
 
   async generateWeekData(userId: string, startDate: Date) {
-    // Сначала проверяем/создаем пользователя
-    let user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      // Создаем тестового пользователя если его нет
-      user = await this.prisma.user.create({
-        data: {
-          id: userId,
-          telegramId: 123456789n,
-          telegramUsername: 'test_user',
-          firstName: 'Test',
-          lastName: 'User',
-          languageCode: 'ru',
-        },
-      });
-      console.log('🙋 [MockData] Создан тестовый пользователь');
-    }
-
+    // No user management needed - app is local
     const notes = [];
     
     // Объект для отслеживания Y позиций для каждой даты

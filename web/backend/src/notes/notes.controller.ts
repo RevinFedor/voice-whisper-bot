@@ -50,6 +50,12 @@ export class NotesController {
     @Headers('user-id') userId: string = 'test-user-id',
     @Body() createNoteDto: CreateNoteDto,
   ): Promise<Note> {
+    console.log('📮 [Notes] POST /api/notes request received');
+    console.log('   User-ID:', userId);
+    console.log('   Title:', createNoteDto.title);
+    console.log('   Type:', createNoteDto.type);
+    console.log('   Date:', createNoteDto.date);
+    
     return this.notesService.createNote(userId, {
       ...createNoteDto,
       date: createNoteDto.date,

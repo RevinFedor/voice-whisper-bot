@@ -30,6 +30,11 @@ let NotesController = class NotesController {
         return this.notesService.getNoteById(noteId, userId);
     }
     async createNote(userId = 'test-user-id', createNoteDto) {
+        console.log('📮 [Notes] POST /api/notes request received');
+        console.log('   User-ID:', userId);
+        console.log('   Title:', createNoteDto.title);
+        console.log('   Type:', createNoteDto.type);
+        console.log('   Date:', createNoteDto.date);
         return this.notesService.createNote(userId, {
             ...createNoteDto,
             date: createNoteDto.date,
