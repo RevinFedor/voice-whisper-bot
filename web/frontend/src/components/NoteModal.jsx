@@ -150,6 +150,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             textareaRef.current.focus();
             textareaRef.current.setSelectionRange(titleCursorPos, titleCursorPos);
             adjustTitleHeight(textareaRef.current);
+            setIsTitleFocused(true); // Устанавливаем фокус для раскрытого textarea
         }
     }, [isExpanded, titleCursorPos]);
     
@@ -745,7 +746,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                 boxShadow: isContentFocused ? '0 0 12px rgba(255, 149, 0, 0.2)' : 'none',
                                 fontSize: '14px',
                                 minHeight: '300px',
-                                resize: 'vertical',
+                                resize: 'none',
                                 outline: 'none',
                                 lineHeight: '1.5',
                                 transition: 'all 0.2s ease',
