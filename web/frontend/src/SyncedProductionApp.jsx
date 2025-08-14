@@ -567,55 +567,47 @@ export default function SyncedProductionApp() {
         
         // console.log('🔗 Setting up position sync with noteIdMap:', noteIdMap.size, 'entries');
         
-        // Debounced position update function
-        const positionUpdateQueue = new Map();
-        let updateTimer = null;
+        // Track dragging state
+        let draggedNote = null;  // Store the dragged note info
         let potentialMerge = null;
         let highlightedTarget = null;
         let wasDragging = false; // Флаг для отслеживания отпускания
         
-        const sendPositionUpdates = async () => {
-            if (positionUpdateQueue.size === 0) return;
+        const sendPositionUpdate = async (dbId, position) => {
+            console.log(`📍 Sending position update for note ${dbId}:`, position);
             
-            const updates = Array.from(positionUpdateQueue.entries());
-            positionUpdateQueue.clear();
-            
-            for (const [dbId, position] of updates) {
-                console.log(`📍 Sending position update for note ${dbId}:`, position);
+            try {
+                const response = await fetch(`${API_URL}/notes/${dbId}/position`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'user-id': USER_ID,
+                    },
+                    body: JSON.stringify(position),
+                });
                 
-                try {
-                    const response = await fetch(`${API_URL}/notes/${dbId}/position`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'user-id': USER_ID,
-                        },
-                        body: JSON.stringify(position),
-                    });
+                if (response.ok) {
+                    const updatedNote = await response.json();
+                    console.log(`✅ Position updated, manuallyPositioned: ${updatedNote.manuallyPositioned}`);
                     
-                    if (response.ok) {
-                        const updatedNote = await response.json();
-                        console.log(`✅ Position updated, manuallyPositioned: ${updatedNote.manuallyPositioned}`);
-                        
-                        // Update local state to reflect manuallyPositioned status
-                        const shapeId = noteIdMap.get(dbId);
-                        if (shapeId) {
-                            const shape = editor.getShape(shapeId);
-                            if (shape) {
-                                editor.updateShape({
-                                    id: shapeId,
-                                    type: shape.type,
-                                    props: {
-                                        ...shape.props,
-                                        manuallyPositioned: updatedNote.manuallyPositioned,
-                                    },
-                                });
-                            }
+                    // Update local state to reflect manuallyPositioned status
+                    const shapeId = noteIdMap.get(dbId);
+                    if (shapeId) {
+                        const shape = editor.getShape(shapeId);
+                        if (shape) {
+                            editor.updateShape({
+                                id: shapeId,
+                                type: shape.type,
+                                props: {
+                                    ...shape.props,
+                                    manuallyPositioned: updatedNote.manuallyPositioned,
+                                },
+                            });
                         }
                     }
-                } catch (error) {
-                    console.error('❌ Error updating position:', error);
                 }
+            } catch (error) {
+                console.error('❌ Error updating position:', error);
             }
         };
         
@@ -647,13 +639,9 @@ export default function SyncedProductionApp() {
                         console.log(`🔍 Looking for dbId in props:`, dbId);
                         
                         if (dbId) {
-                            console.log(`🔄 Shape moved, queueing update for ${dbId}`);
-                            // Add to update queue
-                            positionUpdateQueue.set(dbId, { x: to.x, y: to.y });
-                            
-                            // Clear existing timer and set new one (debounce)
-                            if (updateTimer) clearTimeout(updateTimer);
-                            updateTimer = setTimeout(sendPositionUpdates, 300); // 300ms debounce
+                            console.log(`🔄 Shape is being dragged: ${dbId}`);
+                            // Store the dragged note info (will send update on release)
+                            draggedNote = { dbId, x: to.x, y: to.y };
                             
                             // Store the moving shape for merge check
                             potentialMerge = to;
@@ -782,6 +770,13 @@ export default function SyncedProductionApp() {
             
             if (wasDragging) {
                 wasDragging = false;
+                
+                // Send position update to backend ONLY when drag ends
+                if (draggedNote) {
+                    sendPositionUpdate(draggedNote.dbId, { x: draggedNote.x, y: draggedNote.y });
+                    draggedNote = null;
+                }
+                
                 console.log(`⏱ T+${Date.now() % 100000}: INSTANT_CHECK`);
                 performInstantMergeCheck();
             }
@@ -799,6 +794,13 @@ export default function SyncedProductionApp() {
                     console.log(`⏱ T+${Date.now() % 100000}: EDITOR_POINTER_UP`);
                     if (wasDragging) {
                         wasDragging = false;
+                        
+                        // Send position update to backend ONLY when drag ends
+                        if (draggedNote) {
+                            sendPositionUpdate(draggedNote.dbId, { x: draggedNote.x, y: draggedNote.y });
+                            draggedNote = null;
+                        }
+                        
                         performInstantMergeCheck();
                     }
                 });
@@ -811,7 +813,6 @@ export default function SyncedProductionApp() {
         
         return () => {
             // console.log('🔌 Cleaning up position sync');
-            if (updateTimer) clearTimeout(updateTimer);
             document.removeEventListener('pointerup', handlePointerUp);
             console.log(`⏱ T+${Date.now() % 100000}: CLEANUP`);
             
