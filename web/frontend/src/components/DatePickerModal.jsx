@@ -107,6 +107,7 @@ export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
     const [customDate, setCustomDate] = useState('');
     const [customTime, setCustomTime] = useState('01:00'); // Default time 01:00
     const [hoveredDate, setHoveredDate] = useState(null);
+    const [isGeneratingMockData, setIsGeneratingMockData] = useState(false);
     
     if (!isOpen) return null;
     
@@ -191,6 +192,48 @@ export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
         onClose();
     };
     
+    // ВРЕМЕННАЯ ФУНКЦИЯ: Генерация тестовых данных - удалить в продакшене
+    const handleGenerateMockData = async () => {
+        if (isGeneratingMockData) return;
+        
+        const confirmGenerate = window.confirm(
+            'Это создаст около 50 тестовых заметок на текущую неделю.\n' +
+            'Заметки будут иметь осмысленный контент на темы IT и психологии.\n' +
+            'Продолжить?'
+        );
+        
+        if (!confirmGenerate) return;
+        
+        setIsGeneratingMockData(true);
+        
+        try {
+            const response = await fetch('http://localhost:3001/api/mock-data/generate-week', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'user-id': 'test-user-id',
+                },
+                body: JSON.stringify({
+                    startDate: new Date().toISOString(),
+                }),
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                alert(`✅ Создано ${result.count} тестовых заметок на неделю!`);
+                onClose();
+                window.location.reload(); // Перезагружаем для отображения новых заметок
+            } else {
+                alert('❌ Ошибка при генерации тестовых данных');
+            }
+        } catch (error) {
+            console.error('Error generating mock data:', error);
+            alert('❌ Ошибка при генерации тестовых данных');
+        } finally {
+            setIsGeneratingMockData(false);
+        }
+    };
+    
     return (
         <div style={modalStyles.overlay} onClick={handleCancel}>
             <div style={modalStyles.modal} onClick={(e) => e.stopPropagation()}>
@@ -259,6 +302,58 @@ export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
                     >
                         Создать заметку
                     </button>
+                </div>
+                
+                {/* ВРЕМЕННЫЙ БЛОК: Генерация тестовых данных - удалить в продакшене */}
+                <div style={{
+                    marginTop: '20px',
+                    paddingTop: '20px',
+                    borderTop: '1px solid #333',
+                    opacity: 0.7,
+                }}>
+                    <div style={{
+                        color: '#ff9500',
+                        fontSize: '11px',
+                        marginBottom: '10px',
+                        textAlign: 'center',
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px',
+                    }}>
+                        ⚠️ Тестовые данные (временно)
+                    </div>
+                    <button
+                        style={{
+                            width: '100%',
+                            padding: '12px',
+                            backgroundColor: isGeneratingMockData ? '#555' : '#4a3a00',
+                            border: '1px solid #ff9500',
+                            borderRadius: '8px',
+                            color: '#ff9500',
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            cursor: isGeneratingMockData ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s',
+                            opacity: isGeneratingMockData ? 0.5 : 1,
+                        }}
+                        onClick={handleGenerateMockData}
+                        disabled={isGeneratingMockData}
+                        onMouseEnter={(e) => !isGeneratingMockData && (e.target.style.backgroundColor = '#5a4a00')}
+                        onMouseLeave={(e) => !isGeneratingMockData && (e.target.style.backgroundColor = '#4a3a00')}
+                    >
+                        {isGeneratingMockData ? (
+                            <>🔄 Генерируется...</>
+                        ) : (
+                            <>🎲 Заполнить неделю тестовыми заметками</>
+                        )}
+                    </button>
+                    <div style={{
+                        color: '#666',
+                        fontSize: '10px',
+                        marginTop: '8px',
+                        textAlign: 'center',
+                    }}>
+                        Создаст ~50 заметок с текстом на темы IT и психологии
+                    </div>
                 </div>
             </div>
         </div>

@@ -4,6 +4,8 @@ import { NotesModule } from './notes/notes.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AiTitlesModule } from './ai-titles/ai-titles.module';
 import { AiTagsModule } from './ai-tags/ai-tags.module';
+// ВРЕМЕННО: Модуль для генерации тестовых данных - удалить в продакшене
+import { MockDataModule } from './mock-data/mock-data.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { AiTagsModule } from './ai-tags/ai-tags.module';
     NotesModule,
     AiTitlesModule,
     AiTagsModule,
+    // ВРЕМЕННО: Модуль для генерации тестовых данных - удалить в продакшене
+    MockDataModule,
   ],
 })
 export class AppModule {}

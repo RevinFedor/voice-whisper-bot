@@ -13,6 +13,7 @@ const notes_module_1 = require("./notes/notes.module");
 const prisma_module_1 = require("./prisma/prisma.module");
 const ai_titles_module_1 = require("./ai-titles/ai-titles.module");
 const ai_tags_module_1 = require("./ai-tags/ai-tags.module");
+const mock_data_module_1 = require("./mock-data/mock-data.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -26,6 +27,7 @@ exports.AppModule = AppModule = __decorate([
             notes_module_1.NotesModule,
             ai_titles_module_1.AiTitlesModule,
             ai_tags_module_1.AiTagsModule,
+            mock_data_module_1.MockDataModule,
         ],
     })
 ], AppModule);
