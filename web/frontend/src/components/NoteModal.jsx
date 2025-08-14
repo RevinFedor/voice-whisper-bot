@@ -11,8 +11,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     // === СЕРВЕРНОЕ СОСТОЯНИЕ (для отслеживания синхронизации) ===
     const [serverTitle, setServerTitle] = useState(note.title || '');
     const [serverContent, setServerContent] = useState(note.content || '');
-    const [originalTitle] = useState(note.title || '');
-    const [originalContent] = useState(note.content || '');
     
     // === СОСТОЯНИЕ UI ===
     const [isExpanded, setIsExpanded] = useState(false);
@@ -36,7 +34,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const inputRef = useRef(null);
     const textareaRef = useRef(null);
     const modalRef = useRef(null);
-    const saveTimeoutRef = useRef(null);
     
     // === ХУКИ ДЛЯ TEXTAREA ===
     const contentTextarea = useScrollPreservingTextarea();
@@ -55,6 +52,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         setLocalContent(note.content || '');
         setServerTitle(note.title || '');
         setServerContent(note.content || '');
+        setTitleChanged(false);
+        setContentChanged(false);
     }, [note]);
     
     // === ОПТИМИСТИЧНЫЕ ОБНОВЛЕНИЯ ===
@@ -88,7 +87,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             else setContentChanged(false);
             
             // Вызываем callback для обновления списка заметок
-            if (onNoteUpdate) {
+            // Но не вызываем если значение не изменилось (чтобы избежать лишних рендеров)
+            if (onNoteUpdate && updatedNote[field] !== note[field]) {
                 onNoteUpdate(updatedNote);
             }
             
@@ -110,28 +110,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         }
     }, [note, serverTitle, serverContent, onNoteUpdate]);
     
-    // Автосохранение с debouncing
-    const performSave = useCallback((type) => {
-        if (type === 'title' && titleChanged) {
-            saveToServer('title', localTitle);
-        } else if (type === 'content' && contentChanged) {
-            saveToServer('content', localContent);
-        }
-    }, [localTitle, localContent, titleChanged, contentChanged, saveToServer]);
-    
-    // Debounced автосохранение
-    const debouncedSave = useCallback((field, value) => {
-        if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-        }
-        
-        saveTimeoutRef.current = setTimeout(() => {
-            const serverValue = field === 'title' ? serverTitle : serverContent;
-            if (value !== serverValue) {
-                saveToServer(field, value);
-            }
-        }, 1000);
-    }, [serverTitle, serverContent, saveToServer]);
     
     // === ЛОГИКА ЗАГОЛОВКА ===
     
@@ -159,9 +137,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const handleExpand = () => {
         if (!isExpanded && inputRef.current) {
             setTitleCursorPos(inputRef.current.selectionStart);
-            setIsTitleFocused(true);
-        } else {
-            setIsTitleFocused(false);
+            // Не устанавливаем фокус здесь - textarea сам установит при фокусе
         }
         setIsExpanded(!isExpanded);
         setShowHistory(false);
@@ -183,10 +159,11 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             if (isExpanded && textareaRef.current && !textareaRef.current.contains(e.target)) {
                 setIsExpanded(false);
                 setIsTitleFocused(false);
-                if (inputRef.current) {
-                    inputRef.current.blur();
+                // Не вызываем blur на скрытом input - он и так скрыт
+                // Сохраняем при закрытии раскрывающегося заголовка
+                if (localTitle !== serverTitle) {
+                    saveToServer('title', localTitle);
                 }
-                performSave('title');
             }
         };
         
@@ -194,14 +171,14 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             document.addEventListener('mousedown', handleClickOutside);
             return () => document.removeEventListener('mousedown', handleClickOutside);
         }
-    }, [isExpanded, performSave]);
+    }, [isExpanded, saveToServer, localTitle, serverTitle]);
     
     // === ОБРАБОТЧИКИ ===
     const handleTitleChange = (e) => {
         const newValue = sanitizeForObsidian(e.target.value);
         setLocalTitle(newValue);
-        setTitleChanged(newValue !== originalTitle);
-        debouncedSave('title', newValue);
+        setTitleChanged(newValue !== serverTitle);
+        // Убираем автосохранение - сохраняем только на blur
         if (isExpanded) {
             adjustTitleHeight(e.target);
         }
@@ -219,7 +196,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             const newValue = localTitle.slice(0, pos) + ' ' + localTitle.slice(pos);
             const sanitizedValue = sanitizeForObsidian(newValue);
             setLocalTitle(sanitizedValue);
-            setTitleChanged(sanitizedValue !== originalTitle);
+            setTitleChanged(sanitizedValue !== serverTitle);
             
             requestAnimationFrame(() => {
                 e.target.setSelectionRange(pos + 1, pos + 1);
@@ -230,8 +207,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const handleContentChange = (e) => {
         const newValue = e.target.value;
         setLocalContent(newValue);
-        setContentChanged(newValue !== originalContent);
-        debouncedSave('content', newValue);
+        setContentChanged(newValue !== serverContent);
+        // Убираем автосохранение - сохраняем только на blur
     };
     
     const handleTitleBlur = () => {
@@ -260,9 +237,12 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     
     const useHistoryTitle = (historyItem) => {
         setLocalTitle(historyItem.title);
-        setTitleChanged(historyItem.title !== originalTitle);
+        setTitleChanged(historyItem.title !== serverTitle);
         setShowHistory(false);
-        debouncedSave('title', historyItem.title);
+        // Сразу сохраняем при выборе из истории
+        if (historyItem.title !== serverTitle) {
+            saveToServer('title', historyItem.title);
+        }
     };
     
     const applyPrompt = () => {
@@ -273,10 +253,13 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         ];
         const newTitle = newTitles[Math.floor(Math.random() * newTitles.length)];
         setLocalTitle(newTitle);
-        setTitleChanged(newTitle !== originalTitle);
+        setTitleChanged(newTitle !== serverTitle);
         setPromptInput('');
         setShowPrompt(false);
-        debouncedSave('title', newTitle);
+        // Сразу сохраняем при применении промпта
+        if (newTitle !== serverTitle) {
+            saveToServer('title', newTitle);
+        }
     };
     
     // Восстановление позиции для контента
@@ -361,7 +344,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                 zIndex: 9999,
                 display: 'flex',
                 flexDirection: 'column',
-                overflow: 'hidden'
+                overflow: 'auto'
             }}>
                 {/* Header */}
                 <div style={{
@@ -419,8 +402,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                 <div style={{
                     flex: 1,
                     padding: '24px 32px',
-                    overflowY: 'auto',
-                    color: '#e0e0e0'
+                    overflowY: 'visible',
+                    color: '#e0e0e0',
+                    display: 'flex',
+                    flexDirection: 'column'
                 }}>
                     {/* ЗАГОЛОВОК */}
                     <div style={{ marginBottom: '24px' }}>
@@ -462,8 +447,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                     type="text"
                                     value={localTitle}
                                     onChange={handleTitleChange}
-                                    onFocus={() => setIsTitleFocused(true)}
-                                    onBlur={handleTitleBlur}
+                                    onFocus={() => !isExpanded && setIsTitleFocused(true)}
+                                    onBlur={() => !isExpanded && handleTitleBlur()}
                                     onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                                     placeholder="Заголовок заметки (без спецсимволов)"
                                     style={{
@@ -472,11 +457,13 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         borderRadius: '8px',
                                         color: 'white',
                                         backgroundColor: '#222',
-                                        border: isTitleFocused ? '2px solid #ff9500' : '1px solid #444',
-                                        boxShadow: isTitleFocused ? '0 0 8px rgba(255, 149, 0, 0.2)' : 'none',
+                                        // Не показываем оранжевую рамку когда input скрыт
+                                        border: isTitleFocused && !isExpanded ? '2px solid #ff9500' : '1px solid #444',
+                                        boxShadow: isTitleFocused && !isExpanded ? '0 0 8px rgba(255, 149, 0, 0.2)' : 'none',
                                         fontSize: '14px',
                                         outline: 'none',
-                                        transition: 'all 0.2s ease'
+                                        transition: 'all 0.2s ease',
+                                        boxSizing: 'border-box'
                                     }}
                                 />
                                 
@@ -605,7 +592,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                 fontSize: '14px',
                                                 backgroundColor: '#222',
                                                 border: '1px solid #444',
-                                                outline: 'none'
+                                                outline: 'none',
+                                                boxSizing: 'border-box'
                                             }}
                                         />
                                         <button
@@ -642,7 +630,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         onFocus={() => setIsTitleFocused(true)}
                                         onBlur={() => {
                                             setIsTitleFocused(false);
-                                            performSave('title');
+                                            if (localTitle !== serverTitle) {
+                                                saveToServer('title', localTitle);
+                                            }
                                         }}
                                         onKeyDown={handleTitleKeyDown}
                                         style={{
@@ -665,7 +655,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             whiteSpace: 'pre-wrap',
                                             wordWrap: 'break-word',
                                             scrollbarWidth: 'thin',
-                                            scrollbarColor: '#444 #222'
+                                            scrollbarColor: '#444 #222',
+                                            boxSizing: 'border-box'
                                         }}
                                         placeholder="Esc - свернуть | Enter - пробел | Спецсимволы удаляются"
                                     />
@@ -684,7 +675,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                     </div>
                     
                     {/* СОДЕРЖИМОЕ */}
-                    <div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
                             {/* Индикатор состояния */}
                             <div style={{
@@ -715,7 +706,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                             ref={contentTextarea.textAreaRef}
                             value={localContent}
                             onChange={(e) => {
+                                // Сначала обновляем позицию через хук
                                 contentTextarea.handlers.onChange(e);
+                                // Затем обновляем состояние и триггерим сохранение
                                 handleContentChange(e);
                             }}
                             onFocus={(e) => {
@@ -726,7 +719,22 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                             onClick={contentTextarea.handlers.onClick}
                             onScroll={contentTextarea.handlers.onScroll}
                             onSelect={contentTextarea.handlers.onSelect}
-                            onKeyDown={(e) => contentTextarea.handlers.onKeyDown(e, localContent, setLocalContent)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const pos = e.target.selectionStart;
+                                    const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
+                                    // Используем handleContentChange для правильного обновления всех состояний
+                                    handleContentChange({ target: { value: newValue }});
+                                    
+                                    requestAnimationFrame(() => {
+                                        e.target.setSelectionRange(pos + 1, pos + 1);
+                                        e.target.scrollTop = e.target.scrollTop;
+                                    });
+                                } else {
+                                    contentTextarea.handlers.onKeyDown(e, localContent, setLocalContent);
+                                }
+                            }}
                             style={{
                                 width: '100%',
                                 padding: '16px',
@@ -740,7 +748,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                 resize: 'vertical',
                                 outline: 'none',
                                 lineHeight: '1.5',
-                                transition: 'all 0.2s ease'
+                                transition: 'all 0.2s ease',
+                                boxSizing: 'border-box'
                             }}
                             rows={12}
                             placeholder="Содержимое заметки..."
