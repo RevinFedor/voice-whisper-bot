@@ -28,6 +28,14 @@ export class AiTagsController {
   ) {
     return this.aiTagsService.updateNoteTags(noteId, body.tags);
   }
+  
+  @Post('update-suggestions/:noteId')
+  async updateAiSuggestions(
+    @Param('noteId') noteId: string,
+    @Body() body: { aiSuggestions: any[] },
+  ) {
+    return this.aiTagsService.updateAiSuggestions(noteId, body.aiSuggestions);
+  }
 
   @Get('obsidian')
   async getObsidianTags() {

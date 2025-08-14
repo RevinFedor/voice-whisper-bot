@@ -47,7 +47,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     
     // === СОСТОЯНИЕ ТЕГОВ ===
     const [localTags, setLocalTags] = useState(note.tags || []);
-    const [aiSuggestions, setAiSuggestions] = useState([]);
+    const [aiSuggestions, setAiSuggestions] = useState(note.aiSuggestedTags || []);
     const [showTagChat, setShowTagChat] = useState(false);
     const [showTagHistory, setShowTagHistory] = useState(false);
     const [tagPromptInput, setTagPromptInput] = useState('');
@@ -58,6 +58,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const [newTagInput, setNewTagInput] = useState('');
     const [obsidianTags, setObsidianTags] = useState([]);
     const [showObsidianTags, setShowObsidianTags] = useState(false);
+    const [aiSuggestionsKey, setAiSuggestionsKey] = useState(0); // Ключ для перезапуска анимации
     
     // Обновляем локальное состояние при изменении заметки
     useEffect(() => {
@@ -70,6 +71,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             setTitleChanged(false);
             setContentChanged(false);
             setLocalTags(note.tags || []);
+            setAiSuggestions(note.aiSuggestedTags || []);
         } else {
             // Если заметка сменилась, сбрасываем все
             setLocalTitle(note.title || '');
@@ -84,7 +86,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             setShowPrompt(false);
             // Сбрасываем состояния тегов
             setLocalTags(note.tags || []);
-            setAiSuggestions([]);
+            setAiSuggestions(note.aiSuggestedTags || []);
+            setAiSuggestionsKey(0); // Сбрасываем ключ анимации
             setShowTagChat(false);
             setShowTagHistory(false);
             setTagPromptInput('');
@@ -478,6 +481,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                 
                 // Перезатираем предложения новыми (не накапливаем)
                 setAiSuggestions(result.tags);
+                // Увеличиваем ключ для перезапуска анимации
+                setAiSuggestionsKey(prev => prev + 1);
                 
                 // Если был кастомный промпт, загружаем историю (но не открываем)
                 if (customPrompt) {
@@ -506,7 +511,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             setLocalTags(newTags);
             
             // Удаляем из предложений
-            setAiSuggestions(aiSuggestions.filter(s => s.text !== tag.text));
+            const newSuggestions = aiSuggestions.filter(s => s.text !== tag.text);
+            setAiSuggestions(newSuggestions);
             
             // Сохраняем на сервер
             try {
@@ -519,8 +525,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                     body: JSON.stringify({ tags: newTags })
                 });
                 
-                // Обновляем заметку
-                onNoteUpdate({ ...note, tags: newTags });
+                // Обновляем AI предложения на сервере
+                await fetch(`http://localhost:3001/api/tags/update-suggestions/${note.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'user-id': 'test-user-id'
+                    },
+                    body: JSON.stringify({ aiSuggestions: newSuggestions })
+                });
+                
+                // Обновляем заметку с новыми тегами и AI предложениями
+                onNoteUpdate({ ...note, tags: newTags, aiSuggestedTags: newSuggestions });
             } catch (error) {
                 console.error('Failed to update tags:', error);
             }
@@ -1495,7 +1511,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                     {aiSuggestions.length > 0 ? (
                                         aiSuggestions.map((tag, index) => (
                                             <div
-                                                key={index}
+                                                key={`${aiSuggestionsKey}-${index}`}
                                                 onClick={() => addTagFromSuggestion(tag)}
                                                 style={{
                                                     display: 'inline-flex',
@@ -1510,7 +1526,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                     cursor: 'pointer',
                                                     opacity: 0.9,
                                                     transition: 'all 0.2s ease',
-                                                    animation: `fadeIn 0.3s ease ${index * 0.05}s backwards`,
+                                                    animation: `fadeInUp 0.4s ease ${index * 0.1}s backwards`,
                                                 }}
                                                 onMouseEnter={(e) => {
                                                     e.currentTarget.style.opacity = '1';
@@ -1887,6 +1903,17 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                     to {
                         opacity: 1;
                         transform: translateY(0);
+                    }
+                }
+                
+                @keyframes fadeInUp {
+                    from {
+                        opacity: 0;
+                        transform: translateY(20px) scale(0.95);
+                    }
+                    to {
+                        opacity: 0.9;
+                        transform: translateY(0) scale(1);
                     }
                 }
                 

@@ -113,12 +113,22 @@ export class AiTagsService {
         });
         console.log('   💾 Сохранено в историю');
       }
+      
+      // Сохраняем AI предложения в заметке (перезатираем каждый раз)
+      const aiSuggestions = allTags.map(tag => ({
+        text: tag.startsWith('#') ? tag : `#${tag}`,
+        isNew: newTags.includes(tag),
+      }));
+      
+      await this.prisma.note.update({
+        where: { id: noteId },
+        data: { aiSuggestedTags: aiSuggestions },
+      });
+      
+      console.log('   📌 AI предложения сохранены в заметке');
 
       return {
-        tags: allTags.map(tag => ({
-          text: tag.startsWith('#') ? tag : `#${tag}`,
-          isNew: newTags.includes(tag),
-        })),
+        tags: aiSuggestions,
         existingTags,
         newTags,
       };
@@ -179,5 +189,17 @@ export class AiTagsService {
     const tags = await this.obsidianService.getAllTags();
     console.log(`🏷️ [Tags] Запрос тегов Obsidian: найдено ${tags.length}`);
     return tags.map(tag => tag.startsWith('#') ? tag : `#${tag}`);
+  }
+  
+  async updateAiSuggestions(noteId: string, aiSuggestions: any[]) {
+    console.log('📌 [Tags] Обновление AI предложений');
+    console.log(`   📊 Осталось предложений: ${aiSuggestions.length}`);
+    
+    await this.prisma.note.update({
+      where: { id: noteId },
+      data: { aiSuggestedTags: aiSuggestions },
+    });
+    
+    return { success: true };
   }
 }

@@ -48,6 +48,9 @@ model Note {
   isPinned        Boolean  @default(false)
   tags            String[]
   
+  // AI suggestions (сохраняем между сессиями)
+  aiSuggestedTags Json?    // Массив объектов {text: string, isNew: boolean}
+  
   // Timestamps
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
