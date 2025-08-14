@@ -54,6 +54,7 @@ model Note {
   
   // Relations
   titleHistory    TitleHistory[]
+  tagHistory      TagHistory[]
   
   @@index([userId, date])
   @@index([date])
@@ -91,4 +92,27 @@ enum NoteType {
 enum TitleType {
   manual
   ai
+}
+
+model TagHistory {
+  id              String   @id @default(uuid())
+  
+  // Note relation
+  noteId          String
+  note            Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  
+  // Tags data
+  tags            String[]  // Array of generated tags
+  existingTags    String[]  // Tags that already exist in Obsidian
+  newTags         String[]  // New tags suggested by AI
+  
+  // Generation metadata
+  prompt          String?   // User's custom prompt if provided (null for default)
+  model           String?   // AI model used (e.g., "gpt-4o-mini")
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([noteId])
+  @@index([createdAt])
 }

@@ -45,6 +45,19 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const [titleHistory, setTitleHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     
+    // === СОСТОЯНИЕ ТЕГОВ ===
+    const [localTags, setLocalTags] = useState(note.tags || []);
+    const [aiSuggestions, setAiSuggestions] = useState([]);
+    const [showTagChat, setShowTagChat] = useState(false);
+    const [showTagHistory, setShowTagHistory] = useState(false);
+    const [tagPromptInput, setTagPromptInput] = useState('');
+    const [isGeneratingTags, setIsGeneratingTags] = useState(false);
+    const [tagHistory, setTagHistory] = useState([]);
+    const [tagHistoryLoading, setTagHistoryLoading] = useState(false);
+    const [showAddTagInput, setShowAddTagInput] = useState(false);
+    const [newTagInput, setNewTagInput] = useState('');
+    const [obsidianTags, setObsidianTags] = useState([]);
+    
     // Обновляем локальное состояние при изменении заметки
     useEffect(() => {
         // Если это та же заметка (только обновился заголовок/контент), не сбрасываем UI состояния
@@ -55,6 +68,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             setServerContent(note.content || '');
             setTitleChanged(false);
             setContentChanged(false);
+            setLocalTags(note.tags || []);
         } else {
             // Если заметка сменилась, сбрасываем все
             setLocalTitle(note.title || '');
@@ -67,6 +81,13 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             setTitleHistory([]);
             setShowHistory(false);
             setShowPrompt(false);
+            // Сбрасываем состояния тегов
+            setLocalTags(note.tags || []);
+            setAiSuggestions([]);
+            setShowTagChat(false);
+            setShowTagHistory(false);
+            setTagPromptInput('');
+            setTagHistory([]);
             prevNoteIdRef.current = note?.id;
         }
     }, [note]);
@@ -388,6 +409,234 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             generateAITitle();
         }
     };
+    
+    // === ФУНКЦИИ ДЛЯ ТЕГОВ ===
+    
+    // Загрузка тегов из Obsidian
+    const loadObsidianTags = useCallback(async () => {
+        try {
+            const response = await fetch('http://localhost:3001/api/tags/obsidian', {
+                headers: {
+                    'user-id': 'test-user-id'
+                }
+            });
+            
+            if (response.ok) {
+                const tags = await response.json();
+                setObsidianTags(tags);
+            }
+        } catch (error) {
+            console.error('Failed to load Obsidian tags:', error);
+        }
+    }, []);
+    
+    // Загрузка истории тегов
+    const loadTagHistory = useCallback(async () => {
+        if (!note?.id) return;
+        
+        setTagHistoryLoading(true);
+        try {
+            const response = await fetch(`http://localhost:3001/api/tags/history/${note.id}`, {
+                headers: {
+                    'user-id': 'test-user-id'
+                }
+            });
+            
+            if (response.ok) {
+                const history = await response.json();
+                setTagHistory(history);
+            }
+        } catch (error) {
+            console.error('Failed to load tag history:', error);
+        } finally {
+            setTagHistoryLoading(false);
+        }
+    }, [note?.id]);
+    
+    // Генерация AI тегов
+    const generateAITags = useCallback(async (customPrompt = null) => {
+        if (!note?.id || isGeneratingTags) return;
+        
+        setIsGeneratingTags(true);
+        
+        try {
+            const response = await fetch('http://localhost:3001/api/tags/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'user-id': 'test-user-id'
+                },
+                body: JSON.stringify({
+                    noteId: note.id,
+                    prompt: customPrompt
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                // Добавляем предложения к существующим
+                const newSuggestions = result.tags.filter(tag => 
+                    !aiSuggestions.some(s => s.text === tag.text)
+                );
+                setAiSuggestions([...aiSuggestions, ...newSuggestions]);
+                
+                // Если был кастомный промпт, загружаем историю
+                if (customPrompt) {
+                    await loadTagHistory();
+                    setShowTagHistory(true);
+                }
+                
+                // Закрываем чат панель
+                setShowTagChat(false);
+                setTagPromptInput('');
+            }
+        } catch (error) {
+            console.error('Failed to generate tags:', error);
+        } finally {
+            setIsGeneratingTags(false);
+        }
+    }, [note, isGeneratingTags, aiSuggestions, loadTagHistory]);
+    
+    // Добавить тег из AI предложений
+    const addTagFromSuggestion = useCallback(async (tag) => {
+        const tagText = tag.text.replace(/^#/, '');
+        if (!localTags.includes(tagText)) {
+            const newTags = [...localTags, tagText];
+            setLocalTags(newTags);
+            
+            // Удаляем из предложений
+            setAiSuggestions(aiSuggestions.filter(s => s.text !== tag.text));
+            
+            // Сохраняем на сервер
+            try {
+                await fetch(`http://localhost:3001/api/tags/update/${note.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'user-id': 'test-user-id'
+                    },
+                    body: JSON.stringify({ tags: newTags })
+                });
+                
+                // Обновляем заметку
+                onNoteUpdate({ ...note, tags: newTags });
+            } catch (error) {
+                console.error('Failed to update tags:', error);
+            }
+        }
+    }, [localTags, aiSuggestions, note, onNoteUpdate]);
+    
+    // Удалить тег
+    const removeTag = useCallback(async (tagToRemove) => {
+        const newTags = localTags.filter(tag => tag !== tagToRemove);
+        setLocalTags(newTags);
+        
+        // Сохраняем на сервер
+        try {
+            await fetch(`http://localhost:3001/api/tags/update/${note.id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'user-id': 'test-user-id'
+                },
+                body: JSON.stringify({ tags: newTags })
+            });
+            
+            // Обновляем заметку
+            onNoteUpdate({ ...note, tags: newTags });
+        } catch (error) {
+            console.error('Failed to update tags:', error);
+        }
+    }, [localTags, note, onNoteUpdate]);
+    
+    // Добавить новый тег вручную
+    const addManualTag = useCallback(async (tagText) => {
+        let cleanTag = tagText.trim();
+        if (!cleanTag) return;
+        
+        // Добавляем # если его нет
+        if (!cleanTag.startsWith('#')) {
+            cleanTag = cleanTag;
+        } else {
+            cleanTag = cleanTag.replace(/^#/, '');
+        }
+        
+        if (!localTags.includes(cleanTag)) {
+            const newTags = [...localTags, cleanTag];
+            setLocalTags(newTags);
+            
+            // Сохраняем на сервер
+            try {
+                await fetch(`http://localhost:3001/api/tags/update/${note.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'user-id': 'test-user-id'
+                    },
+                    body: JSON.stringify({ tags: newTags })
+                });
+                
+                // Обновляем заметку
+                onNoteUpdate({ ...note, tags: newTags });
+            } catch (error) {
+                console.error('Failed to update tags:', error);
+            }
+        }
+        
+        setNewTagInput('');
+        setShowAddTagInput(false);
+    }, [localTags, note, onNoteUpdate]);
+    
+    // Очистить историю тегов
+    const clearTagHistory = async () => {
+        try {
+            await fetch(`http://localhost:3001/api/tags/history/${note.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'user-id': 'test-user-id'
+                }
+            });
+            setTagHistory([]);
+        } catch (error) {
+            console.error('Failed to clear tag history:', error);
+        }
+    };
+    
+    // Применить промпт для тегов
+    const applyTagPrompt = () => {
+        if (tagPromptInput.trim()) {
+            generateAITags(tagPromptInput.trim());
+        } else {
+            // Default prompt
+            generateAITags();
+        }
+    };
+    
+    // Переключение чата для тегов
+    const toggleTagChat = () => {
+        setShowTagChat(!showTagChat);
+        setShowTagHistory(false);
+    };
+    
+    // Переключение истории для тегов
+    const toggleTagHistory = async () => {
+        const newShowHistory = !showTagHistory;
+        setShowTagHistory(newShowHistory);
+        setShowTagChat(false);
+        
+        // Загружаем историю при открытии
+        if (newShowHistory && tagHistory.length === 0) {
+            await loadTagHistory();
+        }
+    };
+    
+    // Загрузка тегов Obsidian при монтировании
+    useEffect(() => {
+        if (isOpen) {
+            loadObsidianTags();
+        }
+    }, [isOpen, loadObsidianTags]);
     
     // Восстановление позиции для контента
     useLayoutEffect(() => {
@@ -951,6 +1200,455 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                         />
                     </div>
                     
+                    {/* Теги */}
+                    <div style={{ marginTop: '24px' }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: '12px'
+                        }}>
+                            <label style={{
+                                fontSize: '13px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '1px',
+                                color: '#888',
+                                fontWeight: '600'
+                            }}>
+                                Теги
+                            </label>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                                {/* Кнопка чата */}
+                                <button
+                                    onClick={toggleTagChat}
+                                    title="AI чат для тегов"
+                                    style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        padding: '0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '14px',
+                                        backgroundColor: showTagChat ? '#22aa44' : '#2a2a2a',
+                                        border: '1px solid',
+                                        borderColor: showTagChat ? '#22aa44' : '#444',
+                                        borderRadius: '6px',
+                                        color: showTagChat ? 'white' : '#888',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    💬
+                                </button>
+                                {/* Кнопка истории */}
+                                <button
+                                    onClick={toggleTagHistory}
+                                    title="История генераций"
+                                    style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        padding: '0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '14px',
+                                        backgroundColor: showTagHistory ? '#22aa44' : '#2a2a2a',
+                                        border: '1px solid',
+                                        borderColor: showTagHistory ? '#22aa44' : '#444',
+                                        borderRadius: '6px',
+                                        color: showTagHistory ? 'white' : '#888',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    📜
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Блок с тегами */}
+                        <div style={{
+                            padding: '12px',
+                            backgroundColor: '#222',
+                            border: '1px solid #444',
+                            borderRadius: '8px'
+                        }}>
+                            {/* Текущие теги */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{
+                                    fontSize: '12px',
+                                    color: '#666',
+                                    marginBottom: '8px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    Текущие теги
+                                </div>
+                                <div style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    minHeight: '32px'
+                                }}>
+                                    {localTags.map((tag, index) => (
+                                        <div
+                                            key={index}
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                padding: '6px 12px',
+                                                backgroundColor: '#2a2a2a',
+                                                border: '1px solid #444',
+                                                borderRadius: '16px',
+                                                fontSize: '14px',
+                                                cursor: 'default',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#333';
+                                                e.currentTarget.style.borderColor = '#555';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#2a2a2a';
+                                                e.currentTarget.style.borderColor = '#444';
+                                            }}
+                                        >
+                                            #{tag}
+                                            <span
+                                                onClick={() => removeTag(tag)}
+                                                style={{
+                                                    color: '#666',
+                                                    cursor: 'pointer',
+                                                    fontSize: '16px',
+                                                    lineHeight: '1',
+                                                    marginLeft: '4px',
+                                                    fontWeight: 'bold'
+                                                }}
+                                                onMouseEnter={(e) => e.currentTarget.style.color = '#ff4444'}
+                                                onMouseLeave={(e) => e.currentTarget.style.color = '#666'}
+                                            >
+                                                ×
+                                            </span>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Кнопка добавить */}
+                                    {!showAddTagInput ? (
+                                        <button
+                                            onClick={() => setShowAddTagInput(true)}
+                                            style={{
+                                                padding: '6px 12px',
+                                                backgroundColor: 'transparent',
+                                                border: '1px dashed #666',
+                                                borderRadius: '16px',
+                                                color: '#888',
+                                                cursor: 'pointer',
+                                                fontSize: '14px',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#2a2a2a';
+                                                e.currentTarget.style.borderColor = '#888';
+                                                e.currentTarget.style.color = '#fff';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = 'transparent';
+                                                e.currentTarget.style.borderColor = '#666';
+                                                e.currentTarget.style.color = '#888';
+                                            }}
+                                        >
+                                            + Добавить
+                                        </button>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={newTagInput}
+                                            onChange={(e) => setNewTagInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    addManualTag(newTagInput);
+                                                } else if (e.key === 'Escape') {
+                                                    setNewTagInput('');
+                                                    setShowAddTagInput(false);
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                if (!newTagInput) {
+                                                    setShowAddTagInput(false);
+                                                }
+                                            }}
+                                            placeholder="Введите тег..."
+                                            autoFocus
+                                            style={{
+                                                padding: '6px 12px',
+                                                backgroundColor: '#222',
+                                                border: '1px solid #ff9500',
+                                                borderRadius: '16px',
+                                                color: 'white',
+                                                fontSize: '14px',
+                                                outline: 'none',
+                                                width: '150px'
+                                            }}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                            
+                            {/* AI предложения */}
+                            <div>
+                                <div style={{
+                                    fontSize: '12px',
+                                    color: '#666',
+                                    marginBottom: '8px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    <span style={{ color: '#ff9500' }}>✨</span> AI предложения
+                                </div>
+                                <div style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    minHeight: '32px'
+                                }}>
+                                    {aiSuggestions.length > 0 ? (
+                                        aiSuggestions.map((tag, index) => (
+                                            <div
+                                                key={index}
+                                                onClick={() => addTagFromSuggestion(tag)}
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    padding: '6px 12px',
+                                                    backgroundColor: tag.isNew ? '#1a3d1a' : '#1a2d3d',
+                                                    border: '1px solid',
+                                                    borderColor: tag.isNew ? '#22aa44' : '#2288aa',
+                                                    borderRadius: '16px',
+                                                    fontSize: '14px',
+                                                    color: tag.isNew ? '#4ec74e' : '#4ec7e7',
+                                                    cursor: 'pointer',
+                                                    opacity: 0.9,
+                                                    transition: 'all 0.2s ease',
+                                                    animation: `fadeIn 0.3s ease ${index * 0.05}s backwards`
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    e.currentTarget.style.opacity = '1';
+                                                    e.currentTarget.style.transform = 'scale(1.05)';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.opacity = '0.9';
+                                                    e.currentTarget.style.transform = 'scale(1)';
+                                                }}
+                                            >
+                                                {tag.text}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div style={{
+                                            color: '#666',
+                                            fontSize: '13px',
+                                            fontStyle: 'italic'
+                                        }}>
+                                            Используйте чат 💬 для генерации предложений
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* AI Chat панель */}
+                        {showTagChat && (
+                            <div style={{
+                                marginTop: '12px',
+                                padding: '12px',
+                                backgroundColor: '#181818',
+                                border: '1px solid #333',
+                                borderRadius: '8px'
+                            }}>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                        type="text"
+                                        value={tagPromptInput}
+                                        onChange={(e) => setTagPromptInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                applyTagPrompt();
+                                            }
+                                        }}
+                                        placeholder="Опишите стиль тегов..."
+                                        style={{
+                                            flex: 1,
+                                            padding: '8px 12px',
+                                            backgroundColor: '#222',
+                                            border: '1px solid #444',
+                                            borderRadius: '4px',
+                                            color: 'white',
+                                            fontSize: '14px',
+                                            outline: 'none'
+                                        }}
+                                        onFocus={(e) => e.currentTarget.style.borderColor = '#ff9500'}
+                                        onBlur={(e) => e.currentTarget.style.borderColor = '#444'}
+                                    />
+                                    <button
+                                        onClick={applyTagPrompt}
+                                        disabled={isGeneratingTags}
+                                        style={{
+                                            padding: '10px 16px',
+                                            borderRadius: '6px',
+                                            border: '1px solid',
+                                            borderColor: tagPromptInput.trim() ? '#22aa44' : '#444',
+                                            backgroundColor: tagPromptInput.trim() ? '#22aa44' : '#2a2a2a',
+                                            color: tagPromptInput.trim() ? 'white' : '#888',
+                                            cursor: isGeneratingTags ? 'not-allowed' : 'pointer',
+                                            fontSize: '14px',
+                                            transition: 'all 0.2s',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            opacity: isGeneratingTags ? '0.5' : '1'
+                                        }}
+                                        title={tagPromptInput.trim() ? '' : 'Использовать стандартную генерацию'}
+                                    >
+                                        {isGeneratingTags && (
+                                            <span style={{
+                                                display: 'inline-block',
+                                                width: '12px',
+                                                height: '12px',
+                                                border: '2px solid #ffffff30',
+                                                borderTopColor: 'white',
+                                                borderRadius: '50%',
+                                                animation: 'spin 0.6s linear infinite'
+                                            }} />
+                                        )}
+                                        <span>
+                                            {isGeneratingTags ? 'Генерирую...' : (tagPromptInput.trim() ? 'Генерировать' : 'Default')}
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* История тегов */}
+                        {showTagHistory && (
+                            <div style={{
+                                marginTop: '12px',
+                                maxHeight: '250px',
+                                overflowY: 'auto',
+                                padding: '12px',
+                                backgroundColor: '#181818',
+                                border: '1px solid #333',
+                                borderRadius: '8px'
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: '12px',
+                                    padding: '8px',
+                                    backgroundColor: '#222',
+                                    borderRadius: '4px'
+                                }}>
+                                    <span style={{ color: '#888', fontSize: '14px' }}>📜 История генераций</span>
+                                    <button
+                                        onClick={clearTagHistory}
+                                        style={{
+                                            fontSize: '12px',
+                                            padding: '4px 8px',
+                                            backgroundColor: '#aa2222',
+                                            border: '1px solid #aa2222',
+                                            borderRadius: '4px',
+                                            color: 'white',
+                                            cursor: 'pointer'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#cc3333'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#aa2222'}
+                                    >
+                                        Очистить
+                                    </button>
+                                </div>
+                                
+                                {tagHistoryLoading ? (
+                                    <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
+                                        Загрузка...
+                                    </div>
+                                ) : tagHistory.length > 0 ? (
+                                    <div>
+                                        {tagHistory.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                style={{
+                                                    marginBottom: '12px',
+                                                    padding: '8px',
+                                                    backgroundColor: '#222',
+                                                    borderRadius: '4px'
+                                                }}
+                                            >
+                                                <div style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    marginBottom: '8px',
+                                                    fontSize: '12px',
+                                                    color: '#666'
+                                                }}>
+                                                    <span>💬 Кастомная генерация</span>
+                                                    <span>
+                                                        {new Date(item.createdAt).toLocaleTimeString('ru-RU', {
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </span>
+                                                </div>
+                                                {item.prompt && (
+                                                    <div style={{
+                                                        color: '#888',
+                                                        fontSize: '13px',
+                                                        marginBottom: '8px',
+                                                        fontStyle: 'italic'
+                                                    }}>
+                                                        "{item.prompt}"
+                                                    </div>
+                                                )}
+                                                <div style={{
+                                                    display: 'flex',
+                                                    flexWrap: 'wrap',
+                                                    gap: '6px'
+                                                }}>
+                                                    {item.tags.map((tag, idx) => (
+                                                        <div
+                                                            key={idx}
+                                                            style={{
+                                                                fontSize: '12px',
+                                                                padding: '4px 8px',
+                                                                backgroundColor: tag.isNew ? '#1a3d1a' : '#1a2d3d',
+                                                                border: '1px solid',
+                                                                borderColor: tag.isNew ? '#22aa44' : '#2288aa',
+                                                                borderRadius: '12px',
+                                                                color: tag.isNew ? '#4ec74e' : '#4ec7e7'
+                                                            }}
+                                                        >
+                                                            {tag.text}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        textAlign: 'center',
+                                        padding: '20px',
+                                        color: '#666',
+                                        fontSize: '14px'
+                                    }}>
+                                        История пуста
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                     
                 </div>
                 
