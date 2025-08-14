@@ -75,6 +75,16 @@ export class NotesController {
     return { message: 'Demo data initialized successfully' };
   }
 
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update note content (title and text)' })
+  @ApiResponse({ status: 200, description: 'Note updated successfully' })
+  async updateNote(
+    @Param('id') noteId: string,
+    @Body() updateData: { title?: string; content?: string },
+  ): Promise<Note> {
+    return this.notesService.updateNote(noteId, updateData);
+  }
+
   @Patch(':id/position')
   @ApiOperation({ summary: 'Update note position (after drag)' })
   @ApiResponse({ status: 200, description: 'Position updated successfully' })

@@ -1,6 +1,6 @@
 import { ShapeUtil, HTMLContainer, Rectangle2d, resizeBox, T } from 'tldraw';
 import React from 'react';
-
+ 
 // Кастомный размер для заметок
 const CUSTOM_NOTE_WIDTH = 180;
 const CUSTOM_NOTE_HEIGHT = 150;

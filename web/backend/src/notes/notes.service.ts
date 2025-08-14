@@ -227,6 +227,33 @@ export class NotesService {
   }
 
   /**
+   * Update note content (title and text)
+   */
+  async updateNote(
+    noteId: string,
+    updateData: { title?: string; content?: string },
+  ): Promise<Note> {
+    const note = await this.prisma.note.findUnique({
+      where: { id: noteId },
+    });
+
+    if (!note) {
+      throw new Error('Note not found');
+    }
+
+    console.log(`📝 Content update for note ${noteId}:`, updateData);
+
+    return this.prisma.note.update({
+      where: { id: noteId },
+      data: {
+        ...(updateData.title !== undefined && { title: updateData.title }),
+        ...(updateData.content !== undefined && { content: updateData.content }),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
    * Update note position (when user drags it)
    */
   async updateNotePosition(

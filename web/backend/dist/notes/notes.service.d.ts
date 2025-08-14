@@ -18,6 +18,10 @@ export declare class NotesService {
     createRandomNote(userId: string): Promise<Note>;
     getNotes(userId: string, days?: number): Promise<Note[]>;
     getNoteById(noteId: string, userId: string): Promise<Note>;
+    updateNote(noteId: string, updateData: {
+        title?: string;
+        content?: string;
+    }): Promise<Note>;
     updateNotePosition(noteId: string, x: number, y: number): Promise<Note>;
     deleteNote(noteId: string): Promise<void>;
     getUniqueDates(userId: string): Promise<Date[]>;

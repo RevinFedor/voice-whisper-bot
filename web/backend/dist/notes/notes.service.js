@@ -168,6 +168,23 @@ let NotesService = class NotesService {
         }
         return note;
     }
+    async updateNote(noteId, updateData) {
+        const note = await this.prisma.note.findUnique({
+            where: { id: noteId },
+        });
+        if (!note) {
+            throw new Error('Note not found');
+        }
+        console.log(`📝 Content update for note ${noteId}:`, updateData);
+        return this.prisma.note.update({
+            where: { id: noteId },
+            data: {
+                ...(updateData.title !== undefined && { title: updateData.title }),
+                ...(updateData.content !== undefined && { content: updateData.content }),
+                updatedAt: new Date(),
+            },
+        });
+    }
     async updateNotePosition(noteId, x, y) {
         const note = await this.prisma.note.findUnique({
             where: { id: noteId },

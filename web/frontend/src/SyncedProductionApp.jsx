@@ -1253,6 +1253,38 @@ export default function SyncedProductionApp() {
                         setSelectedNote(null);
                     }}
                     note={selectedNote}
+                    onNoteUpdate={(updatedNote) => {
+                        // Обновляем shape в canvas после редактирования
+                        if (editor && updatedNote) {
+                            const shapes = editor.getCurrentPageShapes();
+                            const shape = shapes.find(s => s.props?.dbId === updatedNote.id);
+                            
+                            if (shape) {
+                                const richText = {
+                                    type: 'doc',
+                                    content: [
+                                        {
+                                            type: 'paragraph',
+                                            content: [{ type: 'text', text: updatedNote.title || '' }]
+                                        },
+                                        {
+                                            type: 'paragraph',
+                                            content: [{ type: 'text', text: updatedNote.content || '' }]
+                                        }
+                                    ]
+                                };
+                                
+                                editor.updateShape({
+                                    id: shape.id,
+                                    type: 'custom-note',
+                                    props: { richText }
+                                });
+                            }
+                            
+                            // Обновляем selectedNote чтобы модалка показывала актуальные данные
+                            setSelectedNote(updatedNote);
+                        }
+                    }}
                 />
             </div>
         </>

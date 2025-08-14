@@ -12,6 +12,10 @@ export declare class NotesController {
     initializeDemoData(userId?: string): Promise<{
         message: string;
     }>;
+    updateNote(noteId: string, updateData: {
+        title?: string;
+        content?: string;
+    }): Promise<Note>;
     updatePosition(noteId: string, updatePositionDto: UpdatePositionDto): Promise<Note>;
     deleteNote(noteId: string): Promise<{
         message: string;

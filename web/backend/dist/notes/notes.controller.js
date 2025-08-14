@@ -42,6 +42,9 @@ let NotesController = class NotesController {
         await this.notesService.initializeDemoData(userId);
         return { message: 'Demo data initialized successfully' };
     }
+    async updateNote(noteId, updateData) {
+        return this.notesService.updateNote(noteId, updateData);
+    }
     async updatePosition(noteId, updatePositionDto) {
         return this.notesService.updateNotePosition(noteId, updatePositionDto.x, updatePositionDto.y);
     }
@@ -104,6 +107,16 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], NotesController.prototype, "initializeDemoData", null);
+__decorate([
+    (0, common_1.Patch)(':id'),
+    (0, swagger_1.ApiOperation)({ summary: 'Update note content (title and text)' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: 'Note updated successfully' }),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], NotesController.prototype, "updateNote", null);
 __decorate([
     (0, common_1.Patch)(':id/position'),
     (0, swagger_1.ApiOperation)({ summary: 'Update note position (after drag)' }),
