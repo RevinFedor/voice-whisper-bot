@@ -14,10 +14,6 @@ export class ObsidianService {
   }
 
   async getAllTags(): Promise<string[]> {
-    console.log('🏷️ Getting all tags from Obsidian...');
-    console.log('📡 Obsidian URL:', this.baseUrl);
-    console.log('🔑 API Key present:', !!this.apiKey);
-    
     try {
       // Get all files with tags using search
       const response = await axios.post(
@@ -34,8 +30,6 @@ export class ObsidianService {
       );
 
       const allTags = new Set<string>();
-      
-      console.log('📚 Found files with tags:', response.data?.length || 0);
 
       // For each file, get its metadata
       if (response.data && Array.isArray(response.data)) {
@@ -95,19 +89,17 @@ export class ObsidianService {
                 });
               }
             } catch (e) {
-              // Skip files with errors
-              console.warn(`Error getting file ${item.filename}:`, e);
+              // Skip files with errors silently
             }
           }
         }
       }
 
       const result = Array.from(allTags).sort();
-      console.log('✅ Total unique tags found:', result.length, result);
       return result;
     } catch (error) {
-      console.error('❌ Error fetching tags from Obsidian:', error.message);
       // Return empty array if Obsidian is not available
+      console.log('⚠️ [Obsidian] Недоступен, используем пустой список тегов');
       return [];
     }
   }

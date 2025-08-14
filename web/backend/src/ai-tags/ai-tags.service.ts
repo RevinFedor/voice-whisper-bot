@@ -17,6 +17,14 @@ export class AiTagsService {
   }
 
   async generateTags(noteId: string, customPrompt?: string) {
+    // Логирование начала генерации
+    if (customPrompt) {
+      console.log('🎯 [Tags] Кастомная генерация');
+      console.log('   📝 Промпт:', customPrompt);
+    } else {
+      console.log('🤖 [Tags] Default генерация');
+    }
+    
     // Get note details
     const note = await this.prisma.note.findUnique({
       where: { id: noteId },
@@ -28,6 +36,7 @@ export class AiTagsService {
 
     // Get available tags from Obsidian
     const availableTags = await this.obsidianService.getAllTags();
+    console.log(`   📚 Доступно тегов в Obsidian: ${availableTags.length}`);
 
     // Build the prompt
     const defaultPrompt = `Проанализируй содержимое заметки и предложи релевантные теги.
@@ -80,6 +89,15 @@ export class AiTagsService {
       const existingTags = result.existing || [];
       const newTags = result.new || [];
       const allTags = [...existingTags, ...newTags];
+      
+      // Красивое логирование результатов
+      console.log(`   ✅ Сгенерировано тегов: ${allTags.length}`);
+      if (existingTags.length > 0) {
+        console.log(`   📌 Существующие: ${existingTags.map(t => `#${t}`).join(', ')}`);
+      }
+      if (newTags.length > 0) {
+        console.log(`   🆕 Новые: ${newTags.map(t => `#${t}`).join(', ')}`);
+      }
 
       // Save to history only if custom prompt was provided
       if (customPrompt) {
@@ -93,6 +111,7 @@ export class AiTagsService {
             model: 'gpt-4o-mini',
           },
         });
+        console.log('   💾 Сохранено в историю');
       }
 
       return {
@@ -104,7 +123,7 @@ export class AiTagsService {
         newTags,
       };
     } catch (error) {
-      console.error('Error generating tags:', error);
+      console.error('   ❌ Ошибка генерации тегов:', error.message);
       throw new Error('Failed to generate tags');
     }
   }
@@ -114,6 +133,8 @@ export class AiTagsService {
       where: { noteId },
       orderBy: { createdAt: 'desc' },
     });
+    
+    console.log(`📜 [Tags] Загрузка истории: ${history.length} записей`);
 
     return history.map(item => ({
       id: item.id,
@@ -129,9 +150,11 @@ export class AiTagsService {
   }
 
   async clearHistory(noteId: string) {
-    await this.prisma.tagHistory.deleteMany({
+    const result = await this.prisma.tagHistory.deleteMany({
       where: { noteId },
     });
+    
+    console.log(`🗑️ [Tags] История очищена: удалено ${result.count} записей`);
 
     return { success: true };
   }
@@ -139,6 +162,10 @@ export class AiTagsService {
   async updateNoteTags(noteId: string, tags: string[]) {
     // Remove # from tags before saving
     const cleanTags = tags.map(tag => tag.replace(/^#/, ''));
+    
+    console.log('📝 [Tags] Обновление тегов заметки');
+    console.log(`   🏷️ Теги: ${cleanTags.map(t => `#${t}`).join(', ')}`);
+    console.log(`   📊 Количество: ${cleanTags.length}`);
 
     await this.prisma.note.update({
       where: { id: noteId },
@@ -150,6 +177,7 @@ export class AiTagsService {
 
   async getObsidianTags() {
     const tags = await this.obsidianService.getAllTags();
+    console.log(`🏷️ [Tags] Запрос тегов Obsidian: найдено ${tags.length}`);
     return tags.map(tag => tag.startsWith('#') ? tag : `#${tag}`);
   }
 }

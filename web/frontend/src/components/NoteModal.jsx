@@ -1741,6 +1741,94 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                 )}
                             </div>
                         )}
+                        
+                        {/* Панель тегов Obsidian */}
+                        {showObsidianTags && (
+                            <div
+                                style={{
+                                    marginTop: '12px',
+                                    maxHeight: '250px',
+                                    overflowY: 'auto',
+                                    padding: '12px',
+                                    backgroundColor: '#181818',
+                                    border: '1px solid #333',
+                                    borderRadius: '8px',
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        marginBottom: '12px',
+                                        padding: '8px',
+                                        backgroundColor: '#222',
+                                        borderRadius: '4px',
+                                        fontSize: '14px',
+                                        color: '#888',
+                                    }}
+                                >
+                                    🏷️ Все теги в Obsidian
+                                </div>
+                                
+                                {obsidianTags.length > 0 ? (
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            gap: '8px',
+                                        }}
+                                    >
+                                        {obsidianTags.map((tag, index) => {
+                                            const isUsed = localTags.includes(tag.replace(/^#/, ''));
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    onClick={() => !isUsed && addManualTag(tag.replace(/^#/, ''))}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        padding: '6px 12px',
+                                                        backgroundColor: isUsed ? '#2a2a2a' : '#1a2d3d',
+                                                        border: '1px solid',
+                                                        borderColor: isUsed ? '#444' : '#2288aa',
+                                                        borderRadius: '16px',
+                                                        fontSize: '14px',
+                                                        color: isUsed ? '#666' : '#4ec7e7',
+                                                        cursor: isUsed ? 'default' : 'pointer',
+                                                        opacity: isUsed ? 0.6 : 0.9,
+                                                        transition: 'all 0.2s ease',
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        if (!isUsed) {
+                                                            e.currentTarget.style.opacity = '1';
+                                                            e.currentTarget.style.transform = 'scale(1.05)';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        if (!isUsed) {
+                                                            e.currentTarget.style.opacity = '0.9';
+                                                            e.currentTarget.style.transform = 'scale(1)';
+                                                        }
+                                                    }}
+                                                    title={isUsed ? 'Тег уже добавлен' : 'Нажмите чтобы добавить'}
+                                                >
+                                                    {tag}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div
+                                        style={{
+                                            textAlign: 'center',
+                                            padding: '20px',
+                                            color: '#666',
+                                            fontSize: '14px',
+                                        }}
+                                    >
+                                        Загрузка тегов из Obsidian...
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 

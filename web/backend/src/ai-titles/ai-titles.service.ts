@@ -77,10 +77,10 @@ export class AiTitlesService {
 
       // Логируем использование промпта
       if (customPrompt) {
-        console.log(`🎨 AI Title Generation with custom prompt for note ${noteId}:`);
-        console.log(`   Custom prompt: "${customPrompt}"`);
+        console.log('🎯 [Title] Кастомная генерация');
+        console.log('   📝 Промпт:', customPrompt);
       } else {
-        console.log(`🤖 AI Title Generation with DEFAULT prompt for note ${noteId}`);
+        console.log('🤖 [Title] Default генерация');
       }
 
       // Call OpenAI API
@@ -109,7 +109,7 @@ export class AiTitlesService {
       // Clean the title from forbidden characters
       const cleanTitle = generatedTitle.replace(/[\/\\:*?"<>|]/g, '');
 
-      console.log(`✅ Generated title: "${cleanTitle}"`);
+      console.log(`   ✅ Сгенерирован заголовок: "${cleanTitle}"`);
 
       // Save to history
       const titleHistory = await this.prisma.titleHistory.create({
@@ -128,11 +128,11 @@ export class AiTitlesService {
         data: { title: cleanTitle },
       });
 
-      console.log(`💾 Title saved to history with ID: ${titleHistory.id}`);
+      console.log(`   💾 Сохранено в историю`);
 
       return titleHistory;
     } catch (error) {
-      console.error('OpenAI API error:', error);
+      console.error('   ❌ Ошибка генерации:', error.message);
       throw new InternalServerErrorException('Failed to generate title');
     }
   }
