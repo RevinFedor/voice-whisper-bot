@@ -146,15 +146,29 @@ export class ObsidianService {
       // Формируем frontmatter
       const formattedDate = note.date.toISOString().slice(0, 16).replace('T', ' ');
       const tags = note.tags?.length > 0 ? note.tags : [];
-      const tagsString = tags.length > 0 ? `\n  - ${tags.join('\n  - ')}` : '';
+      
+      // Экранируем title для YAML (заключаем в кавычки если содержит спецсимволы)
+      const escapedTitle = note.title.includes(':') || note.title.includes('"') || note.title.includes('\n')
+        ? `"${note.title.replace(/"/g, '\\"')}"` 
+        : note.title;
 
-      const content = `---
-title: ${note.title}
-date: ${formattedDate}
-source: WebApplication
-tags:${tagsString}
-created: ${note.createdAt.toISOString()}
----
+      // Формируем YAML frontmatter
+      let frontmatter = `---
+title: ${escapedTitle}
+date: "${formattedDate}"
+source: WebApplication`;
+
+      // Добавляем tags только если они есть
+      if (tags.length > 0) {
+        frontmatter += `\ntags:\n  - ${tags.join('\n  - ')}`;
+      } else {
+        frontmatter += `\ntags: []`;
+      }
+
+      frontmatter += `\ncreated: "${note.createdAt.toISOString()}"
+---`;
+
+      const content = `${frontmatter}
 
 ${note.content || ''}`;
 
