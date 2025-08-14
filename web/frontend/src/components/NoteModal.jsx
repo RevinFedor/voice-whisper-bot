@@ -541,10 +541,11 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                             }} />
                             
                             <label style={{
-                                fontSize: '11px',
+                                fontSize: '13px',
                                 textTransform: 'uppercase',
                                 letterSpacing: '1px',
-                                color: '#666'
+                                color: '#888',
+                                fontWeight: '600'
                             }}>
                                 Заголовок
                             </label>
@@ -575,7 +576,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         // Не показываем оранжевую рамку когда input скрыт
                                         border: isTitleFocused && !isExpanded ? '2px solid #ff9500' : '1px solid #444',
                                         boxShadow: isTitleFocused && !isExpanded ? '0 0 8px rgba(255, 149, 0, 0.2)' : 'none',
-                                        fontSize: '14px',
+                                        fontSize: '16px',
                                         outline: 'none',
                                         transition: 'all 0.2s ease',
                                         boxSizing: 'border-box'
@@ -837,7 +838,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             backgroundColor: '#222',
                                             border: '2px solid #ff9500',
                                             boxShadow: '0 0 12px rgba(255, 149, 0, 0.2)',
-                                            fontSize: '14px',
+                                            fontSize: '16px',
                                             outline: 'none',
                                             overflowY: 'auto',
                                             overflowX: 'hidden',
@@ -883,10 +884,11 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                             }} />
                             
                             <label style={{
-                                fontSize: '11px',
+                                fontSize: '13px',
                                 textTransform: 'uppercase',
                                 letterSpacing: '1px',
-                                color: '#666'
+                                color: '#888',
+                                fontWeight: '600'
                             }}>
                                 Содержимое
                             </label>
@@ -933,7 +935,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                 backgroundColor: '#222',
                                 border: isContentFocused ? '2px solid #ff9500' : '1px solid #444',
                                 boxShadow: isContentFocused ? '0 0 12px rgba(255, 149, 0, 0.2)' : 'none',
-                                fontSize: '14px',
+                                fontSize: '16px',
                                 minHeight: '300px',
                                 resize: 'none',
                                 outline: 'none',
