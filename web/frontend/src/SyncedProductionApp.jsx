@@ -5,6 +5,7 @@ import { CustomNoteShapeUtil } from './components/CustomNoteShape';
 import { StaticDateHeaderShapeUtil } from './components/StaticDateHeaderShape';
 import DatePickerModal from './components/DatePickerModal';
 import NoteModal from './components/NoteModal';
+import ExportToast from './components/ExportToast';
 import './utils/debugHelpers';
 import './utils/debugShapes';
 import './utils/quickTest';
@@ -209,6 +210,8 @@ export default function SyncedProductionApp() {
     const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     const [selectedNote, setSelectedNote] = useState(null);
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+    const [showExportToast, setShowExportToast] = useState(false);
+    const [exportToastData, setExportToastData] = useState(null);
     
     // Load notes from backend
     const loadNotes = useCallback(async () => {
@@ -1285,6 +1288,35 @@ export default function SyncedProductionApp() {
                             setSelectedNote(updatedNote);
                         }
                     }}
+                    onExportSuccess={(exportData) => {
+                        // Закрываем модалку
+                        setIsNoteModalOpen(false);
+                        setSelectedNote(null);
+                        
+                        // Удаляем shape с canvas
+                        if (editor && exportData.noteId) {
+                            const shapes = editor.getCurrentPageShapes();
+                            const shape = shapes.find(s => s.props?.dbId === exportData.noteId);
+                            if (shape) {
+                                editor.deleteShape(shape.id);
+                            }
+                        }
+                        
+                        // Показываем toast после закрытия модалки
+                        setTimeout(() => {
+                            setExportToastData(exportData);
+                            setShowExportToast(true);
+                        }, 300);
+                    }}
+                />
+                
+                {/* Export Toast Notification */}
+                <ExportToast
+                    show={showExportToast}
+                    onClose={() => setShowExportToast(false)}
+                    noteTitle={exportToastData?.noteTitle}
+                    folderPath={exportToastData?.folderPath}
+                    obsidianUrl={exportToastData?.obsidianUrl}
                 />
             </div>
         </>
