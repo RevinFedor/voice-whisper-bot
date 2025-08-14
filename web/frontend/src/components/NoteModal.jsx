@@ -866,14 +866,16 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         >
                             {isExporting ? (
                                 <>
-                                    <div style={{
-                                        width: '16px',
-                                        height: '16px',
-                                        border: '2px solid transparent',
-                                        borderTopColor: '#999',
-                                        borderRadius: '50%',
-                                        animation: 'spin 0.6s linear infinite',
-                                    }} />
+                                    <div
+                                        style={{
+                                            width: '16px',
+                                            height: '16px',
+                                            border: '2px solid transparent',
+                                            borderTopColor: '#999',
+                                            borderRadius: '50%',
+                                            animation: 'spin 0.6s linear infinite',
+                                        }}
+                                    />
                                     <style>{`
                                         @keyframes spin {
                                             to { transform: rotate(360deg); }
@@ -881,8 +883,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                     `}</style>
                                 </>
                             ) : (
-                                <img 
-                                    src={obsidianIcon} 
+                                <img
+                                    src={obsidianIcon}
                                     alt="Obsidian"
                                     style={{
                                         width: '30px',
@@ -891,8 +893,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                 />
                             )}
                         </button>
-                        
-                       
                     </div>
                 </div>
 
@@ -1380,29 +1380,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                 Теги
                             </label>
                             <div style={{ display: 'flex', gap: '4px' }}>
-                                {/* Кнопка чата */}
-                                <button
-                                    onClick={toggleTagChat}
-                                    title="AI чат для тегов"
-                                    style={{
-                                        width: '32px',
-                                        height: '32px',
-                                        padding: '0',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '14px',
-                                        backgroundColor: showTagChat ? '#22aa44' : '#2a2a2a',
-                                        border: '1px solid',
-                                        borderColor: showTagChat ? '#22aa44' : '#444',
-                                        borderRadius: '6px',
-                                        color: showTagChat ? 'white' : '#888',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                    }}
-                                >
-                                    ✨
-                                </button>
                                 {/* Кнопка истории */}
                                 <button
                                     onClick={toggleTagHistory}
@@ -1425,6 +1402,29 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                     }}
                                 >
                                     📜
+                                </button>
+                                {/* Кнопка чата */}
+                                <button
+                                    onClick={toggleTagChat}
+                                    title="AI чат для тегов"
+                                    style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        padding: '0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '14px',
+                                        backgroundColor: showTagChat ? '#22aa44' : '#2a2a2a',
+                                        border: '1px solid',
+                                        borderColor: showTagChat ? '#22aa44' : '#444',
+                                        borderRadius: '6px',
+                                        color: showTagChat ? 'white' : '#888',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    ✨
                                 </button>
                                 {/* Кнопка тегов Obsidian */}
                                 <button
@@ -1857,7 +1857,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                 )}
                             </div>
                         )}
-                        
+
                         {/* Панель тегов Obsidian */}
                         {showObsidianTags && (
                             <div
@@ -1883,7 +1883,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                 >
                                     🏷️ Все теги в Obsidian
                                 </div>
-                                
+
                                 {obsidianTags.length > 0 ? (
                                     <div
                                         style={{
