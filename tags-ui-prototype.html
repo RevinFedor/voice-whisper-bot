@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tags UI Prototype</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+        }
+        
+        .modal-section {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            max-width: 800px;
+            margin: 0 auto 20px;
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        
+        .section-label {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: transparent;
+        }
+        
+        .indicator.active {
+            background: #ff9500;
+        }
+        
+        /* Теги секция */
+        .tags-container {
+            margin-bottom: 16px;
+        }
+        
+        .tags-content {
+            padding: 12px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 8px;
+        }
+        
+        .tags-group {
+            margin-bottom: 0;
+        }
+        
+        .tags-group-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .current-tags, .ai-suggestions-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 32px;
+        }
+        
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 16px;
+            font-size: 14px;
+            cursor: default;
+            transition: all 0.2s;
+        }
+        
+        .tag:hover {
+            background: #333;
+            border-color: #555;
+        }
+        
+        .tag.new {
+            background: #1a3d1a;
+            border-color: #22aa44;
+            color: #4ec74e;
+        }
+        
+        .tag.existing {
+            background: #1a2d3d;
+            border-color: #2288aa;
+            color: #4ec7e7;
+        }
+        
+        .tag .remove {
+            color: #666;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            margin-left: 4px;
+        }
+        
+        .tag .remove:hover {
+            color: #ff4444;
+        }
+        
+        .tag-actions {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .btn {
+            padding: 10px 16px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: #888;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .btn:hover {
+            background: #333;
+            border-color: #555;
+            color: #fff;
+        }
+        
+        .btn.primary {
+            background: #22aa44;
+            border-color: #22aa44;
+            color: white;
+        }
+        
+        .btn.primary:hover {
+            background: #2bc255;
+        }
+        
+        .btn-icon {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .btn-icon.active {
+            background: #22aa44;
+            border-color: #22aa44;
+            color: white;
+        }
+        
+        /* Панель добавления тегов вручную */
+        .manual-add-panel {
+            padding: 12px;
+            background: #181818;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .manual-add-panel input {
+            width: 100%;
+            padding: 8px 12px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: white;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .manual-add-panel input:focus {
+            border-color: #ff9500;
+        }
+        
+        .manual-add-hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+        
+        /* AI предложения */
+        .ai-suggestions {
+            padding: 12px;
+            background: #181818;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .suggestions-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #888;
+        }
+        
+        .suggestions-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .suggestion-tag {
+            cursor: pointer;
+            opacity: 0.9;
+            transition: all 0.2s ease;
+        }
+        
+        .suggestion-tag:hover {
+            opacity: 1;
+            transform: scale(1.05);
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+            to {
+                opacity: 0.9;
+                transform: translateY(0);
+            }
+        }
+        
+        .add-tag-btn:hover {
+            background: #2a2a2a !important;
+            border-color: #888 !important;
+            color: #fff !important;
+        }
+        
+        .suggestion-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #333;
+        }
+        
+        /* AI Chat панель */
+        .ai-chat-panel {
+            padding: 12px;
+            background: #181818;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .chat-input-group {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 8px 12px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: white;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .chat-input:focus {
+            border-color: #ff9500;
+        }
+        
+        /* История чата */
+        .chat-history {
+            max-height: 250px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #181818;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+        
+        .chat-message {
+            margin-bottom: 12px;
+            padding: 8px;
+            background: #222;
+            border-radius: 4px;
+        }
+        
+        .chat-message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .chat-message-prompt {
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 8px;
+            font-style: italic;
+        }
+        
+        .chat-message-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        
+        .chat-message-tags .tag {
+            font-size: 12px;
+            padding: 4px 8px;
+        }
+        
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: #222;
+            border-radius: 4px;
+        }
+        
+        .clear-history {
+            font-size: 12px;
+            padding: 4px 8px;
+            background: #aa2222;
+            border-color: #aa2222;
+        }
+        
+        .clear-history:hover {
+            background: #cc3333;
+        }
+        
+        /* Состояния */
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #ffffff30;
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Tabs для переключения режимов */
+        .view-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+        
+        .view-tab {
+            padding: 6px 12px;
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .view-tab:hover {
+            background: #2a2a2a;
+            color: #888;
+        }
+        
+        .view-tab.active {
+            background: #22aa44;
+            border-color: #22aa44;
+            color: white;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Заголовок и Содержимое (уже существуют) -->
+    <div class="modal-section">
+        <div class="section-label">Заголовок</div>
+        <input type="text" value="Архитектура системы заметок" style="width: 100%; padding: 12px; background: #222; border: 1px solid #444; border-radius: 8px; color: white; font-size: 16px;">
+    </div>
+    
+    <div class="modal-section">
+        <div class="section-label">Содержимое</div>
+        <textarea style="width: 100%; min-height: 200px; padding: 16px; background: #222; border: 1px solid #444; border-radius: 8px; color: white; font-size: 16px; resize: none;">Описание архитектуры...</textarea>
+    </div>
+    
+    <!-- НОВЫЙ БЛОК: Теги -->
+    <div class="modal-section">
+        <div class="section-header">
+            <div class="section-label">
+                <div class="indicator"></div>
+                Теги
+            </div>
+            <div style="display: flex; gap: 4px;">
+                <!-- Кнопка AI генерации -->
+                <button class="btn btn-icon" title="Генерировать теги с AI" onclick="getAISuggestions()">
+                    ✨
+                </button>
+                <!-- Кнопка чата -->
+                <button class="btn btn-icon" id="chatBtn" title="AI чат для тегов" onclick="toggleChat()">
+                    💬
+                </button>
+                <!-- Кнопка истории -->
+                <button class="btn btn-icon" id="historyBtn" title="История генераций" onclick="toggleHistory()">
+                    📜
+                </button>
+            </div>
+        </div>
+        
+        <!-- Блок с тегами -->
+        <div class="tags-content">
+            <!-- Текущие теги -->
+            <div class="tags-group">
+                <div class="tags-group-label">Текущие теги</div>
+                <div class="current-tags">
+                    <div class="tag">#архитектура <span class="remove">×</span></div>
+                    <div class="tag">#система <span class="remove">×</span></div>
+                    <div class="tag">#заметки <span class="remove">×</span></div>
+                    <div class="tag">#backend <span class="remove">×</span></div>
+                    
+                    <!-- Кнопка добавить -->
+                    <button class="tag add-tag-btn" onclick="showAddInput()" style="background: transparent; border: 1px dashed #666; color: #888; cursor: pointer;">
+                        + Добавить
+                    </button>
+                    
+                    <!-- Input для добавления (скрыт по умолчанию) -->
+                    <input type="text" 
+                           class="tag-input" 
+                           placeholder="Введите тег..." 
+                           style="display: none; 
+                                  padding: 6px 12px; 
+                                  background: #222; 
+                                  border: 1px solid #ff9500;
+                                  border-radius: 16px;
+                                  color: white;
+                                  font-size: 14px;
+                                  outline: none;
+                                  width: 150px;"
+                           onblur="hideAddInput()"
+                           onkeydown="handleAddInput(event)">
+                </div>
+            </div>
+            
+            <!-- AI предложения -->
+            <div class="tags-group ai-suggestions-group" style="display: none; margin-top: 16px;">
+                <div class="tags-group-label">
+                    <span style="color: #ff9500;">✨</span> AI предложения
+                </div>
+                <div class="ai-suggestions-list">
+                    <div class="tag suggestion-tag new" onclick="addTag(this)">#nestjs</div>
+                    <div class="tag suggestion-tag new" onclick="addTag(this)">#prisma</div>
+                    <div class="tag suggestion-tag existing" onclick="addTag(this)">#архитектура</div>
+                    <div class="tag suggestion-tag new" onclick="addTag(this)">#api</div>
+                    <div class="tag suggestion-tag existing" onclick="addTag(this)">#backend</div>
+                    <div class="tag suggestion-tag new" onclick="addTag(this)">#typescript</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- AI Chat панель (скрыта по умолчанию) -->
+        <div class="ai-chat-panel" style="display: none;">
+            <div class="chat-input-group">
+                <input class="chat-input" placeholder="Опишите, какие теги нужны..." />
+                <button class="btn primary">
+                    <span class="spinner" style="display: none;"></span>
+                    <span>Генерировать</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- История чата (скрыта по умолчанию) -->
+        <div class="chat-history" style="display: none;">
+            <div class="history-header">
+                <span style="color: #888; font-size: 14px;">📜 История генераций</span>
+                <button class="btn clear-history">Очистить</button>
+            </div>
+            
+            <div class="chat-message">
+                <div class="chat-message-header">
+                    <span>🤖 AI генерация</span>
+                    <span>10:45</span>
+                </div>
+                <div class="chat-message-prompt">"Добавь теги для технической документации"</div>
+                <div class="chat-message-tags">
+                    <div class="tag new">#documentation</div>
+                    <div class="tag new">#tech-specs</div>
+                    <div class="tag new">#readme</div>
+                </div>
+            </div>
+            
+            <div class="chat-message">
+                <div class="chat-message-header">
+                    <span>✨ Стандартная генерация</span>
+                    <span>10:30</span>
+                </div>
+                <div class="chat-message-tags">
+                    <div class="tag new">#nestjs</div>
+                    <div class="tag new">#prisma</div>
+                    <div class="tag existing">#backend</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Показать input для добавления тега
+        function showAddInput() {
+            const btn = document.querySelector('.add-tag-btn');
+            const input = document.querySelector('.tag-input');
+            btn.style.display = 'none';
+            input.style.display = 'inline-block';
+            input.focus();
+        }
+        
+        // Скрыть input для добавления
+        function hideAddInput() {
+            const btn = document.querySelector('.add-tag-btn');
+            const input = document.querySelector('.tag-input');
+            setTimeout(() => {
+                btn.style.display = 'inline-block';
+                input.style.display = 'none';
+                input.value = '';
+            }, 200);
+        }
+        
+        // Обработка ввода нового тега
+        function handleAddInput(event) {
+            if (event.key === 'Enter') {
+                const input = event.target;
+                let value = input.value.trim();
+                if (value) {
+                    // Добавляем # если его нет
+                    if (!value.startsWith('#')) {
+                        value = '#' + value;
+                    }
+                    
+                    // Создаем новый тег
+                    const newTag = document.createElement('div');
+                    newTag.className = 'tag';
+                    newTag.innerHTML = value + ' <span class="remove">×</span>';
+                    
+                    // Добавляем перед кнопкой "Добавить"
+                    const addBtn = document.querySelector('.add-tag-btn');
+                    addBtn.parentElement.insertBefore(newTag, addBtn);
+                    
+                    console.log('Добавлен тег:', value);
+                    hideAddInput();
+                }
+            } else if (event.key === 'Escape') {
+                hideAddInput();
+            }
+        }
+        
+        // Добавить тег из AI предложений
+        function addTag(element) {
+            // Создаем новый тег в текущих тегах
+            const newTag = document.createElement('div');
+            newTag.className = 'tag';
+            newTag.innerHTML = element.textContent + ' <span class="remove">×</span>';
+            
+            // Добавляем перед кнопкой "Добавить"
+            const addBtn = document.querySelector('.add-tag-btn');
+            addBtn.parentElement.insertBefore(newTag, addBtn);
+            
+            // Скрываем предложение с анимацией
+            element.style.opacity = '0';
+            element.style.transform = 'scale(0.8)';
+            setTimeout(() => {
+                element.style.display = 'none';
+            }, 200);
+            
+            console.log('Добавлен тег:', element.textContent.trim());
+        }
+        
+        // Получить AI предложения
+        function getAISuggestions() {
+            // Показываем блок с AI предложениями
+            const suggestionsGroup = document.querySelector('.ai-suggestions-group');
+            const suggestions = suggestionsGroup.querySelectorAll('.suggestion-tag');
+            
+            // Показываем блок предложений
+            suggestionsGroup.style.display = 'block';
+            
+            // Сначала скрываем все предложения и показываем с анимацией
+            suggestions.forEach(tag => {
+                tag.style.display = 'inline-flex';
+                tag.style.opacity = '1'; // Сбрасываем если были скрыты
+                tag.style.transform = 'scale(1)';
+            });
+            
+            // Анимация появления блока
+            suggestionsGroup.style.opacity = '0';
+            setTimeout(() => {
+                suggestionsGroup.style.opacity = '1';
+                suggestionsGroup.style.transition = 'opacity 0.3s';
+            }, 100);
+        }
+        
+        // Переключить чат (закрывает историю)
+        function toggleChat() {
+            const chat = document.querySelector('.ai-chat-panel');
+            const history = document.querySelector('.chat-history');
+            const chatBtn = document.getElementById('chatBtn');
+            const historyBtn = document.getElementById('historyBtn');
+            
+            const isOpening = chat.style.display === 'none';
+            
+            // Закрываем историю если открыта
+            history.style.display = 'none';
+            historyBtn.classList.remove('active');
+            
+            // Переключаем чат
+            chat.style.display = isOpening ? 'block' : 'none';
+            if (isOpening) {
+                chatBtn.classList.add('active');
+                // Фокус на input
+                const input = chat.querySelector('.chat-input');
+                if (input) input.focus();
+            } else {
+                chatBtn.classList.remove('active');
+            }
+        }
+        
+        // Переключить историю (закрывает чат)
+        function toggleHistory() {
+            const chat = document.querySelector('.ai-chat-panel');
+            const history = document.querySelector('.chat-history');
+            const chatBtn = document.getElementById('chatBtn');
+            const historyBtn = document.getElementById('historyBtn');
+            
+            const isOpening = history.style.display === 'none';
+            
+            // Закрываем чат если открыт
+            chat.style.display = 'none';
+            chatBtn.classList.remove('active');
+            
+            // Переключаем историю
+            history.style.display = isOpening ? 'block' : 'none';
+            if (isOpening) {
+                historyBtn.classList.add('active');
+            } else {
+                historyBtn.classList.remove('active');
+            }
+        }
+        
+        // Обработка удаления тегов
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove')) {
+                const tag = e.target.parentElement;
+                tag.style.opacity = '0';
+                setTimeout(() => tag.remove(), 200);
+            }
+        });
+    </script>
+</body>
+</html>
