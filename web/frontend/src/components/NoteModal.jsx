@@ -1598,7 +1598,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                         letterSpacing: '0.5px',
                                     }}
                                 >
-                                    <span style={{ color: '#ff9500' }}>✨</span> AI предложения
+                                  AI предложения
                                 </div>
                                 <div
                                     style={{
@@ -1646,6 +1646,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                 color: '#666',
                                                 fontSize: '13px',
                                                 fontStyle: 'italic',
+                                                marginLeft : '2px'
                                             }}
                                         >
                                             Используйте чат ✨ для генерации предложений
