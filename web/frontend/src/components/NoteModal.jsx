@@ -1,5 +1,6 @@
 import React, { useState, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 import { useScrollPreservingTextarea } from '../hooks/useScrollPreservingTextarea';
+import obsidianIcon from '../assets/obsidian-icon.svg';
 
 const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => {
     if (!isOpen || !note) return null;
@@ -841,30 +842,35 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                             onClick={handleExportToObsidian}
                             disabled={isExporting}
                             style={{
-                                background: isExporting 
-                                    ? 'linear-gradient(135deg, #4a4a4a 0%, #5a5a5a 100%)'
-                                    : 'linear-gradient(135deg, #6b46c1 0%, #9333ea 100%)',
+                                background: 'transparent',
                                 border: 'none',
-                                borderRadius: '8px',
-                                padding: '8px 12px',
+                                padding: '4px',
                                 cursor: isExporting ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '6px',
-                                transition: 'all 0.2s',
-                                opacity: isExporting ? 0.7 : 1,
+                                justifyContent: 'center',
+                                transition: 'opacity 0.2s',
+                                opacity: isExporting ? 0.5 : 1,
                             }}
-                            onMouseEnter={(e) => !isExporting && (e.currentTarget.style.transform = 'translateY(-1px)')}
-                            onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+                            onMouseEnter={(e) => {
+                                if (!isExporting) {
+                                    e.currentTarget.style.opacity = '0.8';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!isExporting) {
+                                    e.currentTarget.style.opacity = '1';
+                                }
+                            }}
                             title="Экспортировать в Obsidian"
                         >
                             {isExporting ? (
                                 <>
                                     <div style={{
-                                        width: '14px',
-                                        height: '14px',
+                                        width: '16px',
+                                        height: '16px',
                                         border: '2px solid transparent',
-                                        borderTopColor: 'white',
+                                        borderTopColor: '#999',
                                         borderRadius: '50%',
                                         animation: 'spin 0.6s linear infinite',
                                     }} />
@@ -875,33 +881,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                     `}</style>
                                 </>
                             ) : (
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                                    <path
-                                        d="M10.813 1.069l-2.758.696a.513.513 0 00-.233.113L1.31 7.689a.823.823 0 00-.144 1.118l4.103 5.713c.24.335.684.425 1.015.195l6.183-4.287a.513.513 0 00.148-.157l2.158-3.674a.823.823 0 00-.287-1.032L11.5 1.425a.513.513 0 00-.687-.356z"
-                                        fill="white"
-                                    />
-                                </svg>
+                                <img 
+                                    src={obsidianIcon} 
+                                    alt="Obsidian"
+                                    style={{
+                                        width: '30px',
+                                        height: '30px',
+                                    }}
+                                />
                             )}
                         </button>
                         
-                        {/* Close button */}
-                        <button
-                            onClick={onClose}
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#666',
-                                fontSize: '24px',
-                                cursor: 'pointer',
-                                padding: '4px',
-                                lineHeight: '1',
-                                transition: 'color 0.2s',
-                            }}
-                            onMouseEnter={(e) => (e.target.style.color = '#fff')}
-                            onMouseLeave={(e) => (e.target.style.color = '#666')}
-                        >
-                            ×
-                        </button>
+                       
                     </div>
                 </div>
 

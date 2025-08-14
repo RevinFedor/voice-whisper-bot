@@ -127,10 +127,19 @@ export class ObsidianService {
       // Формируем путь к файлу
       const targetFolder = folder || this.defaultFolder;
       // Sanitize filename - удаляем недопустимые символы для имени файла
-      const sanitizedTitle = note.title
+      let sanitizedTitle = note.title
         .replace(/[\/\\:*?"<>|]/g, '') // Удаляем недопустимые символы
         .replace(/\s+/g, ' ') // Заменяем множественные пробелы на один
         .trim();
+      
+      // Ограничиваем длину имени файла (252 символа максимум для учета .md расширения)
+      // Также учитываем длину пути к папке
+      const maxFilenameLength = 200; // Безопасное значение с учетом пути
+      if (sanitizedTitle.length > maxFilenameLength) {
+        sanitizedTitle = sanitizedTitle.substring(0, maxFilenameLength).trim();
+        console.log(`   ⚠️ Имя файла сокращено до ${maxFilenameLength} символов`);
+      }
+      
       const filename = `${sanitizedTitle}.md`;
       const filepath = `${targetFolder}/${filename}`;
 
