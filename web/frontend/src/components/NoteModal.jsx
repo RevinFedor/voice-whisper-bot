@@ -577,6 +577,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         border: isTitleFocused && !isExpanded ? '2px solid #ff9500' : '1px solid #444',
                                         boxShadow: isTitleFocused && !isExpanded ? '0 0 8px rgba(255, 149, 0, 0.2)' : 'none',
                                         fontSize: '16px',
+                                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
                                         outline: 'none',
                                         transition: 'all 0.2s ease',
                                         boxSizing: 'border-box'
@@ -839,6 +840,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             border: '2px solid #ff9500',
                                             boxShadow: '0 0 12px rgba(255, 149, 0, 0.2)',
                                             fontSize: '16px',
+                                            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
                                             outline: 'none',
                                             overflowY: 'auto',
                                             overflowX: 'hidden',
@@ -936,6 +938,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                 border: isContentFocused ? '2px solid #ff9500' : '1px solid #444',
                                 boxShadow: isContentFocused ? '0 0 12px rgba(255, 149, 0, 0.2)' : 'none',
                                 fontSize: '16px',
+                                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
                                 minHeight: '300px',
                                 resize: 'none',
                                 outline: 'none',
