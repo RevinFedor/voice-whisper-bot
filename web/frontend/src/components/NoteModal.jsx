@@ -57,6 +57,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const [showAddTagInput, setShowAddTagInput] = useState(false);
     const [newTagInput, setNewTagInput] = useState('');
     const [obsidianTags, setObsidianTags] = useState([]);
+    const [showObsidianTags, setShowObsidianTags] = useState(false);
     
     // Обновляем локальное состояние при изменении заметки
     useEffect(() => {
@@ -475,20 +476,19 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             if (response.ok) {
                 const result = await response.json();
                 
-                // Добавляем предложения к существующим
-                const newSuggestions = result.tags.filter(tag => 
-                    !aiSuggestions.some(s => s.text === tag.text)
-                );
-                setAiSuggestions([...aiSuggestions, ...newSuggestions]);
+                // Перезатираем предложения новыми (не накапливаем)
+                setAiSuggestions(result.tags);
                 
-                // Если был кастомный промпт, загружаем историю
+                // Если был кастомный промпт, загружаем историю (но не открываем)
                 if (customPrompt) {
                     await loadTagHistory();
-                    setShowTagHistory(true);
+                    // НЕ открываем историю автоматически
+                    // setShowTagHistory(true);
                 }
                 
-                // Закрываем чат панель
-                setShowTagChat(false);
+                // НЕ закрываем чат панель после генерации
+                // setShowTagChat(false);
+                // Очищаем только input
                 setTagPromptInput('');
             }
         } catch (error) {
@@ -617,6 +617,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const toggleTagChat = () => {
         setShowTagChat(!showTagChat);
         setShowTagHistory(false);
+        setShowObsidianTags(false);
     };
     
     // Переключение истории для тегов
@@ -624,11 +625,19 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         const newShowHistory = !showTagHistory;
         setShowTagHistory(newShowHistory);
         setShowTagChat(false);
+        setShowObsidianTags(false);
         
         // Загружаем историю при открытии
         if (newShowHistory && tagHistory.length === 0) {
             await loadTagHistory();
         }
+    };
+    
+    // Переключение тегов Obsidian
+    const toggleObsidianTags = () => {
+        setShowObsidianTags(!showObsidianTags);
+        setShowTagChat(false);
+        setShowTagHistory(false);
     };
     
     // Загрузка тегов Obsidian при монтировании
@@ -681,7 +690,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     return (
         <>
             {/* Backdrop */}
-            <div 
+            <div
                 style={{
                     position: 'fixed',
                     top: 0,
@@ -691,57 +700,66 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                     backgroundColor: 'rgba(0, 0, 0, 0.8)',
                     backdropFilter: 'blur(5px)',
                     zIndex: 9998,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
                 }}
                 onClick={onClose}
             />
-            
+
             {/* Modal */}
-            <div ref={modalRef} style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '60%',
-                maxWidth: '800px',
-                maxHeight: '80vh',
-                backgroundColor: '#1a1a1a',
-                borderRadius: '16px',
-                border: '1px solid #333',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8)',
-                zIndex: 9999,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'auto'
-            }}>
-                {/* Header */}
-                <div style={{
-                    padding: '16px 32px',
-                    borderBottom: '1px solid #333',
+            <div
+                ref={modalRef}
+                style={{
+                    position: 'fixed',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '60%',
+                    maxWidth: '800px',
+                    maxHeight: '80vh',
+                    backgroundColor: '#1a1a1a',
+                    borderRadius: '16px',
+                    border: '1px solid #333',
+                    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8)',
+                    zIndex: 9999,
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                }}>
+                    flexDirection: 'column',
+                    overflow: 'auto',
+                }}
+            >
+                {/* Header */}
+                <div
+                    style={{
+                        padding: '16px 32px',
+                        borderBottom: '1px solid #333',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                    }}
+                >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span style={{ fontSize: '18px' }}>✏️</span>
-                        <span style={{
-                            fontSize: '20px',
-                            color: '#e0e0e0',
-                            fontWeight: '800'
-                        }}>
+                        <span
+                            style={{
+                                fontSize: '20px',
+                                color: '#e0e0e0',
+                                fontWeight: '800',
+                            }}
+                        >
                             Редактирование заметки
                         </span>
                         {note.manuallyPositioned && (
-                            <span style={{
-                                fontSize: '14px',
-                                color: '#ff9500',
-                                title: 'Перемещена вручную'
-                            }}>
+                            <span
+                                style={{
+                                    fontSize: '14px',
+                                    color: '#ff9500',
+                                    title: 'Перемещена вручную',
+                                }}
+                            >
                                 📍
                             </span>
                         )}
                     </div>
-                    
+
                     {/* Close button */}
                     <button
                         onClick={onClose}
@@ -753,60 +771,71 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                             cursor: 'pointer',
                             padding: '4px',
                             lineHeight: '1',
-                            transition: 'color 0.2s'
+                            transition: 'color 0.2s',
                         }}
-                        onMouseEnter={(e) => e.target.style.color = '#fff'}
-                        onMouseLeave={(e) => e.target.style.color = '#666'}
+                        onMouseEnter={(e) => (e.target.style.color = '#fff')}
+                        onMouseLeave={(e) => (e.target.style.color = '#666')}
                     >
                         ×
                     </button>
                 </div>
-                
+
                 {/* Content */}
-                <div style={{
-                    flex: 1,
-                    padding: '24px 32px',
-                    overflowY: 'visible',
-                    color: '#e0e0e0',
-                    display: 'flex',
-                    flexDirection: 'column'
-                }}>
+                <div
+                    style={{
+                        flex: 1,
+                        padding: '24px 32px',
+                        overflowY: 'visible',
+                        color: '#e0e0e0',
+                        display: 'flex',
+                        flexDirection: 'column',
+                    }}
+                >
                     {/* ЗАГОЛОВОК */}
                     <div style={{ marginBottom: '24px' }}>
                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
                             {/* Индикатор состояния */}
-                            <div style={{
-                                position: 'absolute',
-                                left: '-20px',
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                backgroundColor: isTitleFocused ? '#ff9500' : 
-                                                titleSaveStatus === 'saving' ? '#ff9500' : 
-                                                titleSaveStatus === 'success' ? '#30d158' : 
-                                                'transparent',
-                                animation: titleSaveStatus === 'saving' ? 'pulse 1s infinite' : 'none',
-                                transition: 'all 0.3s ease'
-                            }} />
-                            
-                            <label style={{
-                                fontSize: '13px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '1px',
-                                color: '#888',
-                                fontWeight: '600'
-                            }}>
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    left: '-20px',
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: isTitleFocused
+                                        ? '#ff9500'
+                                        : titleSaveStatus === 'saving'
+                                        ? '#ff9500'
+                                        : titleSaveStatus === 'success'
+                                        ? '#30d158'
+                                        : 'transparent',
+                                    animation: titleSaveStatus === 'saving' ? 'pulse 1s infinite' : 'none',
+                                    transition: 'all 0.3s ease',
+                                }}
+                            />
+
+                            <label
+                                style={{
+                                    fontSize: '13px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '1px',
+                                    color: '#888',
+                                    fontWeight: '600',
+                                }}
+                            >
                                 Заголовок
                             </label>
                         </div>
-                        
+
                         <div style={{ position: 'relative' }}>
                             {/* Input с кнопками */}
-                            <div style={{ 
-                                display: 'flex', 
-                                gap: '8px',
-                                visibility: isExpanded ? 'hidden' : 'visible' 
-                            }}>
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    gap: '8px',
+                                    visibility: isExpanded ? 'hidden' : 'visible',
+                                }}
+                            >
                                 <input
                                     ref={inputRef}
                                     type="text"
@@ -829,10 +858,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
                                         outline: 'none',
                                         transition: 'all 0.2s ease',
-                                        boxSizing: 'border-box'
+                                        boxSizing: 'border-box',
                                     }}
                                 />
-                                
+
                                 {/* Кнопки действий */}
                                 <div style={{ display: 'flex', gap: '4px' }}>
                                     {/* История */}
@@ -849,13 +878,13 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             border: showHistory ? '1px solid #22aa44' : '1px solid #444',
                                             color: showHistory ? 'white' : '#888',
                                             cursor: 'pointer',
-                                            fontSize: '16px'
+                                            fontSize: '16px',
                                         }}
                                         title="История генераций"
                                     >
                                         📜
                                     </button>
-                                    
+
                                     {/* AI чат */}
                                     <button
                                         onClick={togglePrompt}
@@ -870,13 +899,13 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             border: showPrompt ? '1px solid #22aa44' : '1px solid #444',
                                             color: showPrompt ? 'white' : '#888',
                                             cursor: 'pointer',
-                                            fontSize: '16px'
+                                            fontSize: '16px',
                                         }}
                                         title="Спросить у AI"
                                     >
                                         ✨
                                     </button>
-                                    
+
                                     {/* Раскрыть */}
                                     <button
                                         onClick={handleExpand}
@@ -891,7 +920,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             border: '1px solid #444',
                                             color: '#888',
                                             cursor: 'pointer',
-                                            fontSize: '16px'
+                                            fontSize: '16px',
                                         }}
                                         title="Развернуть"
                                     >
@@ -899,22 +928,22 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                     </button>
                                 </div>
                             </div>
-                            
+
                             {/* История генераций */}
                             {showHistory && !isExpanded && (
-                                <div style={{
-                                    marginTop: '10px',
-                                    padding: '12px',
-                                    borderRadius: '8px',
-                                    maxHeight: '250px',
-                                    overflowY: 'auto',
-                                    backgroundColor: '#181818',
-                                    border: '1px solid #333'
-                                }}>
+                                <div
+                                    style={{
+                                        marginTop: '10px',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        maxHeight: '250px',
+                                        overflowY: 'auto',
+                                        backgroundColor: '#181818',
+                                        border: '1px solid #333',
+                                    }}
+                                >
                                     {historyLoading ? (
-                                        <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
-                                            Загрузка...
-                                        </div>
+                                        <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>Загрузка...</div>
                                     ) : titleHistory.length === 0 ? (
                                         <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
                                             История пуста. Сгенерируйте первые варианты!
@@ -924,8 +953,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             <div
                                                 key={item.id}
                                                 onClick={() => useHistoryTitle(item)}
-                                                onMouseEnter={(e) => e.currentTarget.querySelector('.delete-btn').style.opacity = '1'}
-                                                onMouseLeave={(e) => e.currentTarget.querySelector('.delete-btn').style.opacity = '0'}
+                                                onMouseEnter={(e) => (e.currentTarget.querySelector('.delete-btn').style.opacity = '1')}
+                                                onMouseLeave={(e) => (e.currentTarget.querySelector('.delete-btn').style.opacity = '0')}
                                                 style={{
                                                     display: 'flex',
                                                     justifyContent: 'space-between',
@@ -938,21 +967,19 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                     border: newlyGeneratedId === item.id ? '1px solid #22aa44' : '1px solid transparent',
                                                     transition: 'all 0.3s ease',
                                                     animation: newlyGeneratedId === item.id ? 'fadeIn 0.3s ease' : 'none',
-                                                    position: 'relative'
+                                                    position: 'relative',
                                                 }}
                                             >
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-                                                    <span style={{ fontSize: '14px' }}>
-                                                        {item.type === 'ai' ? '✨' : '✋'}
-                                                    </span>
-                                                    <span 
-                                                        style={{ 
-                                                            color: 'white', 
+                                                    <span style={{ fontSize: '14px' }}>{item.type === 'ai' ? '✨' : '✋'}</span>
+                                                    <span
+                                                        style={{
+                                                            color: 'white',
                                                             fontSize: '14px',
                                                             overflow: 'hidden',
                                                             textOverflow: 'ellipsis',
                                                             whiteSpace: 'nowrap',
-                                                            flex: 1
+                                                            flex: 1,
                                                         }}
                                                         title={item.title.length > 40 ? item.title : undefined}
                                                     >
@@ -973,7 +1000,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                         padding: '4px 8px',
                                                         marginLeft: '8px',
                                                         lineHeight: '1',
-                                                        fontWeight: 'bold'
+                                                        fontWeight: 'bold',
                                                     }}
                                                 >
                                                     ×
@@ -983,16 +1010,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                     )}
                                 </div>
                             )}
-                            
+
                             {/* Промпт панель */}
                             {showPrompt && !isExpanded && (
-                                <div style={{
-                                    marginTop: '10px',
-                                    padding: '12px',
-                                    borderRadius: '8px',
-                                    backgroundColor: '#181818',
-                                    border: '1px solid #333'
-                                }}>
+                                <div
+                                    style={{
+                                        marginTop: '10px',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        backgroundColor: '#181818',
+                                        border: '1px solid #333',
+                                    }}
+                                >
                                     <div style={{ display: 'flex', gap: '8px' }}>
                                         <input
                                             type="text"
@@ -1011,7 +1040,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                 border: '1px solid #444',
                                                 outline: 'none',
                                                 boxSizing: 'border-box',
-                                                opacity: isGenerating ? 0.5 : 1
+                                                opacity: isGenerating ? 0.5 : 1,
                                             }}
                                         />
                                         <button
@@ -1030,21 +1059,23 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                gap: '6px'
+                                                gap: '6px',
                                             }}
                                             title={!promptInput.trim() ? 'Использовать стандартную генерацию' : undefined}
                                         >
                                             {isGenerating ? (
                                                 <>
-                                                    <span style={{
-                                                        display: 'inline-block',
-                                                        width: '12px',
-                                                        height: '12px',
-                                                        border: '2px solid #ffffff30',
-                                                        borderTopColor: 'white',
-                                                        borderRadius: '50%',
-                                                        animation: 'spin 0.6s linear infinite'
-                                                    }}></span>
+                                                    <span
+                                                        style={{
+                                                            display: 'inline-block',
+                                                            width: '12px',
+                                                            height: '12px',
+                                                            border: '2px solid #ffffff30',
+                                                            borderTopColor: 'white',
+                                                            borderRadius: '50%',
+                                                            animation: 'spin 0.6s linear infinite',
+                                                        }}
+                                                    ></span>
                                                     <span>Генерирую...</span>
                                                 </>
                                             ) : (
@@ -1054,16 +1085,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                     </div>
                                 </div>
                             )}
-                            
+
                             {/* Textarea для expanded режима */}
                             {isExpanded && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '-8px',
-                                    left: '-8px',
-                                    right: '-8px',
-                                    zIndex: 10
-                                }}>
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        top: '-8px',
+                                        left: '-8px',
+                                        right: '-8px',
+                                        zIndex: 10,
+                                    }}
+                                >
                                     <textarea
                                         ref={textareaRef}
                                         value={localTitle}
@@ -1098,53 +1131,62 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             wordWrap: 'break-word',
                                             scrollbarWidth: 'thin',
                                             scrollbarColor: '#444 #222',
-                                            boxSizing: 'border-box'
+                                            boxSizing: 'border-box',
                                         }}
                                         placeholder="Esc - свернуть | Enter - пробел | Спецсимволы удаляются"
                                     />
                                     {/* Подсказка под textarea */}
-                                    <div style={{
-                                        marginTop: '4px',
-                                        fontSize: '11px',
-                                        color: '#666',
-                                        textAlign: 'right'
-                                    }}>
+                                    <div
+                                        style={{
+                                            marginTop: '4px',
+                                            fontSize: '11px',
+                                            color: '#666',
+                                            textAlign: 'right',
+                                        }}
+                                    >
                                         {localTitle.length} символов | Для Obsidian: / \ : * ? " &lt; &gt; | запрещены
                                     </div>
                                 </div>
                             )}
                         </div>
                     </div>
-                    
+
                     {/* СОДЕРЖИМОЕ */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
                             {/* Индикатор состояния */}
-                            <div style={{
-                                position: 'absolute',
-                                left: '-20px',
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                backgroundColor: isContentFocused ? '#ff9500' : 
-                                                contentSaveStatus === 'saving' ? '#ff9500' : 
-                                                contentSaveStatus === 'success' ? '#30d158' : 
-                                                'transparent',
-                                animation: contentSaveStatus === 'saving' ? 'pulse 1s infinite' : 'none',
-                                transition: 'all 0.3s ease'
-                            }} />
-                            
-                            <label style={{
-                                fontSize: '13px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '1px',
-                                color: '#888',
-                                fontWeight: '600'
-                            }}>
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    left: '-20px',
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: isContentFocused
+                                        ? '#ff9500'
+                                        : contentSaveStatus === 'saving'
+                                        ? '#ff9500'
+                                        : contentSaveStatus === 'success'
+                                        ? '#30d158'
+                                        : 'transparent',
+                                    animation: contentSaveStatus === 'saving' ? 'pulse 1s infinite' : 'none',
+                                    transition: 'all 0.3s ease',
+                                }}
+                            />
+
+                            <label
+                                style={{
+                                    fontSize: '13px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '1px',
+                                    color: '#888',
+                                    fontWeight: '600',
+                                }}
+                            >
                                 Содержимое
                             </label>
                         </div>
-                        
+
                         <textarea
                             ref={contentTextarea.textAreaRef}
                             value={localContent}
@@ -1168,8 +1210,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                     const pos = e.target.selectionStart;
                                     const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
                                     // Используем handleContentChange для правильного обновления всех состояний
-                                    handleContentChange({ target: { value: newValue }});
-                                    
+                                    handleContentChange({ target: { value: newValue } });
+
                                     requestAnimationFrame(() => {
                                         e.target.setSelectionRange(pos + 1, pos + 1);
                                         e.target.scrollTop = e.target.scrollTop;
@@ -1193,28 +1235,32 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                 outline: 'none',
                                 lineHeight: '1.5',
                                 transition: 'all 0.2s ease',
-                                boxSizing: 'border-box'
+                                boxSizing: 'border-box',
                             }}
                             rows={12}
                             placeholder="Содержимое заметки..."
                         />
                     </div>
-                    
+
                     {/* Теги */}
                     <div style={{ marginTop: '24px' }}>
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            marginBottom: '12px'
-                        }}>
-                            <label style={{
-                                fontSize: '13px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '1px',
-                                color: '#888',
-                                fontWeight: '600'
-                            }}>
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                marginBottom: '12px',
+                            }}
+                        >
+                            <label
+                                style={{
+                                    fontSize: '13px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '1px',
+                                    color: '#888',
+                                    fontWeight: '600',
+                                }}
+                            >
                                 Теги
                             </label>
                             <div style={{ display: 'flex', gap: '4px' }}>
@@ -1236,10 +1282,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         borderRadius: '6px',
                                         color: showTagChat ? 'white' : '#888',
                                         cursor: 'pointer',
-                                        transition: 'all 0.2s'
+                                        transition: 'all 0.2s',
                                     }}
                                 >
-                                    💬
+                                    ✨
                                 </button>
                                 {/* Кнопка истории */}
                                 <button
@@ -1259,38 +1305,67 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         borderRadius: '6px',
                                         color: showTagHistory ? 'white' : '#888',
                                         cursor: 'pointer',
-                                        transition: 'all 0.2s'
+                                        transition: 'all 0.2s',
                                     }}
                                 >
                                     📜
                                 </button>
+                                {/* Кнопка тегов Obsidian */}
+                                <button
+                                    onClick={toggleObsidianTags}
+                                    title="Все теги Obsidian"
+                                    style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        padding: '0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '14px',
+                                        backgroundColor: showObsidianTags ? '#22aa44' : '#2a2a2a',
+                                        border: '1px solid',
+                                        borderColor: showObsidianTags ? '#22aa44' : '#444',
+                                        borderRadius: '6px',
+                                        color: showObsidianTags ? 'white' : '#888',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    🏷️
+                                </button>
                             </div>
                         </div>
-                        
+
                         {/* Блок с тегами */}
-                        <div style={{
-                            padding: '12px',
-                            backgroundColor: '#222',
-                            border: '1px solid #444',
-                            borderRadius: '8px'
-                        }}>
+                        <div
+                            style={{
+                                padding: '12px',
+                                backgroundColor: '#222',
+                                border: '1px solid #444',
+                                borderRadius: '8px',
+                            }}
+                        >
                             {/* Текущие теги */}
                             <div style={{ marginBottom: '16px' }}>
-                                <div style={{
-                                    fontSize: '12px',
-                                    color: '#666',
-                                    marginBottom: '8px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
+                                <div
+                                    style={{
+                                        fontSize: '12px',
+                                        color: '#666',
+                                        marginBottom: '8px',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                    }}
+                                >
                                     Текущие теги
                                 </div>
-                                <div style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: '8px',
-                                    minHeight: '32px'
-                                }}>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '8px',
+                                        minHeight: '32px',
+                                    }}
+                                >
                                     {localTags.map((tag, index) => (
                                         <div
                                             key={index}
@@ -1304,7 +1379,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                 borderRadius: '16px',
                                                 fontSize: '14px',
                                                 cursor: 'default',
-                                                transition: 'all 0.2s'
+                                                transition: 'all 0.2s',
                                             }}
                                             onMouseEnter={(e) => {
                                                 e.currentTarget.style.backgroundColor = '#333';
@@ -1324,16 +1399,16 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                     fontSize: '16px',
                                                     lineHeight: '1',
                                                     marginLeft: '4px',
-                                                    fontWeight: 'bold'
+                                                    fontWeight: 'bold',
                                                 }}
-                                                onMouseEnter={(e) => e.currentTarget.style.color = '#ff4444'}
-                                                onMouseLeave={(e) => e.currentTarget.style.color = '#666'}
+                                                onMouseEnter={(e) => (e.currentTarget.style.color = '#ff4444')}
+                                                onMouseLeave={(e) => (e.currentTarget.style.color = '#666')}
                                             >
                                                 ×
                                             </span>
                                         </div>
                                     ))}
-                                    
+
                                     {/* Кнопка добавить */}
                                     {!showAddTagInput ? (
                                         <button
@@ -1346,7 +1421,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                 color: '#888',
                                                 cursor: 'pointer',
                                                 fontSize: '14px',
-                                                transition: 'all 0.2s'
+                                                transition: 'all 0.2s',
                                             }}
                                             onMouseEnter={(e) => {
                                                 e.currentTarget.style.backgroundColor = '#2a2a2a';
@@ -1389,30 +1464,34 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                 color: 'white',
                                                 fontSize: '14px',
                                                 outline: 'none',
-                                                width: '150px'
+                                                width: '150px',
                                             }}
                                         />
                                     )}
                                 </div>
                             </div>
-                            
+
                             {/* AI предложения */}
                             <div>
-                                <div style={{
-                                    fontSize: '12px',
-                                    color: '#666',
-                                    marginBottom: '8px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
+                                <div
+                                    style={{
+                                        fontSize: '12px',
+                                        color: '#666',
+                                        marginBottom: '8px',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                    }}
+                                >
                                     <span style={{ color: '#ff9500' }}>✨</span> AI предложения
                                 </div>
-                                <div style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: '8px',
-                                    minHeight: '32px'
-                                }}>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '8px',
+                                        minHeight: '32px',
+                                    }}
+                                >
                                     {aiSuggestions.length > 0 ? (
                                         aiSuggestions.map((tag, index) => (
                                             <div
@@ -1431,7 +1510,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                     cursor: 'pointer',
                                                     opacity: 0.9,
                                                     transition: 'all 0.2s ease',
-                                                    animation: `fadeIn 0.3s ease ${index * 0.05}s backwards`
+                                                    animation: `fadeIn 0.3s ease ${index * 0.05}s backwards`,
                                                 }}
                                                 onMouseEnter={(e) => {
                                                     e.currentTarget.style.opacity = '1';
@@ -1446,27 +1525,31 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             </div>
                                         ))
                                     ) : (
-                                        <div style={{
-                                            color: '#666',
-                                            fontSize: '13px',
-                                            fontStyle: 'italic'
-                                        }}>
-                                            Используйте чат 💬 для генерации предложений
+                                        <div
+                                            style={{
+                                                color: '#666',
+                                                fontSize: '13px',
+                                                fontStyle: 'italic',
+                                            }}
+                                        >
+                                            Используйте чат ✨ для генерации предложений
                                         </div>
                                     )}
                                 </div>
                             </div>
                         </div>
-                        
+
                         {/* AI Chat панель */}
                         {showTagChat && (
-                            <div style={{
-                                marginTop: '12px',
-                                padding: '12px',
-                                backgroundColor: '#181818',
-                                border: '1px solid #333',
-                                borderRadius: '8px'
-                            }}>
+                            <div
+                                style={{
+                                    marginTop: '12px',
+                                    padding: '12px',
+                                    backgroundColor: '#181818',
+                                    border: '1px solid #333',
+                                    borderRadius: '8px',
+                                }}
+                            >
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <input
                                         type="text"
@@ -1486,10 +1569,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             borderRadius: '4px',
                                             color: 'white',
                                             fontSize: '14px',
-                                            outline: 'none'
+                                            outline: 'none',
                                         }}
-                                        onFocus={(e) => e.currentTarget.style.borderColor = '#ff9500'}
-                                        onBlur={(e) => e.currentTarget.style.borderColor = '#444'}
+                                        onFocus={(e) => (e.currentTarget.style.borderColor = '#ff9500')}
+                                        onBlur={(e) => (e.currentTarget.style.borderColor = '#444')}
                                     />
                                     <button
                                         onClick={applyTagPrompt}
@@ -1507,49 +1590,53 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '6px',
-                                            opacity: isGeneratingTags ? '0.5' : '1'
+                                            opacity: isGeneratingTags ? '0.5' : '1',
                                         }}
                                         title={tagPromptInput.trim() ? '' : 'Использовать стандартную генерацию'}
                                     >
                                         {isGeneratingTags && (
-                                            <span style={{
-                                                display: 'inline-block',
-                                                width: '12px',
-                                                height: '12px',
-                                                border: '2px solid #ffffff30',
-                                                borderTopColor: 'white',
-                                                borderRadius: '50%',
-                                                animation: 'spin 0.6s linear infinite'
-                                            }} />
+                                            <span
+                                                style={{
+                                                    display: 'inline-block',
+                                                    width: '12px',
+                                                    height: '12px',
+                                                    border: '2px solid #ffffff30',
+                                                    borderTopColor: 'white',
+                                                    borderRadius: '50%',
+                                                    animation: 'spin 0.6s linear infinite',
+                                                }}
+                                            />
                                         )}
-                                        <span>
-                                            {isGeneratingTags ? 'Генерирую...' : (tagPromptInput.trim() ? 'Генерировать' : 'Default')}
-                                        </span>
+                                        <span>{isGeneratingTags ? 'Генерирую...' : tagPromptInput.trim() ? 'Генерировать' : 'Default'}</span>
                                     </button>
                                 </div>
                             </div>
                         )}
-                        
+
                         {/* История тегов */}
                         {showTagHistory && (
-                            <div style={{
-                                marginTop: '12px',
-                                maxHeight: '250px',
-                                overflowY: 'auto',
-                                padding: '12px',
-                                backgroundColor: '#181818',
-                                border: '1px solid #333',
-                                borderRadius: '8px'
-                            }}>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    marginBottom: '12px',
-                                    padding: '8px',
-                                    backgroundColor: '#222',
-                                    borderRadius: '4px'
-                                }}>
+                            <div
+                                style={{
+                                    marginTop: '12px',
+                                    maxHeight: '250px',
+                                    overflowY: 'auto',
+                                    padding: '12px',
+                                    backgroundColor: '#181818',
+                                    border: '1px solid #333',
+                                    borderRadius: '8px',
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        marginBottom: '12px',
+                                        padding: '8px',
+                                        backgroundColor: '#222',
+                                        borderRadius: '4px',
+                                    }}
+                                >
                                     <span style={{ color: '#888', fontSize: '14px' }}>📜 История генераций</span>
                                     <button
                                         onClick={clearTagHistory}
@@ -1560,19 +1647,17 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                             border: '1px solid #aa2222',
                                             borderRadius: '4px',
                                             color: 'white',
-                                            cursor: 'pointer'
+                                            cursor: 'pointer',
                                         }}
-                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#cc3333'}
-                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#aa2222'}
+                                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#cc3333')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#aa2222')}
                                     >
                                         Очистить
                                     </button>
                                 </div>
-                                
+
                                 {tagHistoryLoading ? (
-                                    <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
-                                        Загрузка...
-                                    </div>
+                                    <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>Загрузка...</div>
                                 ) : tagHistory.length > 0 ? (
                                     <div>
                                         {tagHistory.map((item) => (
@@ -1582,40 +1667,46 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                     marginBottom: '12px',
                                                     padding: '8px',
                                                     backgroundColor: '#222',
-                                                    borderRadius: '4px'
+                                                    borderRadius: '4px',
                                                 }}
                                             >
-                                                <div style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center',
-                                                    marginBottom: '8px',
-                                                    fontSize: '12px',
-                                                    color: '#666'
-                                                }}>
-                                                    <span>💬 Кастомная генерация</span>
+                                                <div
+                                                    style={{
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        marginBottom: '8px',
+                                                        fontSize: '12px',
+                                                        color: '#666',
+                                                    }}
+                                                >
+                                                    <span>✨ Кастомная генерация</span>
                                                     <span>
                                                         {new Date(item.createdAt).toLocaleTimeString('ru-RU', {
                                                             hour: '2-digit',
-                                                            minute: '2-digit'
+                                                            minute: '2-digit',
                                                         })}
                                                     </span>
                                                 </div>
                                                 {item.prompt && (
-                                                    <div style={{
-                                                        color: '#888',
-                                                        fontSize: '13px',
-                                                        marginBottom: '8px',
-                                                        fontStyle: 'italic'
-                                                    }}>
+                                                    <div
+                                                        style={{
+                                                            color: '#888',
+                                                            fontSize: '13px',
+                                                            marginBottom: '8px',
+                                                            fontStyle: 'italic',
+                                                        }}
+                                                    >
                                                         "{item.prompt}"
                                                     </div>
                                                 )}
-                                                <div style={{
-                                                    display: 'flex',
-                                                    flexWrap: 'wrap',
-                                                    gap: '6px'
-                                                }}>
+                                                <div
+                                                    style={{
+                                                        display: 'flex',
+                                                        flexWrap: 'wrap',
+                                                        gap: '6px',
+                                                    }}
+                                                >
                                                     {item.tags.map((tag, idx) => (
                                                         <div
                                                             key={idx}
@@ -1626,7 +1717,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                                                 border: '1px solid',
                                                                 borderColor: tag.isNew ? '#22aa44' : '#2288aa',
                                                                 borderRadius: '12px',
-                                                                color: tag.isNew ? '#4ec74e' : '#4ec7e7'
+                                                                color: tag.isNew ? '#4ec74e' : '#4ec7e7',
                                                             }}
                                                         >
                                                             {tag.text}
@@ -1637,71 +1728,62 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                                         ))}
                                     </div>
                                 ) : (
-                                    <div style={{
-                                        textAlign: 'center',
-                                        padding: '20px',
-                                        color: '#666',
-                                        fontSize: '14px'
-                                    }}>
+                                    <div
+                                        style={{
+                                            textAlign: 'center',
+                                            padding: '20px',
+                                            color: '#666',
+                                            fontSize: '14px',
+                                        }}
+                                    >
                                         История пуста
                                     </div>
                                 )}
                             </div>
                         )}
                     </div>
-                    
                 </div>
-                
+
                 {/* Metadata Footer */}
-                <div style={{
-                    padding: '16px 32px',
-                    borderTop: '1px solid #2a2a2a',
-                    backgroundColor: '#161616',
-                    fontSize: '12px',
-                    color: '#666',
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: '20px'
-                }}>
+                <div
+                    style={{
+                        padding: '16px 32px',
+                        borderTop: '1px solid #2a2a2a',
+                        backgroundColor: '#161616',
+                        fontSize: '12px',
+                        color: '#666',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '20px',
+                    }}
+                >
                     <div>
-                        <span style={{ color: '#555' }}>ID:</span>{' '}
-                        <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                            {note.id}
-                        </span>
+                        <span style={{ color: '#555' }}>ID:</span> <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{note.id}</span>
                     </div>
                     <div>
-                        <span style={{ color: '#555' }}>Тип:</span>{' '}
-                        <span style={{ color: '#888' }}>
-                            {getTypeLabel(note.type)}
-                        </span>
+                        <span style={{ color: '#555' }}>Тип:</span> <span style={{ color: '#888' }}>{getTypeLabel(note.type)}</span>
                     </div>
                     <div>
-                        <span style={{ color: '#555' }}>Дата:</span>{' '}
-                        {formatDate(note.date)}
+                        <span style={{ color: '#555' }}>Дата:</span> {formatDate(note.date)}
                     </div>
                     <div>
-                        <span style={{ color: '#555' }}>Создано:</span>{' '}
-                        {formatDateTime(note.createdAt)}
+                        <span style={{ color: '#555' }}>Создано:</span> {formatDateTime(note.createdAt)}
                     </div>
                     {note.updatedAt && note.updatedAt !== note.createdAt && (
                         <div>
-                            <span style={{ color: '#555' }}>Обновлено:</span>{' '}
-                            {formatDateTime(note.updatedAt)}
+                            <span style={{ color: '#555' }}>Обновлено:</span> {formatDateTime(note.updatedAt)}
                         </div>
                     )}
                     <div>
-                        <span style={{ color: '#555' }}>Позиция:</span>{' '}
-                        ({Math.round(note.x)}, {Math.round(note.y)})
+                        <span style={{ color: '#555' }}>Позиция:</span> ({Math.round(note.x)}, {Math.round(note.y)})
                     </div>
                     <div>
                         <span style={{ color: '#555' }}>Перемещена:</span>{' '}
-                        <span style={{ color: note.manuallyPositioned ? '#ff9500' : '#666' }}>
-                            {note.manuallyPositioned ? 'Да' : 'Нет'}
-                        </span>
+                        <span style={{ color: note.manuallyPositioned ? '#ff9500' : '#666' }}>{note.manuallyPositioned ? 'Да' : 'Нет'}</span>
                     </div>
                 </div>
             </div>
-            
+
             {/* CSS для анимации */}
             <style>{`
                 @keyframes pulse {
