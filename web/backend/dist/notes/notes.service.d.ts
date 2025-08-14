@@ -9,8 +9,6 @@ export declare class NotesService {
         content?: string;
         type: NoteType;
         date?: Date | string;
-        voiceDuration?: number;
-        voiceFileUrl?: string;
         x?: number;
         y?: number;
         manuallyPositioned?: boolean;

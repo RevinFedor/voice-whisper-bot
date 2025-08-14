@@ -39,10 +39,6 @@ model Note {
   y               Float    // Actual position in tldraw
   manuallyPositioned Boolean @default(false) // Flag if user dragged the note
   
-  // Voice note specific
-  voiceDuration   Int?     // Duration in seconds
-  voiceFileUrl    String?  // URL to voice file
-  
   // Telegram metadata
   telegramMessageId BigInt?
   telegramChatId    BigInt?

@@ -21,16 +21,6 @@ export class CreateNoteDto {
   @IsDateString()
   date?: string;
 
-  @ApiProperty({ description: 'Voice duration in seconds', required: false })
-  @IsOptional()
-  @IsNumber()
-  voiceDuration?: number;
-
-  @ApiProperty({ description: 'Voice file URL', required: false })
-  @IsOptional()
-  @IsString()
-  voiceFileUrl?: string;
-
   @ApiProperty({ description: 'X position for manually positioned notes', required: false })
   @IsOptional()
   @IsNumber()

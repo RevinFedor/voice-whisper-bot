@@ -67,8 +67,6 @@ export class NotesService {
     content?: string;
     type: NoteType;
     date?: Date | string;
-    voiceDuration?: number;
-    voiceFileUrl?: string;
     x?: number;
     y?: number;
     manuallyPositioned?: boolean;
@@ -141,8 +139,6 @@ export class NotesService {
         x,
         y,
         manuallyPositioned,
-        voiceDuration: data.voiceDuration,
-        voiceFileUrl: data.voiceFileUrl,
       },
     });
   }
@@ -184,7 +180,6 @@ export class NotesService {
       content: contents[Math.floor(Math.random() * contents.length)],
       type,
       date,
-      voiceDuration: type === 'voice' ? Math.floor(Math.random() * 300) : undefined,
     });
   }
 
@@ -342,7 +337,6 @@ export class NotesService {
       await this.createNote(userId, {
         ...note,
         date,
-        voiceDuration: note.type === 'voice' ? 120 : undefined,
       });
     }
   }

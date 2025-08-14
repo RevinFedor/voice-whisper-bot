@@ -39,18 +39,6 @@ __decorate([
     __metadata("design:type", String)
 ], CreateNoteDto.prototype, "date", void 0);
 __decorate([
-    (0, swagger_1.ApiProperty)({ description: 'Voice duration in seconds', required: false }),
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsNumber)(),
-    __metadata("design:type", Number)
-], CreateNoteDto.prototype, "voiceDuration", void 0);
-__decorate([
-    (0, swagger_1.ApiProperty)({ description: 'Voice file URL', required: false }),
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], CreateNoteDto.prototype, "voiceFileUrl", void 0);
-__decorate([
     (0, swagger_1.ApiProperty)({ description: 'X position for manually positioned notes', required: false }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),

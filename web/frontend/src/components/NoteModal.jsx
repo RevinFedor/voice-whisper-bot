@@ -417,15 +417,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         });
     };
     
-    // Get type icon
-    const getTypeIcon = (type) => {
-        const icons = {
-            voice: '🎙️',
-            text: '📝',
-            collection: '📚'
-        };
-        return icons[type] || '📝';
-    };
+
     
     // Get type label
     const getTypeLabel = (type) => {
@@ -475,28 +467,24 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             }}>
                 {/* Header */}
                 <div style={{
-                    padding: '24px 32px',
+                    padding: '16px 32px',
                     borderBottom: '1px solid #333',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '24px' }}>
-                            {getTypeIcon(note.type)}
-                        </span>
+                        <span style={{ fontSize: '18px' }}>✏️</span>
                         <span style={{
-                            color: '#888',
-                            fontSize: '14px',
-                            padding: '4px 12px',
-                            backgroundColor: '#2a2a2a',
-                            borderRadius: '12px'
+                            fontSize: '20px',
+                            color: '#e0e0e0',
+                            fontWeight: '800'
                         }}>
-                            {getTypeLabel(note.type)}
+                            Редактирование заметки
                         </span>
                         {note.manuallyPositioned && (
                             <span style={{
-                                fontSize: '16px',
+                                fontSize: '14px',
                                 color: '#ff9500',
                                 title: 'Перемещена вручную'
                             }}>
@@ -958,23 +946,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                         />
                     </div>
                     
-                    {/* Voice duration */}
-                    {note.type === 'voice' && note.voiceDuration && (
-                        <div style={{
-                            marginTop: '16px',
-                            padding: '12px',
-                            backgroundColor: '#2a2a2a',
-                            borderRadius: '8px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                        }}>
-                            <span style={{ fontSize: '14px' }}>⏱️</span>
-                            <span style={{ fontSize: '14px', color: '#888' }}>
-                                Длительность: {Math.floor(note.voiceDuration / 60)}:{(note.voiceDuration % 60).toString().padStart(2, '0')}
-                            </span>
-                        </div>
-                    )}
                     
                 </div>
                 
@@ -993,6 +964,12 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                         <span style={{ color: '#555' }}>ID:</span>{' '}
                         <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>
                             {note.id}
+                        </span>
+                    </div>
+                    <div>
+                        <span style={{ color: '#555' }}>Тип:</span>{' '}
+                        <span style={{ color: '#888' }}>
+                            {getTypeLabel(note.type)}
                         </span>
                     </div>
                     <div>

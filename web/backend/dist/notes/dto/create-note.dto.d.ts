@@ -4,8 +4,6 @@ export declare class CreateNoteDto {
     content?: string;
     type: NoteType;
     date?: string;
-    voiceDuration?: number;
-    voiceFileUrl?: string;
     x?: number;
     y?: number;
     manuallyPositioned?: boolean;
