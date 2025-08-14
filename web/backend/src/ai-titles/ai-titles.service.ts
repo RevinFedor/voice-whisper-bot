@@ -75,6 +75,14 @@ export class AiTitlesService {
         ? `${this.DEFAULT_PROMPT}\n\nДополнительные требования от пользователя: ${customPrompt}`
         : this.DEFAULT_PROMPT;
 
+      // Логируем использование промпта
+      if (customPrompt) {
+        console.log(`🎨 AI Title Generation with custom prompt for note ${noteId}:`);
+        console.log(`   Custom prompt: "${customPrompt}"`);
+      } else {
+        console.log(`🤖 AI Title Generation with DEFAULT prompt for note ${noteId}`);
+      }
+
       // Call OpenAI API
       const completion = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -101,6 +109,8 @@ export class AiTitlesService {
       // Clean the title from forbidden characters
       const cleanTitle = generatedTitle.replace(/[\/\\:*?"<>|]/g, '');
 
+      console.log(`✅ Generated title: "${cleanTitle}"`);
+
       // Save to history
       const titleHistory = await this.prisma.titleHistory.create({
         data: {
@@ -117,6 +127,8 @@ export class AiTitlesService {
         where: { id: noteId },
         data: { title: cleanTitle },
       });
+
+      console.log(`💾 Title saved to history with ID: ${titleHistory.id}`);
 
       return titleHistory;
     } catch (error) {
@@ -171,6 +183,7 @@ export class AiTitlesService {
     });
 
     if (!note || !note.title) {
+      console.log(`⚠️ Note ${noteId} has no title to save`);
       return null;
     }
 
@@ -183,15 +196,19 @@ export class AiTitlesService {
     });
 
     if (existing) {
+      console.log(`ℹ️ Title "${note.title}" already exists in history for note ${noteId}`);
       return existing;
     }
 
-    return this.prisma.titleHistory.create({
+    const saved = await this.prisma.titleHistory.create({
       data: {
         noteId,
         title: note.title,
         type: TitleType.manual,
       },
     });
+
+    console.log(`✅ Saved manual title "${note.title}" to history for note ${noteId}`);
+    return saved;
   }
 }

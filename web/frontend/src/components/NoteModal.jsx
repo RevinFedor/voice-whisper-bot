@@ -36,6 +36,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     const inputRef = useRef(null);
     const textareaRef = useRef(null);
     const modalRef = useRef(null);
+    const prevNoteIdRef = useRef(note?.id); // Для отслеживания смены заметки
     
     // === ХУКИ ДЛЯ TEXTAREA ===
     const contentTextarea = useScrollPreservingTextarea();
@@ -46,16 +47,28 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
     
     // Обновляем локальное состояние при изменении заметки
     useEffect(() => {
-        setLocalTitle(note.title || '');
-        setLocalContent(note.content || '');
-        setServerTitle(note.title || '');
-        setServerContent(note.content || '');
-        setTitleChanged(false);
-        setContentChanged(false);
-        // Сбрасываем историю при смене заметки
-        setTitleHistory([]);
-        setShowHistory(false);
-        setShowPrompt(false);
+        // Если это та же заметка (только обновился заголовок/контент), не сбрасываем UI состояния
+        if (prevNoteIdRef.current === note?.id && note?.id) {
+            setLocalTitle(note.title || '');
+            setLocalContent(note.content || '');
+            setServerTitle(note.title || '');
+            setServerContent(note.content || '');
+            setTitleChanged(false);
+            setContentChanged(false);
+        } else {
+            // Если заметка сменилась, сбрасываем все
+            setLocalTitle(note.title || '');
+            setLocalContent(note.content || '');
+            setServerTitle(note.title || '');
+            setServerContent(note.content || '');
+            setTitleChanged(false);
+            setContentChanged(false);
+            // Сбрасываем историю при смене заметки
+            setTitleHistory([]);
+            setShowHistory(false);
+            setShowPrompt(false);
+            prevNoteIdRef.current = note?.id;
+        }
     }, [note]);
     
     // Загрузка истории заголовков
@@ -257,8 +270,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
         
         setIsGenerating(true);
         
-        // Сохраняем текущий заголовок в историю если он не пустой и изменился
-        if (localTitle && localTitle !== serverTitle) {
+        // Сохраняем текущий заголовок в историю если он не пустой
+        if (localTitle && localTitle.trim()) {
             try {
                 await fetch(`http://localhost:3001/api/ai-titles/save-current/${note.id}`, {
                     method: 'POST',
@@ -287,14 +300,20 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
             if (response.ok) {
                 const generatedTitle = await response.json();
                 
-                // Закрываем панель промпта
+                // Закрываем панель промпта и сворачиваем заголовок если он раскрыт
                 setShowPrompt(false);
                 setPromptInput('');
+                setIsExpanded(false); // Важно: сворачиваем заголовок чтобы была видна история
+                
+                // Обновляем локальный заголовок сразу
+                setLocalTitle(generatedTitle.title);
+                setServerTitle(generatedTitle.title);
+                setTitleChanged(false);
                 
                 // Загружаем обновленную историю
                 await loadTitleHistory();
                 
-                // Открываем вкладку истории с анимацией
+                // ВАЖНО: Открываем вкладку истории с анимацией
                 setShowHistory(true);
                 setNewlyGeneratedId(generatedTitle.id);
                 
@@ -302,11 +321,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate }) => {
                 setTimeout(() => {
                     setNewlyGeneratedId(null);
                 }, 1000);
-                
-                // Обновляем локальный заголовок
-                setLocalTitle(generatedTitle.title);
-                setServerTitle(generatedTitle.title);
-                setTitleChanged(false);
                 
                 // Вызываем callback обновления если есть
                 if (onNoteUpdate) {
