@@ -31,21 +31,42 @@ export function SelectionContextMenu() {
     const isSelecting = useValue(
         'is selecting',
         () => {
+            // Получаем текущий путь состояния инструмента
+            const currentPath = editor.getPath();
+            const currentTool = editor.getCurrentToolId();
+            
             // Проверяем различные состояния выделения
             const pointing = editor.inputs.isPointing;
             const dragging = editor.inputs.isDragging;
-            const brushing = editor.isIn('select.brushing');
-            const scribbleBrushing = editor.isIn('select.scribble_brushing');
             const hasBrush = editor.getInstanceState().brush !== null;
             
-            const result = pointing || dragging || brushing || scribbleBrushing || hasBrush;
+            // Проверяем конкретные состояния инструмента select
+            const isPointingCanvas = currentPath.includes('select.pointing_canvas');
+            const isBrushing = currentPath.includes('select.brushing');
+            const isScribbleBrushing = currentPath.includes('select.scribble_brushing');
+            const isPointingSelection = currentPath.includes('select.pointing_selection');
+            const isTranslating = currentPath.includes('select.translating');
+            const isPointingShape = currentPath.includes('select.pointing_shape');
+            
+            // Выделение активно если:
+            // 1. Есть активная рамка выделения (brush)
+            // 2. Или мы в состоянии pointing_canvas (готовимся к выделению)
+            // 3. Или мы в состоянии brushing (рисуем рамку)
+            // НЕ считаем выделением: pointing_shape, pointing_selection, translating (это работа с уже выделенным)
+            const result = hasBrush || isPointingCanvas || isBrushing || isScribbleBrushing;
             
             console.log('🔍 Selection state:', {
+                currentPath,
+                currentTool,
                 pointing,
                 dragging,
-                brushing,
-                scribbleBrushing,
                 hasBrush,
+                isPointingCanvas,
+                isBrushing,
+                isScribbleBrushing,
+                isPointingShape,
+                isPointingSelection,
+                isTranslating,
                 isSelecting: result,
                 selectedCount: editor.getSelectedShapes().filter(s => s.type === 'custom-note').length
             });
@@ -55,12 +76,16 @@ export function SelectionContextMenu() {
         [editor]
     );
     
+    // Отслеживаем, была ли камера в движении
+    const [wasCameraMoving, setWasCameraMoving] = React.useState(false);
+    
     // Управление видимостью с задержкой (debounce паттерн)
     React.useEffect(() => {
         console.log('📊 Visibility effect:', {
             selectedNotesCount: selectedNotes.length,
             cameraState,
             isSelecting,
+            wasCameraMoving,
             currentVisible: isVisible
         });
         
@@ -69,34 +94,51 @@ export function SelectionContextMenu() {
             clearTimeout(delayTimerRef.current);
         }
         
-        // Если нет выделенных заметок, камера движется, или идет выделение - скрываем сразу
-        if (selectedNotes.length === 0 || cameraState !== 'idle' || isSelecting) {
+        // Если нет выделенных заметок или идет выделение - скрываем сразу
+        if (selectedNotes.length === 0 || isSelecting) {
             console.log('🚫 Hiding menu:', {
-                reason: selectedNotes.length === 0 ? 'no selection' : 
-                        cameraState !== 'idle' ? 'camera moving' : 
-                        'still selecting'
+                reason: selectedNotes.length === 0 ? 'no selection' : 'still selecting'
             });
             setIsVisible(false);
+            delayTimerRef.current = null;
+            setWasCameraMoving(false);
+            return;
+        }
+        
+        // Если камера движется - скрываем и запоминаем это состояние
+        if (cameraState !== 'idle') {
+            console.log('🚫 Hiding menu: camera moving');
+            setIsVisible(false);
+            setWasCameraMoving(true);
             delayTimerRef.current = null;
             return;
         }
         
-        // Есть выделенные заметки, камера не движется, и выделение завершено - показываем с задержкой
-        // Можно настроить через window.menuDelay = 500 (в консоли браузера)
-        const delay = window.menuDelay || 300; // 300ms - стандарт индустрии
-        console.log('⏰ Setting timer for', delay, 'ms');
-        const timer = setTimeout(() => {
-            console.log('✅ Showing menu after delay');
+        // Камера остановилась, есть выделенные заметки, выделение завершено
+        // Если камера только что остановилась - показываем с задержкой
+        // Если выделение только что завершилось (камера не двигалась) - показываем СРАЗУ
+        if (wasCameraMoving) {
+            // Камера только что остановилась - задержка 300ms
+            const delay = window.menuDelay || 300; // 300ms - стандарт индустрии
+            console.log('⏰ Camera stopped, setting timer for', delay, 'ms');
+            const timer = setTimeout(() => {
+                console.log('✅ Showing menu after camera stop delay');
+                setIsVisible(true);
+                setWasCameraMoving(false);
+            }, delay);
+            
+            delayTimerRef.current = timer;
+            
+            // Cleanup для таймера
+            return () => {
+                if (timer) clearTimeout(timer);
+            };
+        } else {
+            // Выделение завершилось, камера не двигалась - показываем СРАЗУ
+            console.log('✅ Selection completed, showing menu immediately');
             setIsVisible(true);
-        }, delay);
-        
-        delayTimerRef.current = timer;
-        
-        // Cleanup
-        return () => {
-            if (timer) clearTimeout(timer);
-        };
-    }, [selectedNotes.length, cameraState, isSelecting]);
+        }
+    }, [selectedNotes.length, cameraState, isSelecting, wasCameraMoving]);
     
     // Вычисляем позицию меню
     const menuPosition = useValue(

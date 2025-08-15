@@ -934,6 +934,33 @@ export default function SyncedProductionApp() {
             console.log('❌ Hover debugging disabled');
         };
         
+        // Debug selection state for menu visibility
+        window.debugSelection = () => {
+            const logs = [];
+            const originalLog = console.log;
+            console.log = (...args) => {
+                logs.push(args.join(' '));
+                originalLog(...args);
+            };
+            
+            setTimeout(() => {
+                console.log = originalLog;
+                const filtered = logs.filter(log => 
+                    log.includes('Selection state') || 
+                    log.includes('Visibility effect') ||
+                    log.includes('Hiding menu') ||
+                    log.includes('Showing menu') ||
+                    log.includes('Setting timer')
+                );
+                console.log('📋 Selection logs:');
+                filtered.forEach(log => console.log(log));
+                navigator.clipboard.writeText(filtered.join('\n'));
+                console.log('✅ Logs copied to clipboard!');
+            }, 5000);
+            
+            console.log('🎯 Tracking selection for 5 seconds... Select some notes now!');
+        };
+        
         // Enhanced debug for cursor and hover sync issues
         window.debugCursor = () => {
             console.log('🔍 ENHANCED DEBUG: Cursor & Hover Analysis');
