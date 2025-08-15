@@ -26,6 +26,44 @@ const openai = new OpenAI({
     apiKey: OPENAI_KEY,
 });
 
+// Message queue to handle messages sequentially
+const messageQueue = [];
+let isProcessing = false;
+
+// Process messages from queue
+async function processQueue() {
+    if (isProcessing || messageQueue.length === 0) {
+        return;
+    }
+    
+    isProcessing = true;
+    
+    while (messageQueue.length > 0) {
+        const { handler, ctx } = messageQueue.shift();
+        const remaining = messageQueue.length;
+        
+        console.log(`📨 Processing message from queue (${remaining} remaining)...`);
+        
+        try {
+            await handler(ctx);
+        } catch (error) {
+            console.error('Error processing queued message:', error);
+        }
+        // Add small delay between messages to ensure proper ordering
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    isProcessing = false;
+    console.log('✅ Queue processing complete');
+}
+
+// Add message to queue
+function enqueueMessage(handler, ctx) {
+    messageQueue.push({ handler, ctx });
+    console.log(`📥 Message added to queue (total: ${messageQueue.length})`);
+    processQueue();
+}
+
 // Helper function to transcribe audio
 async function transcribeAudio(filePath) {
     try {
@@ -93,8 +131,8 @@ async function saveNoteToDatabase(title, content, type = 'voice') {
     }
 }
 
-// Handle voice messages
-bot.on('voice', async (ctx) => {
+// Actual voice message handler
+async function handleVoiceMessage(ctx) {
     const userId = ctx.from.id;
     const voiceFileId = ctx.message.voice.file_id;
     
@@ -151,6 +189,11 @@ bot.on('voice', async (ctx) => {
             reply_to_message_id: ctx.message.message_id
         });
     }
+}
+
+// Handle voice messages - add to queue
+bot.on('voice', (ctx) => {
+    enqueueMessage(handleVoiceMessage, ctx);
 });
 
 // Handle start command
@@ -167,8 +210,8 @@ bot.start((ctx) => {
     );
 });
 
-// Handle audio files (MP3, etc)
-bot.on('audio', async (ctx) => {
+// Actual audio message handler
+async function handleAudioMessage(ctx) {
     const audioFileId = ctx.message.audio.file_id;
     const processingMsg = await ctx.reply('⏳ Начинаю обработку аудио файла...');
     
@@ -218,10 +261,15 @@ bot.on('audio', async (ctx) => {
             reply_to_message_id: ctx.message.message_id
         });
     }
+}
+
+// Handle audio files (MP3, etc) - add to queue
+bot.on('audio', (ctx) => {
+    enqueueMessage(handleAudioMessage, ctx);
 });
 
-// Handle video files (MP4, etc) - extract audio and transcribe
-bot.on('video', async (ctx) => {
+// Actual video message handler
+async function handleVideoMessage(ctx) {
     const videoFileId = ctx.message.video.file_id;
     const processingMsg = await ctx.reply('⏳ Начинаю обработку видео файла...');
     
@@ -271,14 +319,16 @@ bot.on('video', async (ctx) => {
             reply_to_message_id: ctx.message.message_id
         });
     }
+}
+
+// Handle video files (MP4, etc) - add to queue
+bot.on('video', (ctx) => {
+    enqueueMessage(handleVideoMessage, ctx);
 });
 
-// Handle text messages - save directly to database
-bot.on('text', async (ctx) => {
+// Actual text message handler
+async function handleTextMessage(ctx) {
     const text = ctx.message.text;
-    
-    // Skip commands
-    if (text.startsWith('/')) return;
     
     try {
         // Generate title from first 50 chars or first line
@@ -303,6 +353,14 @@ bot.on('text', async (ctx) => {
         await ctx.reply('❌ Ошибка при сохранении заметки', {
             reply_to_message_id: ctx.message.message_id
         });
+    }
+}
+
+// Handle text messages - add to queue
+bot.on('text', (ctx) => {
+    // Skip commands
+    if (!ctx.message.text.startsWith('/')) {
+        enqueueMessage(handleTextMessage, ctx);
     }
 });
 
