@@ -1,4 +1,4 @@
-import { ShapeUtil, HTMLContainer, Rectangle2d, resizeBox, T } from 'tldraw';
+import { ShapeUtil, HTMLContainer, Rectangle2d, resizeBox, T, useEditor, useValue } from 'tldraw';
 import React from 'react';
 import ReactDOM from 'react-dom';
  
@@ -101,6 +101,31 @@ export class CustomNoteShapeUtil extends ShapeUtil {
     // onClick, canEdit и onDoubleClick убраны чтобы не блокировать выделение
 
     component(shape) {
+        const editor = useEditor();
+        
+        // Reactive hover detection - synced with tldraw's green border
+        const isHovered = useValue(
+            'note hovered',
+            () => {
+                const hoveredId = editor.getHoveredShapeId();
+                const result = hoveredId === shape.id;
+                
+                // Debug logging for hover state
+                if (window.DEBUG_HOVER && result) {
+                    console.log(`🔸 Component: Shape ${shape.id.substring(0,8)} isHovered=${result}`);
+                }
+                
+                return result;
+            },
+            [editor, shape.id]
+        );
+        
+        const isSelected = useValue(
+            'note selected',
+            () => editor.getSelectedShapeIds().includes(shape.id),
+            [editor, shape.id]
+        );
+        
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
         const [isMergeTarget, setIsMergeTarget] = React.useState(false);
         const [showTooltip, setShowTooltip] = React.useState(false);
@@ -169,6 +194,29 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                 style={{
                     width: shape.props.w,
                     height: shape.props.h,
+                    position: 'relative',  // For absolute positioning of inner content
+                    // Make container fully transparent to fill geometry bounds
+                    background: 'transparent',
+                    // Sync cursor with hover state
+                    cursor: isHovered ? 'pointer' : 'default',
+                    pointerEvents: 'auto',
+                    // Debug: log cursor state
+                    ...(window.DEBUG_HOVER && isHovered ? 
+                        (() => {
+                            console.log(`🎯 Setting cursor=pointer for ${shape.id.substring(0,8)}`);
+                            return {};
+                        })() : {}),
+            }}
+                // Remove stopPropagation to preserve drag functionality
+                // tldraw will handle click vs drag detection internally
+            >
+            {/* Inner container with visual styles */}
+            <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
                     backgroundColor: '#1a1a1a',
                     border: isMergeTarget ? `3px solid ${borderColor}` : '1px solid #333',
                     borderLeft: `3px solid ${borderColor}`,
@@ -186,6 +234,7 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '8px',
+                    boxSizing: 'border-box',  // Ensure padding is included in dimensions
             }}
             >
                 {/* Левая часть - заголовок */}
@@ -236,6 +285,7 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                 }}>
                     {time}
                 </div>
+            </div>
             </HTMLContainer>
             
             {/* Мгновенный кастомный tooltip через Portal */}

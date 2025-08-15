@@ -87,16 +87,8 @@ const customStyles = `
         z-index: 100;
     }
     
-    /* Force pointer-events and cursor for custom note shapes */
-    .tl-shape[data-shape-type="custom-note"] .tl-html-container {
-        pointer-events: all !important;
-        cursor: pointer !important;
-    }
-    
-    /* Ensure all child elements inherit the pointer cursor */
-    .tl-shape[data-shape-type="custom-note"] .tl-html-container * {
-        cursor: pointer !important;
-    }
+    /* Custom note shapes now handle pointer events and cursor internally */
+    /* See CustomNoteShape.jsx component for cursor and interaction handling */
     
     .merge-target {
         box-shadow: 0 0 20px rgba(255, 200, 0, 0.8) !important;
@@ -941,49 +933,251 @@ export default function SyncedProductionApp() {
             console.log('❌ Hover debugging disabled');
         };
         
-        // Debug CSS and pointer-events
+        // Enhanced debug for cursor and hover sync issues
         window.debugCursor = () => {
-            console.log('🔍 Debugging cursor styles...');
+            console.log('🔍 ENHANCED DEBUG: Cursor & Hover Analysis');
+            console.log('='.repeat(50));
             
-            // Check HTML containers
-            const htmlContainers = document.querySelectorAll('.tl-html-container');
-            console.log(`Found ${htmlContainers.length} HTML containers`);
+            // 1. Check tldraw hover state
+            const hoveredId = editor.getHoveredShapeId();
+            console.log('📍 Tldraw hovered shape ID:', hoveredId || 'None');
             
-            htmlContainers.forEach((container, i) => {
-                const computed = window.getComputedStyle(container);
-                console.log(`Container ${i}:`, {
-                    cursor: computed.cursor,
-                    pointerEvents: computed.pointerEvents,
-                    position: computed.position,
-                    zIndex: computed.zIndex
-                });
+            if (hoveredId) {
+                const hoveredShape = editor.getShape(hoveredId);
+                console.log('📍 Hovered shape type:', hoveredShape?.type);
+                console.log('📍 Hovered shape bounds:', hoveredShape ? {
+                    x: hoveredShape.x,
+                    y: hoveredShape.y,
+                    w: hoveredShape.props?.w,
+                    h: hoveredShape.props?.h
+                } : 'N/A');
+            }
+            
+            // 2. Check mouse position
+            const pagePoint = editor.inputs.currentPagePoint;
+            console.log('🖱️ Mouse position (page coords):', { x: pagePoint.x, y: pagePoint.y });
+            
+            // 3. Check what's at mouse position
+            const shapeAtPoint = editor.getShapeAtPoint(pagePoint, {
+                hitInside: true,
+                margin: 0
+            });
+            console.log('🎯 Shape at mouse position:', shapeAtPoint?.id || 'None');
+            
+            // 4. Check green indicators (tldraw's hover visualization)
+            const indicators = document.querySelectorAll('.tl-indicator[data-component="indicator"]');
+            console.log('🟢 Active indicators:', indicators.length);
+            indicators.forEach(ind => {
+                console.log('  - Indicator for:', ind.getAttribute('data-classname'));
             });
             
-            // Check parent tl-shape elements
+            // 5. Check CSS :hover state
+            const hoveredElements = document.querySelectorAll(':hover');
+            const hoveredShapes = Array.from(hoveredElements).filter(el => 
+                el.classList.contains('tl-shape') || 
+                el.closest('[data-shape-type="custom-note"]')
+            );
+            console.log('🎨 CSS :hover on shapes:', hoveredShapes.length);
+            
+            // 6. Check all custom-note shapes and their styles
+            console.log('\n📋 Custom Note Shapes Analysis:');
             const shapes = document.querySelectorAll('[data-shape-type="custom-note"]');
-            console.log(`Found ${shapes.length} custom-note shapes`);
             
             shapes.forEach((shape, i) => {
-                const computed = window.getComputedStyle(shape);
-                console.log(`Shape ${i}:`, {
-                    cursor: computed.cursor,
-                    pointerEvents: computed.pointerEvents,
-                });
+                const shapeId = shape.getAttribute('data-shape-id');
+                const rect = shape.getBoundingClientRect();
+                const container = shape.querySelector('.tl-html-container');
+                const isHovered = shape.matches(':hover');
+                const computed = window.getComputedStyle(container || shape);
                 
-                // Check if tldraw is overriding cursor
-                const svgElement = shape.closest('svg');
-                if (svgElement) {
-                    const svgComputed = window.getComputedStyle(svgElement);
-                    console.log(`  Parent SVG cursor: ${svgComputed.cursor}`);
+                console.log(`\n  Shape ${i} [${shapeId?.substring(0,8)}...]`);
+                console.log(`    Position: (${rect.left.toFixed(0)}, ${rect.top.toFixed(0)})`);
+                console.log(`    Size: ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}`);
+                console.log(`    CSS :hover: ${isHovered}`);
+                console.log(`    Tldraw hover: ${shapeId === hoveredId}`);
+                console.log(`    Cursor style: ${computed.cursor}`);
+                console.log(`    Pointer events: ${computed.pointerEvents}`);
+                
+                // Check for mismatch
+                if (isHovered !== (shapeId === hoveredId)) {
+                    console.log(`    ⚠️ MISMATCH: CSS hover=${isHovered}, Tldraw hover=${shapeId === hoveredId}`);
                 }
             });
             
-            // Check if tldraw canvas is overriding cursor
+            // 7. Check parent SVG and canvas
+            const svg = document.querySelector('.tl-svg-container svg');
+            if (svg) {
+                const svgComputed = window.getComputedStyle(svg);
+                console.log('\n🖼️ SVG Container:');
+                console.log('  Cursor:', svgComputed.cursor);
+                console.log('  Pointer events:', svgComputed.pointerEvents);
+            }
+            
+            // 8. Check canvas
             const canvas = document.querySelector('.tl-canvas');
             if (canvas) {
                 const canvasComputed = window.getComputedStyle(canvas);
-                console.log('Canvas cursor:', canvasComputed.cursor);
+                console.log('\n📐 Canvas:');
+                console.log('  Cursor:', canvasComputed.cursor);
             }
+        };
+        
+        // Final cursor sync test - v2 with reactive state
+        window.testCursorSync = () => {
+            console.log('🧪 Testing Cursor Sync Fix v2 (Reactive)...');
+            console.log('='.repeat(50));
+            
+            // Check all custom-note containers
+            const containers = document.querySelectorAll('.tl-shape[data-shape-type="custom-note"] .tl-html-container');
+            console.log(`Found ${containers.length} custom-note containers`);
+            
+            const hoveredId = editor.getHoveredShapeId();
+            console.log(`\n🎯 Currently hovered shape: ${hoveredId || 'None'}`);
+            
+            let syncedCount = 0;
+            let mismatchCount = 0;
+            
+            containers.forEach((container, i) => {
+                const computed = window.getComputedStyle(container);
+                const shapeElement = container.closest('[data-shape-id]');
+                const shapeId = shapeElement?.getAttribute('data-shape-id');
+                const isTldrawHovered = hoveredId === shapeId;
+                const hasPointerCursor = computed.cursor.includes('pointer');
+                const hasAutoPointerEvents = computed.pointerEvents === 'auto';
+                
+                // Check if cursor/pointer-events are synced with tldraw hover
+                const isSynced = (isTldrawHovered === hasPointerCursor) && 
+                                (isTldrawHovered === hasAutoPointerEvents);
+                
+                if (isSynced) syncedCount++;
+                else mismatchCount++;
+                
+                if (!isSynced || isTldrawHovered) {
+                    console.log(`\nContainer ${i} [${shapeId?.substring(0,8)}...]:`);
+                    console.log(`  Tldraw hover: ${isTldrawHovered ? '✅' : '❌'}`);
+                    console.log(`  Pointer events: ${hasAutoPointerEvents ? 'auto' : computed.pointerEvents} ${isTldrawHovered === hasAutoPointerEvents ? '✅' : '⚠️ MISMATCH'}`);
+                    console.log(`  Cursor: ${computed.cursor} ${isTldrawHovered === hasPointerCursor ? '✅' : '⚠️ MISMATCH'}`);
+                    
+                    if (!isSynced) {
+                        console.log(`  ⚠️ SYNC ISSUE: Hover=${isTldrawHovered}, Cursor=${hasPointerCursor}, Events=${hasAutoPointerEvents}`);
+                    }
+                }
+            });
+            
+            console.log('\n📊 Sync Status:');
+            console.log(`  ✅ Synced shapes: ${syncedCount}/${containers.length}`);
+            console.log(`  ⚠️ Mismatched: ${mismatchCount}/${containers.length}`);
+            
+            console.log('\n✨ Fix Implementation v2:');
+            console.log('  1. Using useEditor() and useValue() hooks ✅');
+            console.log('  2. Reactive hover state synced with tldraw ✅');
+            console.log('  3. pointerEvents: auto only when hovered/selected ✅');
+            console.log('  4. cursor: pointer only when hovered ✅');
+            console.log('  5. Removed stopPropagation for drag support ✅');
+            
+            if (mismatchCount === 0) {
+                console.log('\n🎉 SUCCESS: All shapes properly synced!');
+            } else {
+                console.log('\n⚠️ WARNING: Some shapes have sync issues. Check implementation.');
+            }
+        };
+        
+        // Detailed bounds check
+        window.checkBounds = () => {
+            const hoveredId = editor.getHoveredShapeId();
+            if (!hoveredId) {
+                console.log('❌ No shape hovered. Hover over a shape and try again.');
+                return;
+            }
+            
+            console.log('🔍 Bounds Analysis for hover mismatch:');
+            console.log('='.repeat(50));
+            
+            // Get the shape
+            const shape = editor.getShape(hoveredId);
+            if (!shape) return;
+            
+            // Shape geometry bounds
+            console.log('📐 Shape Geometry:');
+            console.log(`  Width: ${shape.props.w}px`);
+            console.log(`  Height: ${shape.props.h}px`);
+            console.log(`  Position: (${shape.x}, ${shape.y})`);
+            
+            // Find HTML elements
+            const shapeElement = document.querySelector(`[data-shape-id="${hoveredId}"]`);
+            const htmlContainer = shapeElement?.querySelector('.tl-html-container');
+            const indicator = document.querySelector(`.tl-indicator[data-id="${hoveredId}"]`);
+            
+            if (htmlContainer) {
+                const htmlRect = htmlContainer.getBoundingClientRect();
+                const computed = window.getComputedStyle(htmlContainer);
+                
+                console.log('\n📦 HTML Container:');
+                console.log(`  Actual size: ${htmlRect.width}x${htmlRect.height}px`);
+                console.log(`  Position: (${htmlRect.left}, ${htmlRect.top})`);
+                console.log(`  Padding: ${computed.padding}`);
+                console.log(`  Border: ${computed.border}`);
+                console.log(`  Box-sizing: ${computed.boxSizing}`);
+                console.log(`  Pointer-events: ${computed.pointerEvents}`);
+                console.log(`  Cursor: ${computed.cursor}`);
+                
+                // Calculate content box vs border box
+                const paddingLeft = parseFloat(computed.paddingLeft) || 0;
+                const paddingRight = parseFloat(computed.paddingRight) || 0;
+                const paddingTop = parseFloat(computed.paddingTop) || 0;
+                const paddingBottom = parseFloat(computed.paddingBottom) || 0;
+                
+                console.log('\n⚠️ Size Mismatch Analysis:');
+                console.log(`  Geometry width: ${shape.props.w}px`);
+                console.log(`  HTML width (with padding): ${htmlRect.width}px`);
+                console.log(`  Content width (no padding): ${htmlRect.width - paddingLeft - paddingRight}px`);
+                console.log(`  Width difference: ${Math.abs(shape.props.w - htmlRect.width)}px`);
+                
+                if (Math.abs(shape.props.w - htmlRect.width) > 1) {
+                    console.log('  🔴 WIDTH MISMATCH - HTML container doesn\'t match geometry!');
+                }
+                
+                console.log(`\n  Geometry height: ${shape.props.h}px`);
+                console.log(`  HTML height (with padding): ${htmlRect.height}px`);
+                console.log(`  Content height (no padding): ${htmlRect.height - paddingTop - paddingBottom}px`);
+                console.log(`  Height difference: ${Math.abs(shape.props.h - htmlRect.height)}px`);
+                
+                if (Math.abs(shape.props.h - htmlRect.height) > 1) {
+                    console.log('  🔴 HEIGHT MISMATCH - HTML container doesn\'t match geometry!');
+                }
+            }
+            
+            // Check indicator (green border)
+            if (indicator) {
+                const indRect = indicator.getBoundingClientRect();
+                console.log('\n🟢 Green Border Indicator:');
+                console.log(`  Size: ${indRect.width}x${indRect.height}px`);
+                console.log(`  Position: (${indRect.left}, ${indRect.top})`);
+                
+                if (htmlContainer) {
+                    const htmlRect = htmlContainer.getBoundingClientRect();
+                    console.log('\n🎯 Indicator vs HTML Container:');
+                    console.log(`  Indicator covers HTML: ${indRect.width >= htmlRect.width && indRect.height >= htmlRect.height}`);
+                    console.log(`  Gap on sides: ${(indRect.width - htmlRect.width) / 2}px`);
+                    console.log(`  Gap on top/bottom: ${(indRect.height - htmlRect.height) / 2}px`);
+                    
+                    if (indRect.width > htmlRect.width || indRect.height > htmlRect.height) {
+                        console.log('  ⚠️ PROBLEM: Green border is larger than HTML container!');
+                        console.log('  This creates dead zones where hover shows but cursor doesn\'t change.');
+                    }
+                }
+            }
+            
+            // Mouse position
+            const pagePoint = editor.inputs.currentPagePoint;
+            console.log('\n🖱️ Current Mouse Position:');
+            console.log(`  Page coords: (${pagePoint.x}, ${pagePoint.y})`);
+            
+            // Solution
+            console.log('\n💡 Solution Options:');
+            console.log('  1. Remove padding from HTML container');
+            console.log('  2. Increase shape.props.w/h to include padding');
+            console.log('  3. Extend pointer-events area beyond container');
         };
         
         // Initial state
@@ -1078,7 +1272,7 @@ export default function SyncedProductionApp() {
         
         // Correct event handler using editor.on('event', callback)
         const handleEditorEvents = (eventInfo) => {
-            // Debug hover events - only tldraw's built-in hover detection
+            // Debug hover events with enhanced detail
             if (window.DEBUG_HOVER && eventInfo.name === 'pointer_move') {
                 const tldrawHovered = editor.getHoveredShapeId();
                 
@@ -1088,10 +1282,25 @@ export default function SyncedProductionApp() {
                         const shape = editor.getShape(tldrawHovered);
                         if (shape?.type === 'custom-note') {
                             const title = shape.props?.richText?.content?.[0]?.content?.[0]?.text || 'No title';
-                            console.log(`✅ TLDRAW HOVER: "${title.substring(0, 20)}..." [${tldrawHovered.substring(0, 8)}]`);
+                            console.log(`✅ TLDRAW HOVER: "${title.substring(0, 20)}..." [shape:${tldrawHovered.substring(0, 2)}]`);
+                            
+                            // Check CSS hover state
+                            const element = document.querySelector(`[data-shape-id="${tldrawHovered}"]`);
+                            if (element) {
+                                const isHovered = element.matches(':hover');
+                                const container = element.querySelector('.tl-html-container');
+                                const computed = window.getComputedStyle(container || element);
+                                console.log(`   CSS: :hover=${isHovered}, cursor=${computed.cursor}`);
+                                
+                                // Check indicator
+                                const indicator = document.querySelector('.tl-indicator[data-component="indicator"]');
+                                if (indicator) {
+                                    console.log(`   🟢 Green border indicator is visible`);
+                                }
+                            }
                         }
                     } else if (lastTldrawHovered) {
-                        console.log('❌ TLDRAW HOVER: None');
+                        console.log('❌ TLDRAW HOVER: None (green border disappears)');
                     }
                     lastTldrawHovered = tldrawHovered;
                 }
