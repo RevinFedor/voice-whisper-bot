@@ -37,20 +37,14 @@ export function SelectionContextMenu() {
             const screenBounds = editor.getSelectionRotatedScreenBounds();
             if (!screenBounds) return null;
             
-            // Текущий уровень масштабирования
-            const zoom = editor.getZoomLevel();
-            
-            // Динамический отступ: больше при отдалении, меньше при приближении
-            // При zoom 0.5 (отдалено) → отступ 120px
-            // При zoom 1 (нормально) → отступ 60px
-            // При zoom 2 (приближено) → отступ 30px
-            const baseOffset = 60;
-            const dynamicOffset = baseOffset / Math.max(zoom, 0.5);
+            // Фиксированный отступ в пикселях экрана
+            // getSelectionRotatedScreenBounds() УЖЕ дает экранные координаты!
+            const fixedOffset = 70; // Всегда 50px на экране
             
             // Позиционируем меню по центру над выделением
             return {
                 x: screenBounds.x + screenBounds.width / 2,
-                y: screenBounds.y - dynamicOffset,
+                y: screenBounds.y - fixedOffset,
             };
         },
         [selectedNotes, editor, cameraState]
@@ -116,7 +110,8 @@ export function SelectionContextMenu() {
                 backdropFilter: 'blur(10px)',
                 zIndex: 10000,
                 pointerEvents: 'auto',
-                animation: 'fadeIn 0.15s ease-out',
+                opacity: 1,
+                transition: 'opacity 0.15s ease-out', // Плавное появление без анимации позиции
                 display: 'flex',
                 flexDirection: 'row', // Горизонтальное расположение
                 alignItems: 'center',
