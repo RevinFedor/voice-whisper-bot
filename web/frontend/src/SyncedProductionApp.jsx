@@ -916,14 +916,24 @@ export default function SyncedProductionApp() {
         window.editor = editor;
         window.saveEditor(editor);
         
-        // Removed CSS styles for hover - now handled directly in CustomNoteShape component
+        // Add CSS for tooltip animation
+        const tooltipStyle = document.createElement('style');
+        tooltipStyle.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(5px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(tooltipStyle);
+        
+        // Store for cleanup
+        editor._tooltipStyle = tooltipStyle;
         
         // Debug commands for hover testing
         window.enableHoverDebug = () => {
             window.DEBUG_HOVER = true;
             console.log('✅ Hover debugging enabled. Watch console for events.');
-            console.log('   ✅ TLDRAW HOVER = green border appears');
-            console.log('   🎯 OUR HOVER = our detection with margin=0');
+            console.log('   ✅ TLDRAW HOVER = green border appears/disappears');
         };
         
         window.disableHoverDebug = () => {
@@ -977,7 +987,7 @@ export default function SyncedProductionApp() {
         };
         
         // Initial state
-        window.DEBUG_HOVER = false;
+        window.DEBUG_HOVER = false; // Use window.enableHoverDebug() to enable
         
         // Debug: измерение задержки drag-to-merge
         window.measureDragDelay = () => {
@@ -1063,63 +1073,27 @@ export default function SyncedProductionApp() {
         let clickedShapeId = null;
         let dragStarted = false;
         
-        // Debug logging for mouse events (compact version)
-        let lastHoveredShape = null;
+        // Debug logging for hover events (simplified - only tldraw hover)
         let lastTldrawHovered = null;
-        let hoverLogThrottle = 0;
         
         // Correct event handler using editor.on('event', callback)
         const handleEditorEvents = (eventInfo) => {
-            // Debug hover events (throttled to reduce spam)
+            // Debug hover events - only tldraw's built-in hover detection
             if (window.DEBUG_HOVER && eventInfo.name === 'pointer_move') {
-                const now = Date.now();
-                if (now - hoverLogThrottle > 100) { // Log max every 100ms
-                    hoverLogThrottle = now;
-                    
-                    const pagePoint = editor.inputs.currentPagePoint;
-                    
-                    // Check with different margins to understand tldraw's hit detection
-                    const hoveredShape0 = editor.getShapeAtPoint(pagePoint, { 
-                        hitInside: true,
-                        margin: 0 
-                    });
-                    
-                    const hoveredShape10 = editor.getShapeAtPoint(pagePoint, { 
-                        hitInside: true,
-                        margin: 10 
-                    });
-                    
-                    // Also check tldraw's built-in hoveredShapeId
-                    const tldrawHovered = editor.getHoveredShapeId();
-                    
-                    // Log tldraw's hover state changes (simplified - no DOM manipulation needed)
-                    if (tldrawHovered !== lastTldrawHovered) {
-                        if (tldrawHovered) {
-                            const shape = editor.getShape(tldrawHovered);
-                            if (shape?.type === 'custom-note') {
-                                console.log(`✅ TLDRAW HOVER: ${tldrawHovered.substring(0, 8)} (green border appears)`);
-                            }
-                        } else if (lastTldrawHovered) {
-                            console.log('❌ TLDRAW HOVER: None (green border disappears)');
+                const tldrawHovered = editor.getHoveredShapeId();
+                
+                // Log tldraw's hover state changes
+                if (tldrawHovered !== lastTldrawHovered) {
+                    if (tldrawHovered) {
+                        const shape = editor.getShape(tldrawHovered);
+                        if (shape?.type === 'custom-note') {
+                            const title = shape.props?.richText?.content?.[0]?.content?.[0]?.text || 'No title';
+                            console.log(`✅ TLDRAW HOVER: "${title.substring(0, 20)}..." [${tldrawHovered.substring(0, 8)}]`);
                         }
-                        lastTldrawHovered = tldrawHovered;
+                    } else if (lastTldrawHovered) {
+                        console.log('❌ TLDRAW HOVER: None');
                     }
-                    
-                    // Only log our detection when shape changes
-                    if (hoveredShape0?.id !== lastHoveredShape?.id) {
-                        if (hoveredShape0 && hoveredShape0.type === 'custom-note') {
-                            const title = hoveredShape0.props?.richText?.content?.[0]?.content?.[0]?.text || 'No title';
-                            console.log(`🎯 OUR HOVER (margin=0): Note "${title.substring(0, 20)}..." [${hoveredShape0.id.substring(0, 8)}]`);
-                            
-                            // Compare different margins
-                            if (hoveredShape10 && !hoveredShape0) {
-                                console.log(`   ⚠️ Note detected with margin=10 but not margin=0`);
-                            }
-                        } else if (lastHoveredShape) {
-                            console.log('🎯 OUR HOVER: Left note area');
-                        }
-                        lastHoveredShape = hoveredShape0;
-                    }
+                    lastTldrawHovered = tldrawHovered;
                 }
             }
             
