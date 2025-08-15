@@ -5,8 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 const LAYOUT_CONFIG = {
   columnWidth: 180,
   columnSpacing: 50,
-  rowHeight: 150,
-  rowSpacing: 30,
+  rowHeight: 50,  // Уменьшено в 3 раза для компактности
+  rowSpacing: 15, // Уменьшен интервал между карточками
   startX: 100,
   startY: 120,
   headerY: 50,

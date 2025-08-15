@@ -15,8 +15,8 @@ const prisma_service_1 = require("../prisma/prisma.service");
 const LAYOUT_CONFIG = {
     columnWidth: 180,
     columnSpacing: 50,
-    rowHeight: 150,
-    rowSpacing: 30,
+    rowHeight: 50,
+    rowSpacing: 15,
     startX: 100,
     startY: 120,
     headerY: 50,

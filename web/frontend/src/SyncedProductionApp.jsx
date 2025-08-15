@@ -87,6 +87,16 @@ const customStyles = `
         z-index: 100;
     }
     
+    /* Cursor pointer for custom note shapes */
+    .tl-shape[data-shape-type="custom-note"] {
+        cursor: pointer !important;
+    }
+    
+    /* Ensure hover state works properly for HTMLContainer content */
+    .tl-shape[data-shape-type="custom-note"] * {
+        cursor: inherit !important;
+    }
+    
     .merge-target {
         box-shadow: 0 0 20px rgba(255, 200, 0, 0.8) !important;
         border-color: #ffc800 !important;
@@ -335,7 +345,7 @@ export default function SyncedProductionApp() {
                 y: note.y,
                 props: {
                     w: 180,
-                    h: 150,
+                    h: 50, // Компактная высота карточки
                     color: 'black',
                     labelColor: 'black',
                     richText: toRichText(note.title + '\n\n' + (note.content || '')),
@@ -385,14 +395,14 @@ export default function SyncedProductionApp() {
             left: shape1.x,
             right: shape1.x + (shape1.props?.w || 180),
             top: shape1.y,
-            bottom: shape1.y + (shape1.props?.h || 150)
+            bottom: shape1.y + (shape1.props?.h || 50)
         };
         
         const bounds2 = {
             left: shape2.x,
             right: shape2.x + (shape2.props?.w || 180),
             top: shape2.y,
-            bottom: shape2.y + (shape2.props?.h || 150)
+            bottom: shape2.y + (shape2.props?.h || 50)
         };
         
         // Calculate intersection
@@ -905,6 +915,25 @@ export default function SyncedProductionApp() {
         window.editor = editor;
         window.saveEditor(editor);
         
+        // Add CSS styles for hover effects (synced with tldraw's hover detection)
+        const style = document.createElement('style');
+        style.textContent = `
+            /* Cursor pointer when tldraw detects hover (synced with green border) */
+            .tldraw-hovered,
+            .tldraw-hovered * {
+                cursor: pointer !important;
+            }
+            
+            /* Remove cursor pointer from HTML elements when not hovered by tldraw */
+            [data-shape-type="custom-note"]:not(.tldraw-hovered) {
+                cursor: default !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Store for cleanup
+        editor._styleElement = style;
+        
         // Debug: измерение задержки drag-to-merge
         window.measureDragDelay = () => {
             const logs = [];
@@ -989,9 +1018,78 @@ export default function SyncedProductionApp() {
         let clickedShapeId = null;
         let dragStarted = false;
         
+        // Debug logging for mouse events (compact version)
+        const DEBUG_HOVER = true; // Toggle for hover debugging
+        let lastHoveredShape = null;
+        let lastTldrawHovered = null;
+        let hoverLogThrottle = 0;
+        
         // Correct event handler using editor.on('event', callback)
         const handleEditorEvents = (eventInfo) => {
-            // Skip logging for frequent events
+            // Debug hover events (throttled to reduce spam)
+            if (DEBUG_HOVER && eventInfo.name === 'pointer_move') {
+                const now = Date.now();
+                if (now - hoverLogThrottle > 100) { // Log max every 100ms
+                    hoverLogThrottle = now;
+                    
+                    const pagePoint = editor.inputs.currentPagePoint;
+                    
+                    // Check with different margins to understand tldraw's hit detection
+                    const hoveredShape0 = editor.getShapeAtPoint(pagePoint, { 
+                        hitInside: true,
+                        margin: 0 
+                    });
+                    
+                    const hoveredShape10 = editor.getShapeAtPoint(pagePoint, { 
+                        hitInside: true,
+                        margin: 10 
+                    });
+                    
+                    // Also check tldraw's built-in hoveredShapeId
+                    const tldrawHovered = editor.getHoveredShapeId();
+                    
+                    // Log tldraw's hover state changes
+                    if (tldrawHovered !== lastTldrawHovered) {
+                        if (tldrawHovered) {
+                            const shape = editor.getShape(tldrawHovered);
+                            if (shape?.type === 'custom-note') {
+                                console.log(`✅ TLDRAW HOVER: ${tldrawHovered.substring(0, 8)} (green border appears)`);
+                                // Add CSS class to shape element for cursor pointer
+                                const shapeElement = document.querySelector(`[data-shape="${tldrawHovered}"]`);
+                                if (shapeElement) {
+                                    shapeElement.classList.add('tldraw-hovered');
+                                }
+                            }
+                        } else if (lastTldrawHovered) {
+                            console.log('❌ TLDRAW HOVER: None (green border disappears)');
+                            // Remove CSS class from previous shape
+                            const prevShapeElement = document.querySelector(`[data-shape="${lastTldrawHovered}"]`);
+                            if (prevShapeElement) {
+                                prevShapeElement.classList.remove('tldraw-hovered');
+                            }
+                        }
+                        lastTldrawHovered = tldrawHovered;
+                    }
+                    
+                    // Only log our detection when shape changes
+                    if (hoveredShape0?.id !== lastHoveredShape?.id) {
+                        if (hoveredShape0 && hoveredShape0.type === 'custom-note') {
+                            const title = hoveredShape0.props?.richText?.content?.[0]?.content?.[0]?.text || 'No title';
+                            console.log(`🎯 OUR HOVER (margin=0): Note "${title.substring(0, 20)}..." [${hoveredShape0.id.substring(0, 8)}]`);
+                            
+                            // Compare different margins
+                            if (hoveredShape10 && !hoveredShape0) {
+                                console.log(`   ⚠️ Note detected with margin=10 but not margin=0`);
+                            }
+                        } else if (lastHoveredShape) {
+                            console.log('🎯 OUR HOVER: Left note area');
+                        }
+                        lastHoveredShape = hoveredShape0;
+                    }
+                }
+            }
+            
+            // Skip logging for other frequent events  
             if (eventInfo.name !== 'pointer_move') {
                 // console.log('📡 EVENT:', eventInfo.name); // Uncomment for debugging
             }
@@ -1117,7 +1215,7 @@ export default function SyncedProductionApp() {
             y: note.y,
             props: {
                 w: 180,
-                h: 150,
+                h: 50, // Компактная высота карточки
                 color: 'black',
                 labelColor: 'black',
                 richText: toRichText(note.title + '\n\n' + (note.content || '')),

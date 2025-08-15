@@ -3,7 +3,7 @@ import React from 'react';
  
 // Кастомный размер для заметок
 const CUSTOM_NOTE_WIDTH = 180;
-const CUSTOM_NOTE_HEIGHT = 150;
+const CUSTOM_NOTE_HEIGHT = 50; // Уменьшено в 3 раза для компактности
 
 // Функция для преобразования текста в richText формат
 function toRichText(text) {
@@ -92,10 +92,16 @@ export class CustomNoteShapeUtil extends ShapeUtil {
     // УБИРАЕМ onClick чтобы не блокировать выделение на pointerDown
     // Теперь клики обрабатываются на уровне editor в SyncedProductionApp
     // УБИРАЕМ canEdit и onDoubleClick - они могут мешать правильной обработке
+    
+    // CURSOR & TOOLTIP IMPLEMENTATION:
+    // - cursor: pointer appears on hover using React state + CSS
+    // - HTML tooltips work natively in HTMLContainer
+    // - onMouseEnter/Leave events work properly in HTMLContainer without interfering with tldraw
 
     component(shape) {
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
         const [isMergeTarget, setIsMergeTarget] = React.useState(false);
+        const [isHovered, setIsHovered] = React.useState(false);
         
         // Listen for merge target highlighting
         React.useEffect(() => {
@@ -119,8 +125,7 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             return () => observer.disconnect();
         }, [shape.id]);
         
-        // Извлекаем текст из richText
-        let displayText = '';
+        // Извлекаем заголовок из richText
         let title = '';
         if (richText && richText.content) {
             const paragraphs = richText.content
@@ -129,7 +134,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             
             if (paragraphs.length > 0) {
                 title = paragraphs[0];
-                displayText = paragraphs.slice(1).join('\n');
             }
         }
 
@@ -143,26 +147,31 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         if (isMergeTarget) {
             borderColor = '#ffc800';
         }
-        
-        // Иконка по типу
-        const typeIcon = {
-            voice: '🎙️',
-            text: '📝',
-            collection: '📚',
-        }[noteType] || '📝';
+
+        // Форматируем дату - получаем только день и месяц
+        const formatDate = (dateStr) => {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('ru-RU', { 
+                day: 'numeric', 
+                month: 'short' 
+            }).replace('.', '');
+        };
 
         return (
             <HTMLContainer
                 data-shape={shape.id}
                 className={isMergeTarget ? 'merge-target' : ''}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
                 style={{
                     width: shape.props.w,
                     height: shape.props.h,
                     backgroundColor: '#1a1a1a',
                     border: isMergeTarget ? `3px solid ${borderColor}` : '1px solid #333',
                     borderLeft: `3px solid ${borderColor}`,
-                    borderRadius: '12px',
-                    padding: '15px',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
                     color: '#e0e0e0',
                     fontSize: '12px',
                     overflow: 'hidden',
@@ -171,79 +180,47 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                         : '0 2px 8px rgba(0, 0, 0, 0.3)',
                     transform: isMergeTarget ? 'scale(1.03)' : 'scale(1)',
                     transition: 'all 0.3s ease',
-                }}
-            >
-                {/* Заголовок */}
-                <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    marginBottom: '8px',
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '16px' }}>{typeIcon}</span>
-                        {manuallyPositioned && (
-                            <span style={{ 
-                                fontSize: '12px', 
-                                color: '#ff9500',
-                                title: 'Заметка перемещена'
-                            }}>
-                                📍
-                            </span>
-                        )}
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#666' }}>{time}</span>
-                </div>
-                
-                {/* Название */}
-                <div style={{
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    marginBottom: '8px',
-                    color: '#fff',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                }}>
-                    {title || 'Без заголовка'}
-                </div>
-                
-                {/* Превью текста */}
-                <div style={{
-                    fontSize: '12px',
-                    color: '#888',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical',
-                    lineHeight: '1.4',
-                    marginBottom: '10px',
-                }}>
-                    {displayText || 'Пустая заметка'}
-                </div>
-                
-                {/* Футер */}
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
                     alignItems: 'center',
-                    position: 'absolute',
-                    bottom: '15px',
-                    left: '15px',
-                    right: '15px',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    cursor: isHovered ? 'pointer' : 'default', // Cursor pointer on hover
+            }}
+            >
+                {/* Левая часть - заголовок */}
+                <div style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    minWidth: 0, // Важно для text-overflow
                 }}>
-                    <div style={{
-                        display: 'flex',
-                        gap: '10px',
-                        fontSize: '11px',
-                        color: '#555',
-                    }}>
-                        {noteType === 'voice' && duration && <span>{duration}</span>}
-                        {noteType === 'collection' && <span>Коллекция</span>}
-                        {noteType === 'text' && <span>Текст</span>}
+                    {/* Заголовок с tooltip */}
+                    <div 
+                        style={{
+                            fontSize: '13px',
+                            fontWeight: '500',
+                            color: '#fff',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                            cursor: 'inherit', // Inherit cursor from parent HTMLContainer
+                            position: 'relative', // For tooltip positioning if needed
+                        }}
+                        title={title && title.length > 25 ? title : undefined} // Only show tooltip if title is truncated
+                    >
+                        {title || 'Без заголовка'}
                     </div>
+                </div>
+                
+                {/* Правая часть - время */}
+                <div style={{
+                    fontSize: '11px',
+                    color: '#666',
+                    flexShrink: 0,
+                }}>
+                    {time}
                 </div>
             </HTMLContainer>
         );
