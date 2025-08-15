@@ -27,118 +27,71 @@ export function SelectionContextMenu() {
         [editor]
     );
     
-    // Отслеживаем, идет ли сейчас процесс выделения
+    // Отслеживаем процесс выделения (упрощенная логика)
     const isSelecting = useValue(
         'is selecting',
         () => {
-            // Получаем текущий путь состояния инструмента
-            const currentPath = editor.getPath();
-            const currentTool = editor.getCurrentToolId();
-            
-            // Проверяем различные состояния выделения
-            const pointing = editor.inputs.isPointing;
-            const dragging = editor.inputs.isDragging;
+            // Простая проверка: есть ли активная рамка выделения
             const hasBrush = editor.getInstanceState().brush !== null;
             
-            // Проверяем конкретные состояния инструмента select
+            // Или мы в состоянии начала выделения на холсте
+            const currentPath = editor.getPath();
             const isPointingCanvas = currentPath.includes('select.pointing_canvas');
-            const isBrushing = currentPath.includes('select.brushing');
-            const isScribbleBrushing = currentPath.includes('select.scribble_brushing');
-            const isPointingSelection = currentPath.includes('select.pointing_selection');
-            const isTranslating = currentPath.includes('select.translating');
-            const isPointingShape = currentPath.includes('select.pointing_shape');
             
-            // Выделение активно если:
-            // 1. Есть активная рамка выделения (brush)
-            // 2. Или мы в состоянии pointing_canvas (готовимся к выделению)
-            // 3. Или мы в состоянии brushing (рисуем рамку)
-            // НЕ считаем выделением: pointing_shape, pointing_selection, translating (это работа с уже выделенным)
-            const result = hasBrush || isPointingCanvas || isBrushing || isScribbleBrushing;
-            
-            console.log('🔍 Selection state:', {
-                currentPath,
-                currentTool,
-                pointing,
-                dragging,
-                hasBrush,
-                isPointingCanvas,
-                isBrushing,
-                isScribbleBrushing,
-                isPointingShape,
-                isPointingSelection,
-                isTranslating,
-                isSelecting: result,
-                selectedCount: editor.getSelectedShapes().filter(s => s.type === 'custom-note').length
-            });
-            
-            return result;
+            return hasBrush || isPointingCanvas;
         },
         [editor]
     );
     
-    // Отслеживаем, была ли камера в движении
-    const [wasCameraMoving, setWasCameraMoving] = React.useState(false);
+    // Отслеживаем предыдущее состояние камеры для определения задержки
+    const prevCameraStateRef = React.useRef(cameraState);
     
-    // Управление видимостью с задержкой (debounce паттерн)
+    // Управление видимостью с задержкой
     React.useEffect(() => {
-        console.log('📊 Visibility effect:', {
-            selectedNotesCount: selectedNotes.length,
-            cameraState,
-            isSelecting,
-            wasCameraMoving,
-            currentVisible: isVisible
-        });
-        
         // Очищаем предыдущий таймер
         if (delayTimerRef.current) {
             clearTimeout(delayTimerRef.current);
+            delayTimerRef.current = null;
         }
         
-        // Если нет выделенных заметок или идет выделение - скрываем сразу
+        // Нет выделенных заметок или идет выделение - скрываем
         if (selectedNotes.length === 0 || isSelecting) {
-            console.log('🚫 Hiding menu:', {
-                reason: selectedNotes.length === 0 ? 'no selection' : 'still selecting'
-            });
             setIsVisible(false);
-            delayTimerRef.current = null;
-            setWasCameraMoving(false);
+            prevCameraStateRef.current = cameraState;
             return;
         }
         
-        // Если камера движется - скрываем и запоминаем это состояние
+        // Камера движется - скрываем
         if (cameraState !== 'idle') {
-            console.log('🚫 Hiding menu: camera moving');
             setIsVisible(false);
-            setWasCameraMoving(true);
-            delayTimerRef.current = null;
+            prevCameraStateRef.current = cameraState;
             return;
         }
         
-        // Камера остановилась, есть выделенные заметки, выделение завершено
-        // Если камера только что остановилась - показываем с задержкой
-        // Если выделение только что завершилось (камера не двигалась) - показываем СРАЗУ
+        // Камера остановилась и есть выделенные заметки
+        const wasCameraMoving = prevCameraStateRef.current !== 'idle';
+        
         if (wasCameraMoving) {
             // Камера только что остановилась - задержка 300ms
-            const delay = window.menuDelay || 300; // 300ms - стандарт индустрии
-            console.log('⏰ Camera stopped, setting timer for', delay, 'ms');
-            const timer = setTimeout(() => {
-                console.log('✅ Showing menu after camera stop delay');
+            const delay = window.menuDelay || 300;
+            delayTimerRef.current = setTimeout(() => {
                 setIsVisible(true);
-                setWasCameraMoving(false);
             }, delay);
-            
-            delayTimerRef.current = timer;
-            
-            // Cleanup для таймера
-            return () => {
-                if (timer) clearTimeout(timer);
-            };
         } else {
-            // Выделение завершилось, камера не двигалась - показываем СРАЗУ
-            console.log('✅ Selection completed, showing menu immediately');
+            // Просто завершилось выделение - показываем сразу
             setIsVisible(true);
         }
-    }, [selectedNotes.length, cameraState, isSelecting, wasCameraMoving]);
+        
+        prevCameraStateRef.current = cameraState;
+        
+        // Cleanup - ВСЕГДА очищаем таймер при размонтировании или изменении зависимостей
+        return () => {
+            if (delayTimerRef.current) {
+                clearTimeout(delayTimerRef.current);
+                delayTimerRef.current = null;
+            }
+        };
+    }, [selectedNotes.length, cameraState, isSelecting]);
     
     // Вычисляем позицию меню
     const menuPosition = useValue(
@@ -169,43 +122,24 @@ export function SelectionContextMenu() {
     
     // Обработчики для кнопок
     const handleDelete = () => {
-        console.log('🗑️ Удаление заметок:');
         const ids = selectedNotes.map(note => note.id);
         editor.deleteShapes(ids);
     };
     
     const handleExportToObsidian = () => {
-        console.log('📤 Экспорт в Obsidian:');
-        selectedNotes.forEach((note, index) => {
+        // TODO: Реализовать экспорт в Obsidian
+        selectedNotes.forEach((note) => {
             const dbId = note.props?.dbId || 'No DB ID';
             const title = note.props?.richText?.content?.[0]?.content?.[0]?.text || 'Без заголовка';
-            console.log(`  ${index + 1}. ${title} (${dbId})`);
+            // Export logic here
         });
-        // TODO: Реализовать экспорт в Obsidian
     };
     
     const handleDuplicate = () => {
-        console.log('📋 Дублирование заметок');
         const ids = selectedNotes.map(note => note.id);
         editor.duplicateShapes(ids, { x: 20, y: 20 }); // Смещаем дубликаты
     };
     
-    const handleLogIds = () => {
-        console.log('🆔 Selected Note IDs:');
-        console.log('='.repeat(40));
-        
-        selectedNotes.forEach((note, index) => {
-            const dbId = note.props?.dbId || 'No DB ID';
-            const title = note.props?.richText?.content?.[0]?.content?.[0]?.text || 'Без заголовка';
-            
-            console.log(`  ${index + 1}. Shape ID: ${note.id}`);
-            console.log(`     DB ID: ${dbId}`);
-            console.log(`     Title: "${title.substring(0, 30)}${title.length > 30 ? '...' : ''}"`);
-        });
-        
-        console.log('='.repeat(40));
-        console.log(`Total selected: ${selectedNotes.length} note(s)`);
-    };
     
     // Рендерим через portal для фиксированного размера (не масштабируется с canvas)
     return ReactDOM.createPortal(
@@ -263,23 +197,6 @@ export function SelectionContextMenu() {
                 icon="🗑️"
                 tooltip="Удалить"
                 danger
-                compact
-            />
-            
-            {/* Вертикальный разделитель */}
-            <div style={{ 
-                width: '1px', 
-                height: '20px',
-                background: '#444', 
-                margin: '0 2px' 
-            }} />
-            
-            {/* Debug кнопка */}
-            <MenuButton 
-                onClick={handleLogIds}
-                icon="🆔"
-                tooltip="Log IDs"
-                secondary
                 compact
             />
         </div>,
