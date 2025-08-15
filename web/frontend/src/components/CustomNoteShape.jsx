@@ -89,19 +89,17 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         return resizeBox(shape, info);
     }
 
-    // УБИРАЕМ onClick чтобы не блокировать выделение на pointerDown
-    // Теперь клики обрабатываются на уровне editor в SyncedProductionApp
-    // УБИРАЕМ canEdit и onDoubleClick - они могут мешать правильной обработке
-    
-    // CURSOR & TOOLTIP IMPLEMENTATION:
-    // - cursor: pointer appears on hover using React state + CSS
-    // - HTML tooltips work natively in HTMLContainer
-    // - onMouseEnter/Leave events work properly in HTMLContainer without interfering with tldraw
+    // Override cursor behavior for this shape type
+    getCursor() {
+        return 'pointer';
+    }
+
+    // Клики обрабатываются на уровне editor в SyncedProductionApp
+    // onClick, canEdit и onDoubleClick убраны чтобы не блокировать выделение
 
     component(shape) {
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
         const [isMergeTarget, setIsMergeTarget] = React.useState(false);
-        const [isHovered, setIsHovered] = React.useState(false);
         
         // Listen for merge target highlighting
         React.useEffect(() => {
@@ -160,10 +158,15 @@ export class CustomNoteShapeUtil extends ShapeUtil {
 
         return (
             <HTMLContainer
+                ref={(el) => {
+                    // Override tldraw's pointer-events: none to enable cursor changes
+                    if (el) {
+                        el.style.pointerEvents = 'all';
+                        el.style.cursor = 'pointer';
+                    }
+                }}
                 data-shape={shape.id}
                 className={isMergeTarget ? 'merge-target' : ''}
-                onMouseEnter={() => setIsHovered(true)}
-                onMouseLeave={() => setIsHovered(false)}
                 style={{
                     width: shape.props.w,
                     height: shape.props.h,
@@ -184,7 +187,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '8px',
-                    cursor: isHovered ? 'pointer' : 'default', // Cursor pointer on hover
             }}
             >
                 {/* Левая часть - заголовок */}
@@ -205,10 +207,9 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
                             flex: 1,
-                            cursor: 'inherit', // Inherit cursor from parent HTMLContainer
                             position: 'relative', // For tooltip positioning if needed
                         }}
-                        title={title && title.length > 25 ? title : undefined} // Only show tooltip if title is truncated
+                        title={title || 'Без заголовка'} // Always show tooltip with full title
                     >
                         {title || 'Без заголовка'}
                     </div>

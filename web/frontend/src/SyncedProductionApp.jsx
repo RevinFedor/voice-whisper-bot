@@ -87,14 +87,15 @@ const customStyles = `
         z-index: 100;
     }
     
-    /* Cursor pointer for custom note shapes */
-    .tl-shape[data-shape-type="custom-note"] {
+    /* Force pointer-events and cursor for custom note shapes */
+    .tl-shape[data-shape-type="custom-note"] .tl-html-container {
+        pointer-events: all !important;
         cursor: pointer !important;
     }
     
-    /* Ensure hover state works properly for HTMLContainer content */
-    .tl-shape[data-shape-type="custom-note"] * {
-        cursor: inherit !important;
+    /* Ensure all child elements inherit the pointer cursor */
+    .tl-shape[data-shape-type="custom-note"] .tl-html-container * {
+        cursor: pointer !important;
     }
     
     .merge-target {
@@ -915,24 +916,68 @@ export default function SyncedProductionApp() {
         window.editor = editor;
         window.saveEditor(editor);
         
-        // Add CSS styles for hover effects (synced with tldraw's hover detection)
-        const style = document.createElement('style');
-        style.textContent = `
-            /* Cursor pointer when tldraw detects hover (synced with green border) */
-            .tldraw-hovered,
-            .tldraw-hovered * {
-                cursor: pointer !important;
-            }
-            
-            /* Remove cursor pointer from HTML elements when not hovered by tldraw */
-            [data-shape-type="custom-note"]:not(.tldraw-hovered) {
-                cursor: default !important;
-            }
-        `;
-        document.head.appendChild(style);
+        // Removed CSS styles for hover - now handled directly in CustomNoteShape component
         
-        // Store for cleanup
-        editor._styleElement = style;
+        // Debug commands for hover testing
+        window.enableHoverDebug = () => {
+            window.DEBUG_HOVER = true;
+            console.log('✅ Hover debugging enabled. Watch console for events.');
+            console.log('   ✅ TLDRAW HOVER = green border appears');
+            console.log('   🎯 OUR HOVER = our detection with margin=0');
+        };
+        
+        window.disableHoverDebug = () => {
+            window.DEBUG_HOVER = false;
+            console.log('❌ Hover debugging disabled');
+        };
+        
+        // Debug CSS and pointer-events
+        window.debugCursor = () => {
+            console.log('🔍 Debugging cursor styles...');
+            
+            // Check HTML containers
+            const htmlContainers = document.querySelectorAll('.tl-html-container');
+            console.log(`Found ${htmlContainers.length} HTML containers`);
+            
+            htmlContainers.forEach((container, i) => {
+                const computed = window.getComputedStyle(container);
+                console.log(`Container ${i}:`, {
+                    cursor: computed.cursor,
+                    pointerEvents: computed.pointerEvents,
+                    position: computed.position,
+                    zIndex: computed.zIndex
+                });
+            });
+            
+            // Check parent tl-shape elements
+            const shapes = document.querySelectorAll('[data-shape-type="custom-note"]');
+            console.log(`Found ${shapes.length} custom-note shapes`);
+            
+            shapes.forEach((shape, i) => {
+                const computed = window.getComputedStyle(shape);
+                console.log(`Shape ${i}:`, {
+                    cursor: computed.cursor,
+                    pointerEvents: computed.pointerEvents,
+                });
+                
+                // Check if tldraw is overriding cursor
+                const svgElement = shape.closest('svg');
+                if (svgElement) {
+                    const svgComputed = window.getComputedStyle(svgElement);
+                    console.log(`  Parent SVG cursor: ${svgComputed.cursor}`);
+                }
+            });
+            
+            // Check if tldraw canvas is overriding cursor
+            const canvas = document.querySelector('.tl-canvas');
+            if (canvas) {
+                const canvasComputed = window.getComputedStyle(canvas);
+                console.log('Canvas cursor:', canvasComputed.cursor);
+            }
+        };
+        
+        // Initial state
+        window.DEBUG_HOVER = false;
         
         // Debug: измерение задержки drag-to-merge
         window.measureDragDelay = () => {
@@ -1019,7 +1064,6 @@ export default function SyncedProductionApp() {
         let dragStarted = false;
         
         // Debug logging for mouse events (compact version)
-        const DEBUG_HOVER = true; // Toggle for hover debugging
         let lastHoveredShape = null;
         let lastTldrawHovered = null;
         let hoverLogThrottle = 0;
@@ -1027,7 +1071,7 @@ export default function SyncedProductionApp() {
         // Correct event handler using editor.on('event', callback)
         const handleEditorEvents = (eventInfo) => {
             // Debug hover events (throttled to reduce spam)
-            if (DEBUG_HOVER && eventInfo.name === 'pointer_move') {
+            if (window.DEBUG_HOVER && eventInfo.name === 'pointer_move') {
                 const now = Date.now();
                 if (now - hoverLogThrottle > 100) { // Log max every 100ms
                     hoverLogThrottle = now;
@@ -1048,25 +1092,15 @@ export default function SyncedProductionApp() {
                     // Also check tldraw's built-in hoveredShapeId
                     const tldrawHovered = editor.getHoveredShapeId();
                     
-                    // Log tldraw's hover state changes
+                    // Log tldraw's hover state changes (simplified - no DOM manipulation needed)
                     if (tldrawHovered !== lastTldrawHovered) {
                         if (tldrawHovered) {
                             const shape = editor.getShape(tldrawHovered);
                             if (shape?.type === 'custom-note') {
                                 console.log(`✅ TLDRAW HOVER: ${tldrawHovered.substring(0, 8)} (green border appears)`);
-                                // Add CSS class to shape element for cursor pointer
-                                const shapeElement = document.querySelector(`[data-shape="${tldrawHovered}"]`);
-                                if (shapeElement) {
-                                    shapeElement.classList.add('tldraw-hovered');
-                                }
                             }
                         } else if (lastTldrawHovered) {
                             console.log('❌ TLDRAW HOVER: None (green border disappears)');
-                            // Remove CSS class from previous shape
-                            const prevShapeElement = document.querySelector(`[data-shape="${lastTldrawHovered}"]`);
-                            if (prevShapeElement) {
-                                prevShapeElement.classList.remove('tldraw-hovered');
-                            }
                         }
                         lastTldrawHovered = tldrawHovered;
                     }
