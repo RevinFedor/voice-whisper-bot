@@ -27,24 +27,66 @@ export function SelectionContextMenu() {
         [editor]
     );
     
+    // Отслеживаем, идет ли сейчас процесс выделения
+    const isSelecting = useValue(
+        'is selecting',
+        () => {
+            // Проверяем различные состояния выделения
+            const pointing = editor.inputs.isPointing;
+            const dragging = editor.inputs.isDragging;
+            const brushing = editor.isIn('select.brushing');
+            const scribbleBrushing = editor.isIn('select.scribble_brushing');
+            const hasBrush = editor.getInstanceState().brush !== null;
+            
+            const result = pointing || dragging || brushing || scribbleBrushing || hasBrush;
+            
+            console.log('🔍 Selection state:', {
+                pointing,
+                dragging,
+                brushing,
+                scribbleBrushing,
+                hasBrush,
+                isSelecting: result,
+                selectedCount: editor.getSelectedShapes().filter(s => s.type === 'custom-note').length
+            });
+            
+            return result;
+        },
+        [editor]
+    );
+    
     // Управление видимостью с задержкой (debounce паттерн)
     React.useEffect(() => {
+        console.log('📊 Visibility effect:', {
+            selectedNotesCount: selectedNotes.length,
+            cameraState,
+            isSelecting,
+            currentVisible: isVisible
+        });
+        
         // Очищаем предыдущий таймер
         if (delayTimerRef.current) {
             clearTimeout(delayTimerRef.current);
         }
         
-        // Если нет выделенных заметок или камера движется - скрываем сразу
-        if (selectedNotes.length === 0 || cameraState !== 'idle') {
+        // Если нет выделенных заметок, камера движется, или идет выделение - скрываем сразу
+        if (selectedNotes.length === 0 || cameraState !== 'idle' || isSelecting) {
+            console.log('🚫 Hiding menu:', {
+                reason: selectedNotes.length === 0 ? 'no selection' : 
+                        cameraState !== 'idle' ? 'camera moving' : 
+                        'still selecting'
+            });
             setIsVisible(false);
             delayTimerRef.current = null;
             return;
         }
         
-        // Есть выделенные заметки и камера не движется - показываем с задержкой
+        // Есть выделенные заметки, камера не движется, и выделение завершено - показываем с задержкой
         // Можно настроить через window.menuDelay = 500 (в консоли браузера)
         const delay = window.menuDelay || 300; // 300ms - стандарт индустрии
+        console.log('⏰ Setting timer for', delay, 'ms');
         const timer = setTimeout(() => {
+            console.log('✅ Showing menu after delay');
             setIsVisible(true);
         }, delay);
         
@@ -54,7 +96,7 @@ export function SelectionContextMenu() {
         return () => {
             if (timer) clearTimeout(timer);
         };
-    }, [selectedNotes.length, cameraState]);
+    }, [selectedNotes.length, cameraState, isSelecting]);
     
     // Вычисляем позицию меню
     const menuPosition = useValue(
