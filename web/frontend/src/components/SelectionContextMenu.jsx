@@ -5,6 +5,10 @@ import { useEditor, useValue } from '@tldraw/editor';
 export function SelectionContextMenu() {
     const editor = useEditor();
     
+    // Состояние для управления видимостью с задержкой
+    const [isVisible, setIsVisible] = React.useState(false);
+    const delayTimerRef = React.useRef(null);
+    
     // Отслеживаем выделенные custom-note заметки
     const selectedNotes = useValue(
         'selected notes',
@@ -23,15 +27,41 @@ export function SelectionContextMenu() {
         [editor]
     );
     
-    // Вычисляем позицию меню с динамическим отступом
+    // Управление видимостью с задержкой (debounce паттерн)
+    React.useEffect(() => {
+        // Очищаем предыдущий таймер
+        if (delayTimerRef.current) {
+            clearTimeout(delayTimerRef.current);
+        }
+        
+        // Если нет выделенных заметок или камера движется - скрываем сразу
+        if (selectedNotes.length === 0 || cameraState !== 'idle') {
+            setIsVisible(false);
+            delayTimerRef.current = null;
+            return;
+        }
+        
+        // Есть выделенные заметки и камера не движется - показываем с задержкой
+        // Можно настроить через window.menuDelay = 500 (в консоли браузера)
+        const delay = window.menuDelay || 300; // 300ms - стандарт индустрии
+        const timer = setTimeout(() => {
+            setIsVisible(true);
+        }, delay);
+        
+        delayTimerRef.current = timer;
+        
+        // Cleanup
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
+    }, [selectedNotes.length, cameraState]);
+    
+    // Вычисляем позицию меню
     const menuPosition = useValue(
         'menu position',
         () => {
-            // Не показываем если нет выделенных заметок
+            // Не вычисляем позицию если меню не должно быть видимо
             if (selectedNotes.length === 0) return null;
-            
-            // Скрываем при движении камеры (как в Miro)
-            if (cameraState !== 'idle') return null;
             
             // Получаем границы выделения в экранных координатах
             const screenBounds = editor.getSelectionRotatedScreenBounds();
@@ -47,11 +77,11 @@ export function SelectionContextMenu() {
                 y: screenBounds.y - fixedOffset,
             };
         },
-        [selectedNotes, editor, cameraState]
+        [selectedNotes, editor]
     );
     
-    // Не рендерим если нет позиции или заметок
-    if (!menuPosition || selectedNotes.length === 0) return null;
+    // Не рендерим если меню не должно быть видимо или нет позиции
+    if (!isVisible || !menuPosition || selectedNotes.length === 0) return null;
     
     // Обработчики для кнопок
     const handleDelete = () => {
