@@ -1180,6 +1180,54 @@ export default function SyncedProductionApp() {
             console.log('  3. Extend pointer-events area beyond container');
         };
         
+        // Quick hover check - checks tldraw cursor system
+        window.checkCursor = () => {
+            const hoveredId = editor.getHoveredShapeId();
+            
+            console.log('🔍 Tldraw Cursor System Check:');
+            console.log('='.repeat(40));
+            
+            // Check tldraw's cursor state
+            const instanceState = editor.getInstanceState();
+            console.log(`  Current cursor type: ${instanceState.cursor.type}`);
+            console.log(`  Current cursor rotation: ${instanceState.cursor.rotation}`);
+            console.log(`  Hovered shape: ${hoveredId ? hoveredId.substring(0,8) + '...' : 'None'}`);
+            
+            // Check CSS variable
+            const container = document.querySelector('.tl-container');
+            if (container) {
+                const cursorValue = getComputedStyle(container).getPropertyValue('--tl-cursor');
+                console.log(`  CSS --tl-cursor: ${cursorValue || 'not set'}`);
+            }
+            
+            // Check actual cursor on canvas
+            const canvas = document.querySelector('.tl-canvas');
+            if (canvas) {
+                const canvasStyle = getComputedStyle(canvas);
+                console.log(`  Canvas actual cursor: ${canvasStyle.cursor}`);
+            }
+            
+            // Check if hovering custom-note
+            if (hoveredId) {
+                const shape = editor.getShape(hoveredId);
+                if (shape) {
+                    console.log(`\n  Hovered shape type: ${shape.type}`);
+                    
+                    if (shape.type === 'custom-note') {
+                        if (instanceState.cursor.type === 'pointer') {
+                            console.log('  ✅ SUCCESS: Cursor is pointer for custom-note!');
+                        } else {
+                            console.log('  ⚠️ PROBLEM: Cursor should be pointer for custom-note!');
+                            console.log('  Current cursor: ' + instanceState.cursor.type);
+                            console.log('  🔸 Check if useEffect with editor.setCursor() is running');
+                        }
+                    }
+                }
+            } else {
+                console.log('\n  ℹ️ Hover over a shape to check cursor behavior');
+            }
+        };
+        
         // Initial state
         window.DEBUG_HOVER = false; // Use window.enableHoverDebug() to enable
         

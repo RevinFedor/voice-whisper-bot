@@ -126,6 +126,20 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             [editor, shape.id]
         );
         
+        // Set tldraw cursor based on hover state
+        React.useEffect(() => {
+            if (isHovered) {
+                // Set pointer cursor through tldraw's cursor system
+                editor.setCursor({ type: 'pointer', rotation: 0 });
+                if (window.DEBUG_HOVER) {
+                    console.log(`🎯 Setting tldraw cursor to pointer for ${shape.id.substring(0,8)}`);
+                }
+            } else {
+                // Let tldraw handle default cursor
+                // Don't set to 'default' here as it might interfere with other shapes
+            }
+        }, [isHovered, editor, shape.id]);
+        
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
         const [isMergeTarget, setIsMergeTarget] = React.useState(false);
         const [showTooltip, setShowTooltip] = React.useState(false);
@@ -197,15 +211,8 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                     position: 'relative',  // For absolute positioning of inner content
                     // Make container fully transparent to fill geometry bounds
                     background: 'transparent',
-                    // Sync cursor with hover state
-                    cursor: isHovered ? 'pointer' : 'default',
+                    // Don't set cursor here - let tldraw handle it via editor.setCursor()
                     pointerEvents: 'auto',
-                    // Debug: log cursor state
-                    ...(window.DEBUG_HOVER && isHovered ? 
-                        (() => {
-                            console.log(`🎯 Setting cursor=pointer for ${shape.id.substring(0,8)}`);
-                            return {};
-                        })() : {}),
             }}
                 // Remove stopPropagation to preserve drag functionality
                 // tldraw will handle click vs drag detection internally
