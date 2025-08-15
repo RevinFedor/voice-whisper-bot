@@ -1872,18 +1872,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                     borderRadius: '8px',
                                 }}
                             >
-                                <div
-                                    style={{
-                                        marginBottom: '12px',
-                                        padding: '8px',
-                                        backgroundColor: '#222',
-                                        borderRadius: '4px',
-                                        fontSize: '14px',
-                                        color: '#888',
-                                    }}
-                                >
-                                    🏷️ Все теги в Obsidian
-                                </div>
+                                
 
                                 {obsidianTags.length > 0 ? (
                                     <div
@@ -1902,7 +1891,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                     style={{
                                                         display: 'inline-flex',
                                                         alignItems: 'center',
-                                                        padding: '6px 12px',
+                                                        padding: '2px 8px',
                                                         backgroundColor: isUsed ? '#2a2a2a' : '#1a2d3d',
                                                         border: '1px solid',
                                                         borderColor: isUsed ? '#444' : '#2288aa',

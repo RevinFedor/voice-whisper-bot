@@ -1,0 +1,219 @@
+// Enhanced schema.prisma with visual system support
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Note {
+  id              String   @id @default(uuid())
+  
+  // User id - now just a string identifier (not a relation)
+  userId          String   @default("local")
+  
+  // Content
+  title           String
+  content         String?
+  type            NoteType
+  
+  // Position data (for tldraw)
+  date            DateTime @db.Date
+  x               Float    // Actual position in tldraw
+  y               Float    // Actual position in tldraw
+  manuallyPositioned Boolean @default(false) // Flag if user dragged the note
+  
+  // Visual System Metadata
+  location        String?  @default("unknown") // home, office, cafe, outdoor, travel, unknown
+  state           String?  @default("analytical") // work, tilt, aggression, philosopher, creative, analytical
+  importance      String?  @default("medium") // critical, high, medium, low, reference
+  sources         String[] @default([]) // tiktok, youtube, twitter, podcast, book, conversation, self
+  contentType     String?  @default("random") // insight, report, daily, random
+  
+  // Connection System
+  connectedTo     String[] @default([]) // IDs of related notes
+  connectionType  String?  // solution, inspiration, contradiction, evolution
+  
+  // Telegram metadata
+  telegramMessageId BigInt?
+  telegramChatId    BigInt?
+  
+  // Status
+  isArchived      Boolean  @default(false)
+  isPinned        Boolean  @default(false)
+  tags            String[]
+  
+  // AI suggestions (сохраняем между сессиями)
+  aiSuggestedTags Json?    // Массив объектов {text: string, isNew: boolean}
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  titleHistory    TitleHistory[]
+  tagHistory      TagHistory[]
+  
+  @@index([userId, date])
+  @@index([date])
+  @@index([isArchived])
+  @@index([location])
+  @@index([state])
+  @@index([importance])
+  @@index([contentType])
+  @@index([connectedTo])
+}
+
+model TitleHistory {
+  id              String   @id @default(uuid())
+  
+  // Note relation
+  noteId          String
+  note            Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  
+  // Title data
+  title           String
+  type            TitleType @default(manual) // manual or ai
+  
+  // AI generation metadata (optional)
+  prompt          String?  // User's custom prompt if provided
+  model           String?  // AI model used (e.g., "gpt-4")
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([noteId])
+  @@index([createdAt])
+}
+
+enum NoteType {
+  voice
+  text
+  collection
+}
+
+enum TitleType {
+  manual
+  ai
+}
+
+model TagHistory {
+  id              String   @id @default(uuid())
+  
+  // Note relation
+  noteId          String
+  note            Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  
+  // Tags data
+  tags            String[]  // Array of generated tags
+  existingTags    String[]  // Tags that already exist in Obsidian
+  newTags         String[]  // New tags suggested by AI
+  
+  // Generation metadata
+  prompt          String?   // User's custom prompt if provided (null for default)
+  model           String?   // AI model used (e.g., "gpt-4o-mini")
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([noteId])
+  @@index([createdAt])
+}
+
+// New model for tracking note connections and relationships
+model NoteConnection {
+  id              String   @id @default(uuid())
+  
+  // Source and target notes
+  fromNoteId      String
+  toNoteId        String
+  
+  // Connection type and metadata
+  connectionType  String   // solution, inspiration, contradiction, evolution, reference
+  strength        Float    @default(1.0) // 0.0 to 1.0, connection strength
+  description     String?  // Optional description of the relationship
+  
+  // Visual properties for connection lines
+  color           String?  // Hex color for the connection line
+  style           String?  // solid, dashed, dotted
+  
+  // Auto-detected or manual
+  isAutoDetected  Boolean  @default(false)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([fromNoteId, toNoteId, connectionType])
+  @@index([fromNoteId])
+  @@index([toNoteId])
+  @@index([connectionType])
+}
+
+// Model for tracking visual patterns and clusters
+model VisualCluster {
+  id              String   @id @default(uuid())
+  
+  // Cluster metadata
+  name            String
+  description     String?
+  color           String   // Primary color for the cluster
+  
+  // Spatial properties
+  centerX         Float
+  centerY         Float
+  radius          Float    @default(200.0)
+  
+  // Associated notes
+  noteIds         String[]
+  
+  // Cluster type and behavior
+  clusterType     String   // critical, motivation, worldview, conflict-solutions, etc.
+  isAutoGenerated Boolean  @default(false)
+  
+  // User preferences
+  userId          String   @default("local")
+  isActive        Boolean  @default(true)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([clusterType])
+  @@index([isActive])
+}
+
+// Model for storing user visual preferences and patterns
+model VisualPreferences {
+  id              String   @id @default(uuid())
+  
+  // User identifier
+  userId          String   @unique @default("local")
+  
+  // Color preferences for different metadata
+  locationColors  Json?    // Custom colors for locations
+  stateColors     Json?    // Custom colors for states
+  typeColors      Json?    // Custom colors for content types
+  
+  // Layout preferences
+  defaultImportance String @default("medium")
+  defaultLocation String   @default("unknown")
+  defaultState    String   @default("analytical")
+  
+  // Visual behavior settings
+  enableAnimations Boolean @default(true)
+  showConnections Boolean  @default(true)
+  clusteringEnabled Boolean @default(true)
+  
+  // Auto-tagging preferences
+  autoDetectLocation Boolean @default(false)
+  autoDetectState   Boolean  @default(false)
+  autoSuggestConnections Boolean @default(true)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
