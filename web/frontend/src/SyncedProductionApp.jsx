@@ -3,6 +3,7 @@ import { Tldraw, createShapeId } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
 import { StaticDateHeaderShapeUtil } from './components/StaticDateHeaderShape';
+import { SelectionContextMenu } from './components/SelectionContextMenu';
 import DatePickerModal from './components/DatePickerModal';
 import NoteModal from './components/NoteModal';
 import ExportToast from './components/ExportToast';
@@ -1605,6 +1606,7 @@ export default function SyncedProductionApp() {
                         onAddNote={handleOpenDatePicker}
                         isSyncing={isSyncing}
                     />
+                    <SelectionContextMenu />
                 </Tldraw>
                 
                 <DatePickerModal
