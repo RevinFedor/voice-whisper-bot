@@ -135,8 +135,18 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                     console.log(`🎯 Setting tldraw cursor to pointer for ${shape.id.substring(0,8)}`);
                 }
             } else {
-                // Let tldraw handle default cursor
-                // Don't set to 'default' here as it might interfere with other shapes
+                // Reset to default cursor when not hovered
+                // Check if we're not hovering ANY custom-note to avoid conflicts
+                const hoveredId = editor.getHoveredShapeId();
+                const hoveredShape = hoveredId ? editor.getShape(hoveredId) : null;
+                
+                // Only reset if not hovering another custom-note
+                if (!hoveredShape || hoveredShape.type !== 'custom-note') {
+                    editor.setCursor({ type: 'default', rotation: 0 });
+                    if (window.DEBUG_HOVER) {
+                        console.log(`🔄 Resetting tldraw cursor to default (unhover ${shape.id.substring(0,8)})`);
+                    }
+                }
             }
         }, [isHovered, editor, shape.id]);
         
