@@ -1,7 +1,7 @@
 import { ShapeUtil, HTMLContainer, Rectangle2d, resizeBox, T, useEditor, useValue } from 'tldraw';
 import React from 'react';
 import ReactDOM from 'react-dom';
- 
+
 // Кастомный размер для заметок
 const CUSTOM_NOTE_WIDTH = 180;
 const CUSTOM_NOTE_HEIGHT = 50; // Уменьшено в 3 раза для компактности
@@ -23,16 +23,16 @@ function toRichText(text) {
 
 // Цвета для разных типов заметок
 const NOTE_COLORS = {
-    voice: '#4a9eff',    // голубой
-    text: '#4aff4a',     // зеленый
-    collection: '#2a4',   // темно-зеленый
-    default: '#666'       // серый
+    voice: '#4a9eff', // голубой
+    text: '#4aff4a', // зеленый
+    collection: '#2a4', // темно-зеленый
+    default: '#666', // серый
 };
 
 // Кастомный NoteShapeUtil
 export class CustomNoteShapeUtil extends ShapeUtil {
     static type = 'custom-note';
-    
+
     static props = {
         w: T.number,
         h: T.number,
@@ -48,10 +48,10 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         richText: T.any,
         scale: T.number,
         noteType: T.string, // добавляем тип заметки
-        time: T.string,     // время создания
+        time: T.string, // время создания
         duration: T.string, // длительность для голосовых
         manuallyPositioned: T.boolean, // флаг перетаскивания
-        dbId: T.string,     // ID из базы данных
+        dbId: T.string, // ID из базы данных
     };
 
     getDefaultProps() {
@@ -86,8 +86,24 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         });
     }
 
-    onResize(shape, info) {
-        return resizeBox(shape, info);
+    // Disable resize functionality completely
+    canResize() {
+        return false;
+    }
+
+    // Hide rotation handle (there's no canRotate method in tldraw)
+    hideRotateHandle() {
+        return true;
+    }
+
+    // Hide resize handles as well since we can't resize
+    hideResizeHandles() {
+        return true;
+    }
+
+    // Optional: lock aspect ratio (though we're not resizing anyway)
+    isAspectRatioLocked() {
+        return true;
     }
 
     // Override cursor behavior for this shape type - synced with tldraw hover
@@ -102,59 +118,55 @@ export class CustomNoteShapeUtil extends ShapeUtil {
 
     component(shape) {
         const editor = useEditor();
-        
+
         // Reactive hover detection - synced with tldraw's green border
         const isHovered = useValue(
             'note hovered',
             () => {
                 const hoveredId = editor.getHoveredShapeId();
                 const result = hoveredId === shape.id;
-                
+
                 // Debug logging for hover state
                 if (window.DEBUG_HOVER && result) {
-                    console.log(`🔸 Component: Shape ${shape.id.substring(0,8)} isHovered=${result}`);
+                    console.log(`🔸 Component: Shape ${shape.id.substring(0, 8)} isHovered=${result}`);
                 }
-                
+
                 return result;
             },
             [editor, shape.id]
         );
-        
-        const isSelected = useValue(
-            'note selected',
-            () => editor.getSelectedShapeIds().includes(shape.id),
-            [editor, shape.id]
-        );
-        
+
+        const isSelected = useValue('note selected', () => editor.getSelectedShapeIds().includes(shape.id), [editor, shape.id]);
+
         // Set tldraw cursor based on hover state
         React.useEffect(() => {
             if (isHovered) {
                 // Set pointer cursor through tldraw's cursor system
                 editor.setCursor({ type: 'pointer', rotation: 0 });
                 if (window.DEBUG_HOVER) {
-                    console.log(`🎯 Setting tldraw cursor to pointer for ${shape.id.substring(0,8)}`);
+                    console.log(`🎯 Setting tldraw cursor to pointer for ${shape.id.substring(0, 8)}`);
                 }
             } else {
                 // Reset to default cursor when not hovered
                 // Check if we're not hovering ANY custom-note to avoid conflicts
                 const hoveredId = editor.getHoveredShapeId();
                 const hoveredShape = hoveredId ? editor.getShape(hoveredId) : null;
-                
+
                 // Only reset if not hovering another custom-note
                 if (!hoveredShape || hoveredShape.type !== 'custom-note') {
                     editor.setCursor({ type: 'default', rotation: 0 });
                     if (window.DEBUG_HOVER) {
-                        console.log(`🔄 Resetting tldraw cursor to default (unhover ${shape.id.substring(0,8)})`);
+                        console.log(`🔄 Resetting tldraw cursor to default (unhover ${shape.id.substring(0, 8)})`);
                     }
                 }
             }
         }, [isHovered, editor, shape.id]);
-        
+
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
         const [isMergeTarget, setIsMergeTarget] = React.useState(false);
         const [showTooltip, setShowTooltip] = React.useState(false);
         const [tooltipPosition, setTooltipPosition] = React.useState({ x: 0, y: 0 });
-        
+
         // Listen for merge target highlighting
         React.useEffect(() => {
             const checkMergeTarget = () => {
@@ -165,7 +177,7 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                     setIsMergeTarget(false);
                 }
             };
-            
+
             // Check initially and on mutations
             checkMergeTarget();
             const observer = new MutationObserver(checkMergeTarget);
@@ -173,17 +185,15 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             if (element) {
                 observer.observe(element, { attributes: true, attributeFilter: ['class'] });
             }
-            
+
             return () => observer.disconnect();
         }, [shape.id]);
-        
+
         // Извлекаем заголовок из richText
         let title = '';
         if (richText && richText.content) {
-            const paragraphs = richText.content
-                .filter(p => p.content && p.content[0])
-                .map(p => p.content[0].text);
-            
+            const paragraphs = richText.content.filter((p) => p.content && p.content[0]).map((p) => p.content[0].text);
+
             if (paragraphs.length > 0) {
                 title = paragraphs[0];
             }
@@ -204,156 +214,163 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         const formatDate = (dateStr) => {
             if (!dateStr) return '';
             const date = new Date(dateStr);
-            return date.toLocaleDateString('ru-RU', { 
-                day: 'numeric', 
-                month: 'short' 
-            }).replace('.', '');
+            return date
+                .toLocaleDateString('ru-RU', {
+                    day: 'numeric',
+                    month: 'short',
+                })
+                .replace('.', '');
         };
 
         return (
             <>
-            <HTMLContainer
-                data-shape={shape.id}
-                className={isMergeTarget ? 'merge-target' : ''}
-                style={{
-                    width: shape.props.w,
-                    height: shape.props.h,
-                    position: 'relative',  // For absolute positioning of inner content
-                    // Make container fully transparent to fill geometry bounds
-                    background: 'transparent',
-                    // Don't set cursor here - let tldraw handle it via editor.setCursor()
-                    pointerEvents: 'auto',
-            }}
-                // Remove stopPropagation to preserve drag functionality
-                // tldraw will handle click vs drag detection internally
-            >
-            {/* Inner container with visual styles */}
-            <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: '#1a1a1a',
-                    border: isMergeTarget ? `3px solid ${borderColor}` : '1px solid #333',
-                    borderLeft: `3px solid ${borderColor}`,
-                    borderRadius: '8px',
-                    padding: '10px 12px',
-                    color: '#e0e0e0',
-                    fontSize: '12px',
-                    overflow: 'hidden',
-                    boxShadow: isMergeTarget 
-                        ? '0 0 20px rgba(255, 200, 0, 0.8)' 
-                        : '0 2px 8px rgba(0, 0, 0, 0.3)',
-                    transform: isMergeTarget ? 'scale(1.03)' : 'scale(1)',
-                    transition: 'all 0.3s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '8px',
-                    boxSizing: 'border-box',  // Ensure padding is included in dimensions
-            }}
-            >
-                {/* Левая часть - заголовок */}
-                <div style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    minWidth: 0, // Важно для text-overflow
-                }}>
-                    {/* Заголовок с мгновенным tooltip */}
-                    <div 
-                        style={{
-                            fontSize: '13px',
-                            fontWeight: '500',
-                            color: '#fff',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            flex: 1,
-                            position: 'relative',
-                        }}
-                        onMouseEnter={(e) => {
-                            // Показываем tooltip только если текст обрезан
-                            const element = e.currentTarget;
-                            if (element.scrollWidth > element.clientWidth && title) {
-                                const rect = element.getBoundingClientRect();
-                                setTooltipPosition({ 
-                                    x: rect.left + rect.width / 2, // Центрируем по горизонтали
-                                    y: rect.top - 10 // Небольшой отступ от верха элемента
-                                });
-                                setShowTooltip(true);
-                            }
-                        }}
-                        onMouseLeave={() => {
-                            setShowTooltip(false);
-                        }}
-                    >
-                        {title || 'Без заголовка'}
-                    </div>
-                </div>
-                
-                {/* Правая часть - время */}
-                <div style={{
-                    fontSize: '11px',
-                    color: '#666',
-                    flexShrink: 0,
-                }}>
-                    {time}
-                </div>
-            </div>
-            </HTMLContainer>
-            
-            {/* Мгновенный кастомный tooltip через Portal */}
-            {showTooltip && title && ReactDOM.createPortal(
-                <div
+                <HTMLContainer
+                    data-shape={shape.id}
+                    className={isMergeTarget ? 'merge-target' : ''}
                     style={{
-                        position: 'fixed',
-                        left: tooltipPosition.x,
-                        top: tooltipPosition.y - 8, // Дополнительный отступ для стрелки
-                        transform: 'translate(-50%, -100%)', // Центрируем по X и прикрепляем низ к точке
-                        backgroundColor: 'rgba(0, 0, 0, 0.9)',
-                        color: '#fff',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        zIndex: 10000,
-                        pointerEvents: 'none',
-                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-                        maxWidth: '300px',
-                        whiteSpace: 'normal',
-                        wordBreak: 'break-word',
-                        animation: 'fadeIn 0.1s ease-in',
+                        width: shape.props.w,
+                        height: shape.props.h,
+                        position: 'relative', // For absolute positioning of inner content
+                        // Make container fully transparent to fill geometry bounds
+                        background: 'transparent',
+                        // Don't set cursor here - let tldraw handle it via editor.setCursor()
+                        pointerEvents: 'auto',
                     }}
+                    // Remove stopPropagation to preserve drag functionality
+                    // tldraw will handle click vs drag detection internally
                 >
-                    {title}
-                    {/* Треугольник-указатель */}
+                    {/* Inner container with visual styles */}
                     <div
                         style={{
                             position: 'absolute',
-                            bottom: '-6px',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            width: 0,
-                            height: 0,
-                            borderLeft: '6px solid transparent',
-                            borderRight: '6px solid transparent',
-                            borderTop: '6px solid rgba(0, 0, 0, 0.9)',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: '#1a1a1a',
+                            border: isMergeTarget ? `3px solid ${borderColor}` : '1px solid #333',
+                            borderLeft: `3px solid ${borderColor}`,
+                            borderRadius: '8px',
+                            padding: '10px 12px',
+                            color: '#e0e0e0',
+                            fontSize: '12px',
+                            overflow: 'hidden',
+                            boxShadow: isMergeTarget ? '0 0 20px rgba(255, 200, 0, 0.8)' : '0 2px 8px rgba(0, 0, 0, 0.3)',
+                            transform: isMergeTarget ? 'scale(1.03)' : 'scale(1)',
+                            transition: 'all 0.3s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            boxSizing: 'border-box', // Ensure padding is included in dimensions
                         }}
-                    />
-                </div>,
-                document.body
-            )}
+                    >
+                        {/* Левая часть - заголовок */}
+                        <div
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                minWidth: 0, // Важно для text-overflow
+                            }}
+                        >
+                            {/* Заголовок с мгновенным tooltip */}
+                            <div
+                                style={{
+                                    fontSize: '13px',
+                                    fontWeight: '500',
+                                    color: '#fff',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    flex: 1,
+                                    position: 'relative',
+                                }}
+                                onMouseEnter={(e) => {
+                                    // Показываем tooltip только если текст обрезан
+                                    const element = e.currentTarget;
+                                    if (element.scrollWidth > element.clientWidth && title) {
+                                        const rect = element.getBoundingClientRect();
+                                        setTooltipPosition({
+                                            x: rect.left + rect.width / 2, // Центрируем по горизонтали
+                                            y: rect.top - 10, // Небольшой отступ от верха элемента
+                                        });
+                                        setShowTooltip(true);
+                                    }
+                                }}
+                                onMouseLeave={() => {
+                                    setShowTooltip(false);
+                                }}
+                            >
+                                {title || 'Без заголовка'}
+                            </div>
+                        </div>
+
+                        {/* Правая часть - время */}
+                        <div
+                            style={{
+                                fontSize: '11px',
+                                color: '#666',
+                                flexShrink: 0,
+                            }}
+                        >
+                            {time}
+                        </div>
+                    </div>
+                </HTMLContainer>
+
+                {/* Мгновенный кастомный tooltip через Portal */}
+                {showTooltip &&
+                    title &&
+                    ReactDOM.createPortal(
+                        <div
+                            style={{
+                                position: 'fixed',
+                                left: tooltipPosition.x,
+                                top: tooltipPosition.y - 8, // Дополнительный отступ для стрелки
+                                transform: 'translate(-50%, -100%)', // Центрируем по X и прикрепляем низ к точке
+                                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                                color: '#fff',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                zIndex: 10000,
+                                pointerEvents: 'none',
+                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                                maxWidth: '300px',
+                                whiteSpace: 'normal',
+                                wordBreak: 'break-word',
+                                animation: 'fadeIn 0.1s ease-in',
+                            }}
+                        >
+                            {title}
+                            {/* Треугольник-указатель */}
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    bottom: '-6px',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    width: 0,
+                                    height: 0,
+                                    borderLeft: '6px solid transparent',
+                                    borderRight: '6px solid transparent',
+                                    borderTop: '6px solid rgba(0, 0, 0, 0.9)',
+                                }}
+                            />
+                        </div>,
+                        document.body
+                    )}
             </>
         );
     }
 
     indicator(shape) {
         return (
-            <rect 
-                width={shape.props.w} 
+            <rect
+                width={shape.props.w}
                 height={shape.props.h}
                 style={{
                     fill: 'transparent',
