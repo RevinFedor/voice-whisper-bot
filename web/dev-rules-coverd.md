@@ -5,18 +5,19 @@
 
 ## 📋 Содержание
 1. [ValidationError: text vs richText](#1-validationerror-text-vs-richtext)
-2. [React StrictMode Double Rendering](#2-react-strictmode-double-rendering)
-3. [CSS display:flex Canvas Block](#3-css-displayflex-canvas-block)
-4. [Missing defaultShapeUtils](#4-missing-defaultshapeutils)
-5. [Canvas Not Rendering](#5-canvas-not-rendering)
-6. [Custom Shapes Not Visible](#6-custom-shapes-not-visible)
-7. [useCoalescedEvents Error](#7-usecoalescedevents-error)
-8. [Shape Type Conflicts](#8-shape-type-conflicts)
-9. [Custom Shape Clicks Not Working](#9-custom-shape-clicks-not-working)
-10. [Wrong Coordinate Space in Events](#10-wrong-coordinate-space-in-events)
-11. [React Closure Problems in Callbacks](#11-react-closure-problems-in-callbacks)
-12. [Double Click Editing State Error](#12-double-click-editing-state-error)
-13. [Note Not Found Backend Error](#13-note-not-found-backend-error)
+2. [React StrictMode двойной рендеринг](#2-react-strictmode-double-rendering)
+3. [CSS display:flex блокирует Canvas](#3-css-displayflex-canvas-block)
+4. [Отсутствуют defaultShapeUtils](#4-missing-defaultshapeutils)
+5. [Canvas не рендерится](#5-canvas-not-rendering)
+6. [Custom Shapes не видны](#6-custom-shapes-not-visible)
+7. [Ошибка useCoalescedEvents](#7-usecoalescedevents-error)
+8. [Конфликты типов Shape](#8-shape-type-conflicts)
+9. [Клики на Custom Shape не работают](#9-custom-shape-clicks-not-working)
+10. [Неправильная система координат в событиях](#10-wrong-coordinate-space-in-events)
+11. [Проблемы замыкания React в Callbacks](#11-react-closure-problems-in-callbacks)
+12. [Ошибка состояния редактирования при двойном клике](#12-double-click-editing-state-error)
+13. [Ошибка Note Not Found в Backend](#13-note-not-found-backend-error)
+14. [Курсор не синхронизирован с Hover](#14-cursor-not-synced-with-hover)
 
 ---
 
@@ -605,6 +606,111 @@ const noteId = shape.props.dbId;
 
 ---
 
+## 14. Cursor Not Synced with Hover
+
+### ❌ Симптомы:
+- Зеленая рамка (hover indicator) появляется, но курсор остается стрелкой
+- Курсор меняется на pointer только внутри shape, но не на краях
+- CSS :hover не синхронизирован с tldraw hover detection
+- `getCursor()` метод в ShapeUtil не работает
+
+### 🔍 Причина проблемы:
+tldraw НЕ вызывает автоматически метод `getCursor()` из ShapeUtil при hover. Система курсоров tldraw предназначена для инструментов (tools), а не для отдельных shapes.
+
+### ❌ НЕ РАБОТАЮЩИЕ решения (которые мы пробовали):
+```javascript
+// ❌ 1. CSS cursor в HTML контейнере
+style={{ cursor: 'pointer' }} // Не синхронизировано с tldraw hover
+
+// ❌ 2. CSS :hover псевдокласс
+.tl-shape:hover { cursor: pointer } // Не работает с pointer-events: none
+
+// ❌ 3. stopPropagation на событиях
+onPointerDown={(e) => e.stopPropagation()} // Ломает drag & drop!
+
+// ❌ 4. Условный pointerEvents
+pointerEvents: isHovered ? 'auto' : 'none' // Создает замкнутый круг
+
+// ❌ 5. getCursor() в ShapeUtil
+getCursor() { return 'pointer' } // tldraw не вызывает его автоматически!
+```
+
+### ✅ ПРАВИЛЬНОЕ решение:
+```javascript
+import { useEditor, useValue } from 'tldraw';
+
+component(shape) {
+    const editor = useEditor();
+    
+    // Реактивное определение hover состояния
+    const isHovered = useValue(
+        'shape hovered',
+        () => editor.getHoveredShapeId() === shape.id,
+        [editor, shape.id]
+    );
+    
+    // Управление курсором через tldraw API
+    React.useEffect(() => {
+        if (isHovered) {
+            // Устанавливаем курсор через tldraw систему
+            editor.setCursor({ type: 'pointer', rotation: 0 });
+        } else {
+            // Проверяем не наводимся ли на другую custom-note
+            const hoveredId = editor.getHoveredShapeId();
+            const hoveredShape = hoveredId ? editor.getShape(hoveredId) : null;
+            
+            // Сбрасываем только если не на другой custom-note
+            if (!hoveredShape || hoveredShape.type !== 'custom-note') {
+                editor.setCursor({ type: 'default', rotation: 0 });
+            }
+        }
+    }, [isHovered, editor, shape.id]);
+    
+    return (
+        <HTMLContainer
+            style={{
+                // НЕ устанавливаем cursor здесь!
+                // tldraw управляет курсором через --tl-cursor CSS переменную
+                pointerEvents: 'auto', // Всегда включено для hover detection
+            }}
+        >
+            {/* Контент */}
+        </HTMLContainer>
+    );
+}
+```
+
+### 🔧 Диагностика курсора:
+```javascript
+// Проверка курсора tldraw
+window.checkCursor = () => {
+    const editor = window.editor;
+    const instanceState = editor.getInstanceState();
+    console.log('Cursor type:', instanceState.cursor.type);
+    console.log('Hovered shape:', editor.getHoveredShapeId());
+    
+    // CSS переменная курсора
+    const container = document.querySelector('.tl-container');
+    const cursorValue = getComputedStyle(container).getPropertyValue('--tl-cursor');
+    console.log('CSS --tl-cursor:', cursorValue);
+};
+```
+
+### 📝 Ключевые принципы:
+1. **Используй `editor.setCursor()`** - единственный правильный способ
+2. **НЕ устанавливай CSS cursor** - он будет переопределен tldraw
+3. **useValue для реактивности** - автоматически обновляется при изменении hover
+4. **Проверяй тип при сбросе** - избегай мерцания между shapes одного типа
+5. **pointerEvents: 'auto'** - всегда включено для hover detection
+
+### 🎯 Почему это работает:
+- `useValue` подписывается на изменения tldraw store
+- `editor.setCursor()` устанавливает CSS переменную `--tl-cursor`
+- tldraw применяет эту переменную ко всему canvas
+- Курсор синхронизирован с зеленой рамкой (indicator) при любом масштабе
+
+---
+
 ## 🔍 Диагностические команды
 
 ### Проверка в консоли браузера:
@@ -742,7 +848,7 @@ console.log(`⏱ T+${Date.now() % 100000}: EVENT_NAME`);
 
 ---
 
-> **Последнее обновление**: Решена проблема задержек drag & drop (0мс вместо 500мс)
+> **Последнее обновление**: Решена проблема синхронизации курсора с hover (editor.setCursor)
 > **Версия tldraw**: 3.15.1
 > **React**: 19.1.1 (работает, но лучше 18.x)
-> **Добавлены проблемы**: #9-13 (клики, координаты, замыкания), #14 (drag задержки)
+> **Добавлены проблемы**: #9-13 (клики, координаты, замыкания), #14 (cursor hover sync)
