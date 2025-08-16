@@ -33,6 +33,9 @@ let isProcessing = false;
 // Store last created note for merge command
 let lastCreatedNote = null;
 
+// Merge mode state for each user
+const mergeStates = new Map(); // userId -> { isActive, notes: [], startTime }
+
 // Process messages from queue
 async function processQueue() {
     if (isProcessing || messageQueue.length === 0) {
@@ -206,6 +209,31 @@ async function handleVoiceMessage(ctx) {
         // Generate title
         const title = await generateTitle(transcription);
         
+        // Check if user is in merge mode
+        const userId = ctx.from.id;
+        const mergeState = mergeStates.get(userId);
+        if (mergeState && mergeState.isActive) {
+            // Add to merge queue
+            mergeState.notes.push({
+                title,
+                content: transcription,
+                type: 'voice',
+                telegramMessageId: messageId
+            });
+            
+            console.log(`📝 Added voice note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
+            
+            await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
+            await ctx.reply(
+                `✅ Заметка ${mergeState.notes.length} добавлена в очередь объединения\n\n📝 *${title}*\n${transcription.substring(0, 100)}${transcription.length > 100 ? '...' : ''}`,
+                {
+                    reply_to_message_id: ctx.message.message_id,
+                    parse_mode: 'Markdown'
+                }
+            );
+            return;
+        }
+        
         // Check if this is a reply to another message
         if (ctx.message.reply_to_message) {
             const replyToId = ctx.message.reply_to_message.message_id;
@@ -273,11 +301,184 @@ bot.start((ctx) => {
         '• 🎤 Голосовые сообщения - расшифрую и сохраню\n' +
         '• 📄 Текстовые сообщения - сохраню как есть\n' +
         '• 🎵 Аудио файлы (MP3) - расшифрую и сохраню\n' +
-        '• 🎬 Видео файлы (MP4) - извлеку звук и расшифрую\n' +
-        '• 🔄 Ответ на сообщение - объединю заметки\n' +
-        '• /merge - объединить последнюю заметку с той, на которую ответите\n\n' +
+        '• 🎬 Видео файлы (MP4) - извлеку звук и расшифрую\n\n' +
+        '🔄 Команды объединения:\n' +
+        '• Ответ на сообщение - автоматически объединю\n' +
+        '• /merge - объединить последнюю с указанной\n' +
+        '• /merge_start - начать режим множественного объединения\n' +
+        '• /merge_end - завершить и объединить все\n' +
+        '• /merge_cancel - отменить режим\n' +
+        '• /merge_status - проверить статус режима\n\n' +
         'Все заметки сохраняются в веб-приложение.\n' +
         'Просто отправьте мне любое сообщение!'
+    );
+});
+
+// Handle merge_start command
+bot.command('merge_start', async (ctx) => {
+    const userId = ctx.from.id;
+    
+    // Check if already in merge mode
+    if (mergeStates.has(userId) && mergeStates.get(userId).isActive) {
+        await ctx.reply(
+            '⚠️ Вы уже в режиме объединения. Используйте:\n' +
+            '/merge_end - чтобы завершить\n' +
+            '/merge_cancel - чтобы отменить\n' +
+            '/merge_status - проверить статус',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
+    
+    // Start merge mode
+    mergeStates.set(userId, {
+        isActive: true,
+        notes: [],
+        startTime: Date.now()
+    });
+    
+    console.log(`🔄 Merge mode started for user ${userId}`);
+    
+    await ctx.reply(
+        '🔄 Режим объединения начат!\n\n' +
+        'Теперь все отправленные заметки будут накапливаться.\n\n' +
+        'Команды:\n' +
+        '• /merge_end - объединить все заметки\n' +
+        '• /merge_cancel - отменить режим\n' +
+        '• /merge_status - проверить статус',
+        { reply_to_message_id: ctx.message.message_id }
+    );
+});
+
+// Handle merge_status command
+bot.command('merge_status', async (ctx) => {
+    const userId = ctx.from.id;
+    const mergeState = mergeStates.get(userId);
+    
+    if (!mergeState || !mergeState.isActive) {
+        await ctx.reply(
+            '🔴 Режим объединения не активен\n\n' +
+            'Для начала используйте /merge_start',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
+    
+    const duration = Math.floor((Date.now() - mergeState.startTime) / 1000);
+    const minutes = Math.floor(duration / 60);
+    const seconds = duration % 60;
+    
+    await ctx.reply(
+        `🟢 Режим объединения активен\n\n` +
+        `📄 Заметок в очереди: ${mergeState.notes.length}\n` +
+        `⏱ Время: ${minutes > 0 ? minutes + 'м ' : ''}${seconds}с\n\n` +
+        `Команды:\n` +
+        `• /merge_end - завершить и объединить\n` +
+        `• /merge_cancel - отменить режим`,
+        { reply_to_message_id: ctx.message.message_id }
+    );
+});
+
+// Handle merge_end command
+bot.command('merge_end', async (ctx) => {
+    const userId = ctx.from.id;
+    
+    // Check if in merge mode
+    const mergeState = mergeStates.get(userId);
+    if (!mergeState || !mergeState.isActive) {
+        await ctx.reply(
+            '❌ Вы не в режиме объединения. Сначала используйте /merge_start',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
+    
+    // Check if there are notes to merge
+    if (mergeState.notes.length === 0) {
+        await ctx.reply(
+            '❌ Нет заметок для объединения',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        mergeStates.delete(userId);
+        return;
+    }
+    
+    console.log(`📊 Merging ${mergeState.notes.length} notes for user ${userId}`);
+    
+    // Merge all notes
+    let mergedTitle = mergeState.notes.map(n => n.title).join(' / ');
+    let mergedContent = mergeState.notes.map(n => n.content).join('\n\n////// \n\n');
+    
+    // Truncate title if too long
+    if (mergedTitle.length > 200) {
+        mergedTitle = mergedTitle.substring(0, 197) + '...';
+    }
+    
+    try {
+        // Save merged note
+        await saveNoteToDatabase(mergedTitle, mergedContent, 'text');
+        
+        const notesCount = mergeState.notes.length;
+        
+        // Clear merge state
+        mergeStates.delete(userId);
+        
+        await ctx.reply(
+            `✨ Заметки успешно объединены!\n\n` +
+            `📄 Объединено заметок: ${notesCount}\n` +
+            `📝 *${mergedTitle}*`,
+            {
+                reply_to_message_id: ctx.message.message_id,
+                parse_mode: 'Markdown'
+            }
+        );
+    } catch (error) {
+        console.error('Ошибка при объединении:', error);
+        await ctx.reply(
+            '❌ Ошибка при сохранении объединенной заметки',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+    }
+});
+
+// Handle old merge_finish command (redirect to merge_end)
+bot.command('merge_finish', async (ctx) => {
+    await ctx.reply(
+        '⚠️ Команда переименована. Используйте /merge_end',
+        { reply_to_message_id: ctx.message.message_id }
+    );
+});
+
+// Handle merge_cancel command
+bot.command('merge_cancel', async (ctx) => {
+    const userId = ctx.from.id;
+    
+    // Check if in merge mode
+    const mergeState = mergeStates.get(userId);
+    if (!mergeState || !mergeState.isActive) {
+        await ctx.reply(
+            '❌ Вы не в режиме объединения',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
+    
+    const notesCount = mergeState.notes.length;
+    
+    // Save accumulated notes separately if any
+    if (notesCount > 0) {
+        for (const note of mergeState.notes) {
+            await saveNoteToDatabase(note.title, note.content, note.type, note.telegramMessageId);
+        }
+    }
+    
+    // Clear merge state
+    mergeStates.delete(userId);
+    
+    await ctx.reply(
+        `❌ Режим объединения отменен.\n` +
+        (notesCount > 0 ? `📄 ${notesCount} заметок сохранены отдельно.` : ''),
+        { reply_to_message_id: ctx.message.message_id }
     );
 });
 
@@ -365,6 +566,7 @@ async function handleAudioMessage(ctx) {
     const audioFileId = ctx.message.audio.file_id;
     const messageId = ctx.message.message_id;
     const processingMsg = await ctx.reply('⏳ Начинаю обработку аудио файла...');
+    const userId = ctx.from.id;
     
     try {
         // Download audio file
@@ -390,6 +592,30 @@ async function handleAudioMessage(ctx) {
         
         // Generate title
         const title = await generateTitle(transcription);
+        
+        // Check if user is in merge mode
+        const mergeState = mergeStates.get(userId);
+        if (mergeState && mergeState.isActive) {
+            // Add to merge queue
+            mergeState.notes.push({
+                title,
+                content: transcription,
+                type: 'voice',
+                telegramMessageId: messageId
+            });
+            
+            console.log(`📝 Added voice note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
+            
+            await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
+            await ctx.reply(
+                `✅ Заметка ${mergeState.notes.length} добавлена в очередь объединения\n\n📝 *${title}*\n${transcription.substring(0, 100)}${transcription.length > 100 ? '...' : ''}`,
+                {
+                    reply_to_message_id: ctx.message.message_id,
+                    parse_mode: 'Markdown'
+                }
+            );
+            return;
+        }
         
         // Check if this is a reply to another message
         if (ctx.message.reply_to_message) {
@@ -451,6 +677,7 @@ async function handleVideoMessage(ctx) {
     const videoFileId = ctx.message.video.file_id;
     const messageId = ctx.message.message_id;
     const processingMsg = await ctx.reply('⏳ Начинаю обработку видео файла...');
+    const userId = ctx.from.id;
     
     try {
         // Download video file
@@ -476,6 +703,30 @@ async function handleVideoMessage(ctx) {
         
         // Generate title
         const title = await generateTitle(transcription);
+        
+        // Check if user is in merge mode
+        const mergeState = mergeStates.get(userId);
+        if (mergeState && mergeState.isActive) {
+            // Add to merge queue
+            mergeState.notes.push({
+                title,
+                content: transcription,
+                type: 'voice',
+                telegramMessageId: messageId
+            });
+            
+            console.log(`📝 Added voice note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
+            
+            await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
+            await ctx.reply(
+                `✅ Заметка ${mergeState.notes.length} добавлена в очередь объединения\n\n📝 *${title}*\n${transcription.substring(0, 100)}${transcription.length > 100 ? '...' : ''}`,
+                {
+                    reply_to_message_id: ctx.message.message_id,
+                    parse_mode: 'Markdown'
+                }
+            );
+            return;
+        }
         
         // Check if this is a reply to another message
         if (ctx.message.reply_to_message) {
@@ -536,6 +787,7 @@ bot.on('video', (ctx) => {
 async function handleTextMessage(ctx) {
     const text = ctx.message.text;
     const messageId = ctx.message.message_id;
+    const userId = ctx.from.id;
     
     try {
         // Generate title from first 50 chars or first line
@@ -543,6 +795,29 @@ async function handleTextMessage(ctx) {
         const title = firstLine.length > 50 
             ? firstLine.substring(0, 47) + '...' 
             : firstLine;
+        
+        // Check if user is in merge mode
+        const mergeState = mergeStates.get(userId);
+        if (mergeState && mergeState.isActive) {
+            // Add to merge queue
+            mergeState.notes.push({
+                title,
+                content: text,
+                type: 'text',
+                telegramMessageId: messageId
+            });
+            
+            console.log(`📝 Added text note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
+            
+            await ctx.reply(
+                `✅ Заметка ${mergeState.notes.length} добавлена в очередь объединения\n\n📝 *${title}*`,
+                {
+                    reply_to_message_id: ctx.message.message_id,
+                    parse_mode: 'Markdown'
+                }
+            );
+            return;
+        }
         
         // Check if this is a reply to another message
         if (ctx.message.reply_to_message) {
