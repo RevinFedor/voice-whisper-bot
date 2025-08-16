@@ -55,6 +55,7 @@ export class NotesController {
     console.log('   Title:', createNoteDto.title);
     console.log('   Type:', createNoteDto.type);
     console.log('   Date:', createNoteDto.date);
+    console.log('   Tags:', createNoteDto.tags);
     
     return this.notesService.createNote(userId, {
       ...createNoteDto,

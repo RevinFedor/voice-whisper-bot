@@ -12,6 +12,8 @@ export declare class NotesService {
         x?: number;
         y?: number;
         manuallyPositioned?: boolean;
+        tags?: string[];
+        aiSuggestedTags?: any;
     }): Promise<Note>;
     createRandomNote(userId: string): Promise<Note>;
     getNotes(userId: string, days?: number): Promise<Note[]>;

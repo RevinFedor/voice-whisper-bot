@@ -7,4 +7,6 @@ export declare class CreateNoteDto {
     x?: number;
     y?: number;
     manuallyPositioned?: boolean;
+    tags?: string[];
+    aiSuggestedTags?: any;
 }

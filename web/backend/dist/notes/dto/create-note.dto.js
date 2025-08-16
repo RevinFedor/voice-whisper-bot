@@ -56,4 +56,16 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], CreateNoteDto.prototype, "manuallyPositioned", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'Tags for the note', required: false, type: [String] }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], CreateNoteDto.prototype, "tags", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ description: 'AI suggested tags', required: false }),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Object)
+], CreateNoteDto.prototype, "aiSuggestedTags", void 0);
 //# sourceMappingURL=create-note.dto.js.map

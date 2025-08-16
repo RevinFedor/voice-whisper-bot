@@ -117,7 +117,22 @@ const customStyles = `
     
     /* Ensure dragged shape is always on top */
     .tl-dragging {
-        z-index: 1000 !important;
+        z-index: 10000 !important;
+    }
+    
+    /* Ensure selected shapes during drag are on top */
+    .tl-shape.selected.dragging {
+        z-index: 10000 !important;
+    }
+    
+    /* Force dragging shapes to be on top */
+    [data-shape*="shape:"][style*="z-index: 10000"] {
+        z-index: 10000 !important;
+    }
+    
+    /* Ensure HTML containers in dragging shapes are on top */
+    .tl-shape[style*="z-index: 10000"] .tl-html-container {
+        z-index: 10000 !important;
     }
     
     .tl-shape-indicator[data-shape-type="custom-note"] {
@@ -443,6 +458,16 @@ export default function SyncedProductionApp() {
             return;
         }
         
+        // Immediately hide the dragged note
+        editor.deleteShapes([draggedNote.id]);
+        
+        // Add loading animation to target note
+        const targetElement = document.querySelector(`[data-shape="${targetNote.id}"]`);
+        if (targetElement) {
+            targetElement.style.animation = 'pulse 1s ease-in-out infinite';
+            targetElement.style.boxShadow = '0 0 20px rgba(135, 206, 250, 0.6)';
+        }
+        
         try {
             // Small delay to ensure position updates are synced
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -490,29 +515,39 @@ export default function SyncedProductionApp() {
                 var draggedData = {
                     title: draggedText.title,
                     content: draggedText.content,
-                    date: new Date().toISOString() // Use today as fallback
+                    date: new Date().toISOString(), // Use today as fallback
+                    tags: draggedShape.props.tags || [],
+                    aiSuggestedTags: draggedShape.props.aiSuggestedTags || []
                 };
                 
                 var targetData = {
                     title: targetText.title,
                     content: targetText.content,
                     date: new Date().toISOString(), // Use today as fallback
-                    manuallyPositioned: targetShape.props.manuallyPositioned || false
+                    manuallyPositioned: targetShape.props.manuallyPositioned || false,
+                    tags: targetShape.props.tags || [],
+                    aiSuggestedTags: targetShape.props.aiSuggestedTags || []
                 };
             } else {
                 var draggedData = await draggedResponse.json();
                 var targetData = await targetResponse.json();
             }
             
-            // Create merged note
-            const mergedTitle = draggedData.title + ' / ' + targetData.title;
-            const mergedContent = draggedData.content + '\n/////\n' + targetData.content;
+            // Create merged note - dragged note goes to the end
+            const mergedTitle = targetData.title + ' / ' + draggedData.title;
+            const mergedContent = targetData.content + '\n\n//////\n\n' + draggedData.content;
+            
+            // Merge tags (unique values only)
+            const mergedTags = [...new Set([...(targetData.tags || []), ...(draggedData.tags || [])])];
             
             console.log('📝 Creating merged note:', {
                 title: mergedTitle,
                 x: targetNote.x,
                 y: targetNote.y,
-                date: targetData.date
+                date: targetData.date,
+                targetTags: targetData.tags,
+                draggedTags: draggedData.tags,
+                mergedTags: mergedTags
             });
             
             // Format date as string for backend (YYYY-MM-DD)
@@ -520,21 +555,26 @@ export default function SyncedProductionApp() {
             const dateString = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}-${targetDate.getDate().toString().padStart(2, '0')}`;
             
             // Create new merged note with target's position
+            const requestBody = {
+                title: mergedTitle,
+                content: mergedContent,
+                type: 'text',
+                date: dateString,
+                x: targetNote.x,
+                y: targetNote.y,
+                manuallyPositioned: targetData.manuallyPositioned || false,
+                tags: mergedTags,
+            };
+            
+            console.log('📡 POST /notes request body:', requestBody);
+            
             const createResponse = await fetch(`${API_URL}/notes`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'user-id': USER_ID,
                 },
-                body: JSON.stringify({
-                    title: mergedTitle,
-                    content: mergedContent,
-                    type: 'text',
-                    date: dateString,
-                    x: targetNote.x,
-                    y: targetNote.y,
-                    manuallyPositioned: targetData.manuallyPositioned || false,
-                }),
+                body: JSON.stringify(requestBody),
             });
             
             if (!createResponse.ok) {
@@ -542,7 +582,7 @@ export default function SyncedProductionApp() {
             }
             
             const mergedNote = await createResponse.json();
-            console.log('✅ Merged note created:', mergedNote.id);
+            console.log('✅ Merged note created:', mergedNote.id, 'with tags:', mergedNote.tags);
             
             // Delete original notes
             await Promise.all([
@@ -564,8 +604,20 @@ export default function SyncedProductionApp() {
             
             console.log('✨ Merge completed successfully');
             
+            // Remove loading animation from target
+            if (targetElement) {
+                targetElement.style.animation = '';
+                targetElement.style.boxShadow = '';
+            }
+            
         } catch (error) {
             console.error('❌ Error during merge:', error);
+            
+            // Remove loading animation on error
+            if (targetElement) {
+                targetElement.style.animation = '';
+                targetElement.style.boxShadow = '';
+            }
         }
     };
     
@@ -644,24 +696,46 @@ export default function SyncedProductionApp() {
                         // Get DB ID from shape props
                         const dbId = to.props?.dbId;
                         
-                        console.log(`🔍 Looking for dbId in props:`, dbId);
+                        // Track dragged notes
                         
                         if (dbId) {
-                            console.log(`🔄 Shape is being dragged: ${dbId}`);
                             // Store the dragged note info (will send update on release)
                             draggedNotes.set(dbId, { dbId, x: to.x, y: to.y });
                             
                             // Store the moving shape for merge check
                             potentialMerge = to;
                             
-                            // Update z-index for dragging shape
-                            const draggedElement = document.querySelector(`[data-shape="${to.id}"]`);
-                            if (draggedElement) {
-                                draggedElement.style.zIndex = '1000';
-                            }
+                            // Update z-index for all dragging shapes
+                            const selectedShapes = editor.getSelectedShapes();
+                            
+                            // Z-index diagnostics removed - issue fixed
+                            
+                            // Apply high z-index to shape and its container
+                            selectedShapes.forEach(shape => {
+                                const element = document.querySelector(`[data-shape="${shape.id}"]`);
+                                if (element) {
+                                    // Set on the shape element itself
+                                    element.style.zIndex = '10000';
+                                    element.style.position = 'relative';
+                                    
+                                    // Also set on parent tl-shape element if it exists
+                                    const tlShape = element.closest('.tl-shape');
+                                    if (tlShape) {
+                                        tlShape.style.zIndex = '10000';
+                                    }
+                                    
+                                    // Find the HTML container inside and set z-index there too
+                                    const htmlContainer = element.querySelector('.tl-html-container');
+                                    if (htmlContainer) {
+                                        htmlContainer.style.zIndex = '10000';
+                                        htmlContainer.style.position = 'relative';
+                                    }
+                                    
+                                    // Z-index successfully applied
+                                }
+                            });
                             
                             // Real-time merge target highlighting
-                            const selectedShapes = editor.getSelectedShapes();
                             if (selectedShapes.length === 1) {
                                 const allShapes = editor.getCurrentPageShapes();
                                 const customNotes = allShapes.filter(s => s.type === 'custom-note');

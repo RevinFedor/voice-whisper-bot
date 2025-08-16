@@ -70,6 +70,8 @@ export class NotesService {
     x?: number;
     y?: number;
     manuallyPositioned?: boolean;
+    tags?: string[];
+    aiSuggestedTags?: any;
   }): Promise<Note> {
     console.log('🔨 [NotesService] Creating note...');
     console.log('   userId:', userId);
@@ -133,6 +135,8 @@ export class NotesService {
         x,
         y,
         manuallyPositioned,
+        tags: data.tags || [],
+        aiSuggestedTags: data.aiSuggestedTags || null,
       },
     });
     
@@ -140,6 +144,7 @@ export class NotesService {
     console.log('   Note ID:', createdNote.id);
     console.log('   Position: x=' + x + ', y=' + y);
     console.log('   Date:', noteDate.toISOString());
+    console.log('   Tags:', createdNote.tags);
     
     return createdNote;
   }

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsNumber, IsDateString, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, IsDateString, IsBoolean, IsArray } from 'class-validator';
 import { NoteType } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -35,4 +35,14 @@ export class CreateNoteDto {
   @IsOptional()
   @IsBoolean()
   manuallyPositioned?: boolean;
+
+  @ApiProperty({ description: 'Tags for the note', required: false, type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @ApiProperty({ description: 'AI suggested tags', required: false })
+  @IsOptional()
+  aiSuggestedTags?: any;
 }

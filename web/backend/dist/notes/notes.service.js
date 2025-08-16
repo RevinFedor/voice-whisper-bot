@@ -98,12 +98,15 @@ let NotesService = class NotesService {
                 x,
                 y,
                 manuallyPositioned,
+                tags: data.tags || [],
+                aiSuggestedTags: data.aiSuggestedTags || null,
             },
         });
         console.log('✅ [NotesService] Note created successfully!');
         console.log('   Note ID:', createdNote.id);
         console.log('   Position: x=' + x + ', y=' + y);
         console.log('   Date:', noteDate.toISOString());
+        console.log('   Tags:', createdNote.tags);
         return createdNote;
     }
     async createRandomNote(userId) {
