@@ -315,7 +315,7 @@ bot.start((ctx) => {
 });
 
 // Handle merge_start command
-bot.command('merge_start', async (ctx) => {
+const handleMergeStart = async (ctx) => {
     const userId = ctx.from.id;
     
     // Check if already in merge mode
@@ -348,10 +348,14 @@ bot.command('merge_start', async (ctx) => {
         '• /merge_status - проверить статус',
         { reply_to_message_id: ctx.message.message_id }
     );
-});
+};
+
+bot.command('merge_start', handleMergeStart);
+bot.command('m_start', handleMergeStart);
+bot.command('ms', handleMergeStart);
 
 // Handle merge_status command
-bot.command('merge_status', async (ctx) => {
+const handleMergeStatus = async (ctx) => {
     const userId = ctx.from.id;
     const mergeState = mergeStates.get(userId);
     
@@ -377,10 +381,14 @@ bot.command('merge_status', async (ctx) => {
         `• /merge_cancel - отменить режим`,
         { reply_to_message_id: ctx.message.message_id }
     );
-});
+};
+
+bot.command('merge_status', handleMergeStatus);
+bot.command('m_status', handleMergeStatus);
+bot.command('mst', handleMergeStatus);
 
 // Handle merge_end command
-bot.command('merge_end', async (ctx) => {
+const handleMergeEnd = async (ctx) => {
     const userId = ctx.from.id;
     
     // Check if in merge mode
@@ -439,18 +447,14 @@ bot.command('merge_end', async (ctx) => {
             { reply_to_message_id: ctx.message.message_id }
         );
     }
-});
+};
 
-// Handle old merge_finish command (redirect to merge_end)
-bot.command('merge_finish', async (ctx) => {
-    await ctx.reply(
-        '⚠️ Команда переименована. Используйте /merge_end',
-        { reply_to_message_id: ctx.message.message_id }
-    );
-});
+bot.command('merge_end', handleMergeEnd);
+bot.command('m_end', handleMergeEnd);
+bot.command('me', handleMergeEnd);
 
 // Handle merge_cancel command
-bot.command('merge_cancel', async (ctx) => {
+const handleMergeCancel = async (ctx) => {
     const userId = ctx.from.id;
     
     // Check if in merge mode
@@ -480,10 +484,14 @@ bot.command('merge_cancel', async (ctx) => {
         (notesCount > 0 ? `📄 ${notesCount} заметок сохранены отдельно.` : ''),
         { reply_to_message_id: ctx.message.message_id }
     );
-});
+};
+
+bot.command('merge_cancel', handleMergeCancel);
+bot.command('m_cancel', handleMergeCancel);
+bot.command('mc', handleMergeCancel);
 
 // Handle merge command
-bot.command('merge', async (ctx) => {
+const handleMerge = async (ctx) => {
     // Check if this is a reply
     if (!ctx.message.reply_to_message) {
         await ctx.reply(
@@ -559,7 +567,10 @@ bot.command('merge', async (ctx) => {
             { reply_to_message_id: ctx.message.message_id }
         );
     }
-});
+};
+
+bot.command('merge', handleMerge);
+bot.command('m', handleMerge);
 
 // Actual audio message handler
 async function handleAudioMessage(ctx) {
