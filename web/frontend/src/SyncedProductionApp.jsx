@@ -576,7 +576,7 @@ export default function SyncedProductionApp() {
         // console.log('🔗 Setting up position sync with noteIdMap:', noteIdMap.size, 'entries');
         
         // Track dragging state
-        let draggedNote = null;  // Store the dragged note info
+        let draggedNotes = new Map();  // Store all dragged notes info
         let potentialMerge = null;
         let highlightedTarget = null;
         let wasDragging = false; // Флаг для отслеживания отпускания
@@ -649,7 +649,7 @@ export default function SyncedProductionApp() {
                         if (dbId) {
                             console.log(`🔄 Shape is being dragged: ${dbId}`);
                             // Store the dragged note info (will send update on release)
-                            draggedNote = { dbId, x: to.x, y: to.y };
+                            draggedNotes.set(dbId, { dbId, x: to.x, y: to.y });
                             
                             // Store the moving shape for merge check
                             potentialMerge = to;
@@ -780,9 +780,11 @@ export default function SyncedProductionApp() {
                 wasDragging = false;
                 
                 // Send position update to backend ONLY when drag ends
-                if (draggedNote) {
-                    sendPositionUpdate(draggedNote.dbId, { x: draggedNote.x, y: draggedNote.y });
-                    draggedNote = null;
+                if (draggedNotes.size > 0) {
+                    for (const [dbId, note] of draggedNotes) {
+                        sendPositionUpdate(note.dbId, { x: note.x, y: note.y });
+                    }
+                    draggedNotes.clear();
                 }
                 
                 console.log(`⏱ T+${Date.now() % 100000}: INSTANT_CHECK`);
@@ -804,9 +806,11 @@ export default function SyncedProductionApp() {
                         wasDragging = false;
                         
                         // Send position update to backend ONLY when drag ends
-                        if (draggedNote) {
-                            sendPositionUpdate(draggedNote.dbId, { x: draggedNote.x, y: draggedNote.y });
-                            draggedNote = null;
+                        if (draggedNotes.size > 0) {
+                            for (const [dbId, note] of draggedNotes) {
+                                sendPositionUpdate(note.dbId, { x: note.x, y: note.y });
+                            }
+                            draggedNotes.clear();
                         }
                         
                         performInstantMergeCheck();
