@@ -139,7 +139,7 @@ const customStyles = `
         z-index: 997 !important;
     }
     
-    /* Static date header styles */
+    /* Static date header styles - делаем их полностью неинтерактивными */
     .tl-shape[data-shape-type="static-date-header"] {
         pointer-events: none !important;
         user-select: none !important;
@@ -149,9 +149,6 @@ const customStyles = `
         display: none !important;
     }
     
-    .tl-shape[data-shape-type="static-date-header"]:hover {
-        outline: none !important;
-        box-shadow: none !important;
     }
     
     /* Отключаем все интерактивности для date headers */
@@ -308,6 +305,7 @@ export default function SyncedProductionApp() {
                 type: 'static-date-header',
                 x: x - 14, // Позиционируем еще левее от заметок
                 y: 60, // Немного отступаем сверху
+                isLocked: true, // Блокируем shape
                 props: {
                     w: 70, // Немного уже
                     h: 55, // Немного ниже
@@ -1003,6 +1001,29 @@ export default function SyncedProductionApp() {
         setEditor(editor);
         window.editor = editor;
         window.saveEditor(editor);
+        
+        // Автоматически исключать static-date-header из выделения
+        const unsubscribeSelection = editor.on('change', ({ changes }) => {
+            if (changes.updated_instance?.length > 0) {
+                const selectedShapes = editor.getSelectedShapes();
+                const hasStaticHeaders = selectedShapes.some(shape => shape.type === 'static-date-header');
+                
+                if (hasStaticHeaders) {
+                    // Фильтруем только custom-note shapes
+                    const onlyNotes = selectedShapes.filter(shape => shape.type === 'custom-note');
+                    if (onlyNotes.length > 0) {
+                        // Выделяем только заметки
+                        editor.setSelectedShapes(onlyNotes.map(s => s.id));
+                    } else {
+                        // Если заметок нет, снимаем выделение
+                        editor.setSelectedShapes([]);
+                    }
+                }
+            }
+        });
+        
+        // Сохраняем функцию отписки для очистки
+        editor._unsubscribeSelection = unsubscribeSelection;
         
         // Add CSS for tooltip animation
         const tooltipStyle = document.createElement('style');
