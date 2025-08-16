@@ -41,7 +41,7 @@ export function ModalStackProvider({ children }) {
   
   // Регистрация модалки в стеке
   const registerModal = useCallback((modalId, priority = 0, escapeHandler, options = {}) => {
-    console.log(`📌 Registering modal: ${modalId} with priority: ${priority}`);
+    // console.log(`📌 Registering modal: ${modalId} with priority: ${priority}`);
     
     setModalStack(prev => {
       // Проверяем группу модалки
@@ -60,7 +60,7 @@ export function ModalStackProvider({ children }) {
             const modalType = m.modalId.split('-').slice(-2).join('-');
             const isInSameGroup = groupConfig.modals.includes(modalType);
             if (isInSameGroup && m.modalId !== modalId) {
-              console.log(`🔄 Auto-closing modal from same group: ${m.modalId}`);
+              // console.log(`🔄 Auto-closing modal from same group: ${m.modalId}`);
               // Вызываем их escape handler для корректного закрытия
               if (m.escapeHandler) {
                 setTimeout(() => m.escapeHandler(), 0);
@@ -78,7 +78,7 @@ export function ModalStackProvider({ children }) {
       // Сортируем по приоритету (выше приоритет = первым в массиве)
       newStack.sort((a, b) => b.priority - a.priority);
       
-      console.log(`📚 Modal stack updated:`, newStack.map(m => `${m.modalId}(${m.priority})`));
+      // console.log(`📚 Modal stack updated:`, newStack.map(m => `${m.modalId}(${m.priority})`));
       return newStack;
     });
     
@@ -88,10 +88,10 @@ export function ModalStackProvider({ children }) {
   
   // Удаление модалки из стека
   const unregisterModal = useCallback((modalId) => {
-    console.log(`📤 Unregistering modal: ${modalId}`);
+    // console.log(`📤 Unregistering modal: ${modalId}`);
     setModalStack(prev => {
       const newStack = prev.filter(m => m.modalId !== modalId);
-      console.log(`📚 Modal stack after unregister:`, newStack.map(m => `${m.modalId}(${m.priority})`));
+      // console.log(`📚 Modal stack after unregister:`, newStack.map(m => `${m.modalId}(${m.priority})`));
       return newStack;
     });
   }, []);
@@ -102,7 +102,7 @@ export function ModalStackProvider({ children }) {
       if (e.key === 'Escape' && modalStack.length > 0) {
         // Получаем топовую модалку (с наивысшим приоритетом)
         const topModal = modalStack[0];
-        console.log(`⌨️ Escape pressed, top modal: ${topModal.modalId}`);
+        // console.log(`⌨️ Escape pressed, top modal: ${topModal.modalId}`);
         
         // Вызываем её обработчик
         if (topModal.escapeHandler) {
@@ -110,9 +110,9 @@ export function ModalStackProvider({ children }) {
           if (handled) {
             e.preventDefault();
             e.stopPropagation();
-            console.log(`✅ Escape handled by: ${topModal.modalId}`);
+            // console.log(`✅ Escape handled by: ${topModal.modalId}`);
           } else {
-            console.log(`⏭️ Escape not handled by: ${topModal.modalId}, passing to next`);
+            // console.log(`⏭️ Escape not handled by: ${topModal.modalId}, passing to next`);
           }
         }
       }
@@ -165,13 +165,33 @@ export function useModalEscape(modalId, escapeHandler, priority = 0, options = {
   
   const { registerModal } = context;
   
+  // Сохраняем последний обработчик в ref для избежания перерегистрации
+  const handlerRef = useRef(escapeHandler);
   useEffect(() => {
-    // Регистрируем только если есть обработчик и приоритет больше 0
-    if (escapeHandler && priority > 0) {
-      const unregister = registerModal(modalId, priority, escapeHandler, options);
+    handlerRef.current = escapeHandler;
+  });
+  
+  // Стабилизируем options через ref
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  });
+  
+  useEffect(() => {
+    // Регистрируем только если есть приоритет больше 0
+    if (priority > 0) {
+      // Создаем стабильный обработчик который вызывает текущую версию из ref
+      const stableHandler = () => {
+        if (handlerRef.current) {
+          return handlerRef.current();
+        }
+        return false;
+      };
+      
+      const unregister = registerModal(modalId, priority, stableHandler, optionsRef.current);
       return unregister;
     }
-  }, [modalId, priority, escapeHandler, registerModal, options]);
+  }, [modalId, priority, registerModal]); // Только стабильные зависимости
 }
 
 // Hook для доступа к контексту
