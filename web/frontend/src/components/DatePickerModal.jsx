@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { useModalEscape, MODAL_PRIORITIES } from '../contexts/ModalStackContext';
 
 const modalStyles = {
     overlay: {
@@ -103,11 +104,22 @@ const modalStyles = {
 };
 
 export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
+    const modalId = useRef(`date-picker-${Date.now()}`).current;
     const [selectedDate, setSelectedDate] = useState(null);
     const [customDate, setCustomDate] = useState('');
     const [customTime, setCustomTime] = useState('01:00'); // Default time 01:00
     const [hoveredDate, setHoveredDate] = useState(null);
     const [isGeneratingMockData, setIsGeneratingMockData] = useState(false);
+    
+    // Обработка Escape для закрытия модалки
+    useModalEscape(
+        modalId,
+        () => {
+            handleCancel();
+            return true;
+        },
+        isOpen ? MODAL_PRIORITIES.DATE_PICKER : -1
+    );
     
     if (!isOpen) return null;
     

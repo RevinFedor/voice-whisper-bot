@@ -4,6 +4,7 @@ import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
 import { StaticDateHeaderShapeUtil } from './components/StaticDateHeaderShape';
 import { SelectionContextMenu } from './components/SelectionContextMenu';
+import { ModalStackProvider } from './contexts/ModalStackContext';
 import DatePickerModal from './components/DatePickerModal';
 import NoteModal from './components/NoteModal';
 import ExportToast from './components/ExportToast';
@@ -11,6 +12,7 @@ import './utils/debugHelpers';
 import './utils/debugShapes';
 import './utils/quickTest';
 import './utils/finalTest';
+import './utils/debugModalStack';
 
 // API configuration
 const API_URL = 'http://localhost:3001/api';
@@ -1655,7 +1657,7 @@ export default function SyncedProductionApp() {
     }, [editor]);
     
     return (
-        <>
+        <ModalStackProvider>
             <style>{customStyles}</style>
             <div style={{ 
                 position: 'fixed', 
@@ -1750,6 +1752,6 @@ export default function SyncedProductionApp() {
                     obsidianUrl={exportToastData?.obsidianUrl}
                 />
             </div>
-        </>
+        </ModalStackProvider>
     );
 }

@@ -1,17 +1,19 @@
 import React, { useState, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 import { useScrollPreservingTextarea } from '../hooks/useScrollPreservingTextarea';
+import { useModalEscape, MODAL_PRIORITIES } from '../contexts/ModalStackContext';
 import obsidianIcon from '../assets/obsidian-icon.svg';
 
 const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => {
-    if (!isOpen || !note) return null;
+    // Уникальный ID для этого экземпляра модалки
+    const modalId = useRef(`note-modal-${Date.now()}`).current;
     
     // === ЛОКАЛЬНОЕ СОСТОЯНИЕ (для мгновенного UI) ===
-    const [localTitle, setLocalTitle] = useState(note.title || '');
-    const [localContent, setLocalContent] = useState(note.content || '');
+    const [localTitle, setLocalTitle] = useState(note?.title || '');
+    const [localContent, setLocalContent] = useState(note?.content || '');
     
     // === СЕРВЕРНОЕ СОСТОЯНИЕ (для отслеживания синхронизации) ===
-    const [serverTitle, setServerTitle] = useState(note.title || '');
-    const [serverContent, setServerContent] = useState(note.content || '');
+    const [serverTitle, setServerTitle] = useState(note?.title || '');
+    const [serverContent, setServerContent] = useState(note?.content || '');
     
     // === СОСТОЯНИЕ UI ===
     const [isExpanded, setIsExpanded] = useState(false);
@@ -47,8 +49,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     const [historyLoading, setHistoryLoading] = useState(false);
     
     // === СОСТОЯНИЕ ТЕГОВ ===
-    const [localTags, setLocalTags] = useState(note.tags || []);
-    const [aiSuggestions, setAiSuggestions] = useState(note.aiSuggestedTags || []);
+    const [localTags, setLocalTags] = useState(note?.tags || []);
+    const [aiSuggestions, setAiSuggestions] = useState(note?.aiSuggestedTags || []);
     const [showTagChat, setShowTagChat] = useState(false);
     const [showTagHistory, setShowTagHistory] = useState(false);
     const [tagPromptInput, setTagPromptInput] = useState('');
@@ -64,24 +66,104 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // === СОСТОЯНИЕ ЭКСПОРТА ===
     const [isExporting, setIsExporting] = useState(false);
     
+    // === ESCAPE ОБРАБОТКА ===
+    // Основная модалка
+    useModalEscape(
+        modalId,
+        () => {
+            // Проверяем, нет ли открытых вложенных элементов
+            if (isExpanded || showHistory || showPrompt || showTagChat || showAddTagInput || showTagHistory || showObsidianTags) {
+                return false; // Не закрываем основную модалку, есть вложенные элементы
+            }
+            onClose();
+            return true;
+        },
+        isOpen ? MODAL_PRIORITIES.NOTE_MODAL : -1 // Активно только когда модалка открыта
+    );
+    
+    // Раскрытый заголовок
+    useModalEscape(
+        `${modalId}-expanded-title`,
+        () => {
+            if (isExpanded) {
+                setIsExpanded(false);
+                setIsTitleFocused(false);
+                // Сохраняем при закрытии раскрывающегося заголовка
+                if (localTitle !== serverTitle) {
+                    saveToServer('title', localTitle);
+                }
+                return true;
+            }
+            return false;
+        },
+        isExpanded ? MODAL_PRIORITIES.EXPANDED_INPUT : -1
+    );
+    
+    // Input для тегов
+    useModalEscape(
+        `${modalId}-tag-input`,
+        () => {
+            if (showAddTagInput) {
+                setNewTagInput('');
+                setShowAddTagInput(false);
+                return true;
+            }
+            return false;
+        },
+        showAddTagInput ? MODAL_PRIORITIES.TAG_INPUT : -1
+    );
+    
+    // AI панели заголовков (история и промпт)
+    useModalEscape(
+        `${modalId}-title-panels`,
+        () => {
+            if (showPrompt || showHistory) {
+                setShowPrompt(false);
+                setShowHistory(false);
+                setPromptInput('');
+                return true;
+            }
+            return false;
+        },
+        (showPrompt || showHistory) ? MODAL_PRIORITIES.PROMPT_PANEL : -1,
+        { group: 'TITLE_GROUP', exclusive: true }
+    );
+    
+    // AI панели тегов
+    useModalEscape(
+        `${modalId}-tag-panels`,
+        () => {
+            if (showTagChat || showTagHistory || showObsidianTags) {
+                setShowTagChat(false);
+                setShowTagHistory(false);
+                setShowObsidianTags(false);
+                setTagPromptInput('');
+                return true;
+            }
+            return false;
+        },
+        (showTagChat || showTagHistory || showObsidianTags) ? MODAL_PRIORITIES.TAG_PANELS : -1,
+        { group: 'TAG_GROUP', exclusive: true }
+    );
+    
     // Обновляем локальное состояние при изменении заметки
     useEffect(() => {
         // Если это та же заметка (только обновился заголовок/контент), не сбрасываем UI состояния
         if (prevNoteIdRef.current === note?.id && note?.id) {
-            setLocalTitle(note.title || '');
-            setLocalContent(note.content || '');
-            setServerTitle(note.title || '');
-            setServerContent(note.content || '');
+            setLocalTitle(note?.title || '');
+            setLocalContent(note?.content || '');
+            setServerTitle(note?.title || '');
+            setServerContent(note?.content || '');
             setTitleChanged(false);
             setContentChanged(false);
-            setLocalTags(note.tags || []);
-            setAiSuggestions(note.aiSuggestedTags || []);
+            setLocalTags(note?.tags || []);
+            setAiSuggestions(note?.aiSuggestedTags || []);
         } else {
             // Если заметка сменилась, сбрасываем все
-            setLocalTitle(note.title || '');
-            setLocalContent(note.content || '');
-            setServerTitle(note.title || '');
-            setServerContent(note.content || '');
+            setLocalTitle(note?.title || '');
+            setLocalContent(note?.content || '');
+            setServerTitle(note?.title || '');
+            setServerContent(note?.content || '');
             setTitleChanged(false);
             setContentChanged(false);
             // Сбрасываем историю при смене заметки
@@ -89,8 +171,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             setShowHistory(false);
             setShowPrompt(false);
             // Сбрасываем состояния тегов
-            setLocalTags(note.tags || []);
-            setAiSuggestions(note.aiSuggestedTags || []);
+            setLocalTags(note?.tags || []);
+            setAiSuggestions(note?.aiSuggestedTags || []);
             setAiSuggestionsKey(0); // Сбрасываем ключ анимации
             setShowTagChat(false);
             setShowTagHistory(false);
@@ -106,7 +188,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         setHistoryLoading(true);
         try {
-            const response = await fetch(`http://localhost:3001/api/ai-titles/history/${note.id}`, {
+            const response = await fetch(`http://localhost:3001/api/ai-titles/history/${note?.id}`, {
                 headers: {
                     'user-id': 'test-user-id'
                 }
@@ -131,7 +213,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         statusSetter('saving');
         
         try {
-            const response = await fetch(`http://localhost:3001/api/notes/${note.id}`, {
+            const response = await fetch(`http://localhost:3001/api/notes/${note?.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -253,11 +335,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     };
     
     const handleTitleKeyDown = (e) => {
-        if (e.key === 'Escape' && isExpanded) {
-            setIsExpanded(false);
-            return;
-        }
-        
+        // Убрали обработку Escape - теперь это делает useModalEscape
         if (e.key === 'Enter') {
             e.preventDefault();
             const pos = e.target.selectionStart;
@@ -302,7 +380,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         // Сохраняем текущий заголовок в историю если он не пустой
         if (localTitle && localTitle.trim()) {
             try {
-                await fetch(`http://localhost:3001/api/ai-titles/save-current/${note.id}`, {
+                await fetch(`http://localhost:3001/api/ai-titles/save-current/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'user-id': 'test-user-id'
@@ -321,7 +399,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     'user-id': 'test-user-id'
                 },
                 body: JSON.stringify({
-                    noteId: note.id,
+                    noteId: note?.id,
                     prompt: customPrompt
                 })
             });
@@ -444,7 +522,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         setTagHistoryLoading(true);
         try {
-            const response = await fetch(`http://localhost:3001/api/tags/history/${note.id}`, {
+            const response = await fetch(`http://localhost:3001/api/tags/history/${note?.id}`, {
                 headers: {
                     'user-id': 'test-user-id'
                 }
@@ -475,7 +553,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     'user-id': 'test-user-id'
                 },
                 body: JSON.stringify({
-                    noteId: note.id,
+                    noteId: note?.id,
                     prompt: customPrompt
                 })
             });
@@ -520,7 +598,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             
             // Сохраняем на сервер
             try {
-                await fetch(`http://localhost:3001/api/tags/update/${note.id}`, {
+                await fetch(`http://localhost:3001/api/tags/update/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -530,7 +608,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                 });
                 
                 // Обновляем AI предложения на сервере
-                await fetch(`http://localhost:3001/api/tags/update-suggestions/${note.id}`, {
+                await fetch(`http://localhost:3001/api/tags/update-suggestions/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -554,7 +632,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         // Сохраняем на сервер
         try {
-            await fetch(`http://localhost:3001/api/tags/update/${note.id}`, {
+            await fetch(`http://localhost:3001/api/tags/update/${note?.id}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -588,7 +666,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             
             // Сохраняем на сервер
             try {
-                await fetch(`http://localhost:3001/api/tags/update/${note.id}`, {
+                await fetch(`http://localhost:3001/api/tags/update/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -611,7 +689,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // Очистить историю тегов
     const clearTagHistory = async () => {
         try {
-            await fetch(`http://localhost:3001/api/tags/history/${note.id}`, {
+            await fetch(`http://localhost:3001/api/tags/history/${note?.id}`, {
                 method: 'DELETE',
                 headers: {
                     'user-id': 'test-user-id'
@@ -689,7 +767,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     'user-id': 'test-user-id'
                 },
                 body: JSON.stringify({
-                    noteId: note.id
+                    noteId: note?.id
                 })
             });
             
@@ -700,7 +778,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     // Вызываем callback с данными для toast
                     if (onExportSuccess) {
                         onExportSuccess({
-                            noteId: note.id,
+                            noteId: note?.id,
                             noteTitle: localTitle,
                             folderPath: result.filepath,
                             obsidianUrl: result.obsidianUrl
@@ -763,6 +841,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         return labels[type] || 'Заметка';
     };
     
+    // Условный рендеринг вместо early return
+    if (!isOpen || !note) return null;
+    
     return (
         <>
             {/* Backdrop */}
@@ -823,7 +904,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         >
                             Редактирование заметки
                         </span>
-                        {note.manuallyPositioned && (
+                        {note?.manuallyPositioned && (
                             <span
                                 style={{
                                     fontSize: '14px',
@@ -1560,10 +1641,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter') {
                                                     addManualTag(newTagInput);
-                                                } else if (e.key === 'Escape') {
-                                                    setNewTagInput('');
-                                                    setShowAddTagInput(false);
                                                 }
+                                                // Убрали обработку Escape - теперь это делает useModalEscape
                                             }}
                                             onBlur={() => {
                                                 if (!newTagInput) {
@@ -1952,28 +2031,28 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     }}
                 >
                     <div>
-                        <span style={{ color: '#555' }}>ID:</span> <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{note.id}</span>
+                        <span style={{ color: '#555' }}>ID:</span> <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{note?.id || 'N/A'}</span>
                     </div>
                     <div>
-                        <span style={{ color: '#555' }}>Тип:</span> <span style={{ color: '#888' }}>{getTypeLabel(note.type)}</span>
+                        <span style={{ color: '#555' }}>Тип:</span> <span style={{ color: '#888' }}>{getTypeLabel(note?.type)}</span>
                     </div>
                     <div>
-                        <span style={{ color: '#555' }}>Дата:</span> {formatDate(note.date)}
+                        <span style={{ color: '#555' }}>Дата:</span> {formatDate(note?.date)}
                     </div>
                     <div>
-                        <span style={{ color: '#555' }}>Создано:</span> {formatDateTime(note.createdAt)}
+                        <span style={{ color: '#555' }}>Создано:</span> {formatDateTime(note?.createdAt)}
                     </div>
-                    {note.updatedAt && note.updatedAt !== note.createdAt && (
+                    {note?.updatedAt && note?.updatedAt !== note?.createdAt && (
                         <div>
-                            <span style={{ color: '#555' }}>Обновлено:</span> {formatDateTime(note.updatedAt)}
+                            <span style={{ color: '#555' }}>Обновлено:</span> {formatDateTime(note?.updatedAt)}
                         </div>
                     )}
                     <div>
-                        <span style={{ color: '#555' }}>Позиция:</span> ({Math.round(note.x)}, {Math.round(note.y)})
+                        <span style={{ color: '#555' }}>Позиция:</span> ({Math.round(note?.x || 0)}, {Math.round(note?.y || 0)})
                     </div>
                     <div>
                         <span style={{ color: '#555' }}>Перемещена:</span>{' '}
-                        <span style={{ color: note.manuallyPositioned ? '#ff9500' : '#666' }}>{note.manuallyPositioned ? 'Да' : 'Нет'}</span>
+                        <span style={{ color: note?.manuallyPositioned ? '#ff9500' : '#666' }}>{note?.manuallyPositioned ? 'Да' : 'Нет'}</span>
                     </div>
                 </div>
             </div>
