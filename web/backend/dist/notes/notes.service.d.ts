@@ -22,6 +22,7 @@ export declare class NotesService {
     }): Promise<Note>;
     updateNotePosition(noteId: string, x: number, y: number): Promise<Note>;
     deleteNote(noteId: string): Promise<void>;
+    bulkDeleteNotes(noteIds: string[], userId: string): Promise<number>;
     getUniqueDates(userId: string): Promise<Date[]>;
     initializeDemoData(userId: string): Promise<void>;
 }

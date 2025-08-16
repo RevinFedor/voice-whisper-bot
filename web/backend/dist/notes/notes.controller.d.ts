@@ -17,6 +17,12 @@ export declare class NotesController {
         content?: string;
     }): Promise<Note>;
     updatePosition(noteId: string, updatePositionDto: UpdatePositionDto): Promise<Note>;
+    bulkDeleteNotes(data: {
+        noteIds: string[];
+    }, userId?: string): Promise<{
+        message: string;
+        deletedCount: number;
+    }>;
     deleteNote(noteId: string): Promise<{
         message: string;
     }>;

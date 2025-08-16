@@ -1,9 +1,18 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { useEditor, useValue } from '@tldraw/editor';
+import { useModalEscape } from '../contexts/ModalStackContext';
+import { useToast } from '../hooks/useToast';
 
 export function SelectionContextMenu() {
     const editor = useEditor();
+    const { showToast } = useToast();
+    
+    // Состояние для модалок
+    const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+    const [showAITagsConfirm, setShowAITagsConfirm] = React.useState(false);
+    const [notesForAI, setNotesForAI] = React.useState([]);
+    const [isProcessing, setIsProcessing] = React.useState(false);
     
     // Состояние для управления видимостью с задержкой
     const [isVisible, setIsVisible] = React.useState(false);
@@ -192,32 +201,175 @@ export function SelectionContextMenu() {
         [selectedNotes, editor]
     );
     
-    // Не рендерим если меню не должно быть видимо или нет позиции
-    if (!isVisible || !menuPosition || selectedNotes.length === 0) return null;
+    // Рендерим модалки всегда, но меню только когда видимо
+    const shouldShowMenu = isVisible && menuPosition && selectedNotes.length > 0;
     
     // Обработчики для кнопок
-    const handleDelete = () => {
-        const ids = selectedNotes.map(note => note.id);
-        editor.deleteShapes(ids);
+    const handleDeleteClick = () => {
+        setShowDeleteConfirm(true);
     };
     
-    const handleExportToObsidian = () => {
-        // TODO: Реализовать экспорт в Obsidian
-        selectedNotes.forEach((note) => {
-            const dbId = note.props?.dbId || 'No DB ID';
-            const title = note.props?.richText?.content?.[0]?.content?.[0]?.text || 'Без заголовка';
-            // Export logic here
+    const handleDeleteConfirm = async () => {
+        try {
+            setIsProcessing(true);
+            const noteIds = selectedNotes.map(note => note.props?.dbId).filter(Boolean);
+            
+            // Удаляем на бэкенде
+            const response = await fetch('http://localhost:3001/api/notes/bulk', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'user-id': 'test-user-id'
+                },
+                body: JSON.stringify({ noteIds })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to delete notes');
+            }
+            
+            // Удаляем из tldraw
+            const shapeIds = selectedNotes.map(note => note.id);
+            editor.deleteShapes(shapeIds);
+            
+            showToast(`Удалено заметок: ${selectedNotes.length}`, 'success');
+            setShowDeleteConfirm(false);
+        } catch (error) {
+            console.error('Error deleting notes:', error);
+            showToast('Ошибка при удалении заметок', 'error');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+    
+    const handleExportToObsidian = async () => {
+        // Проверяем заметки без тегов
+        const notesWithoutTags = selectedNotes.filter(note => {
+            const tags = note.props?.tags || [];
+            return tags.length === 0;
         });
+        
+        if (notesWithoutTags.length > 0) {
+            setNotesForAI(notesWithoutTags);
+            setShowAITagsConfirm(true);
+        } else {
+            await exportNotesToObsidian(selectedNotes);
+        }
     };
     
-    const handleDuplicate = () => {
-        const ids = selectedNotes.map(note => note.id);
-        editor.duplicateShapes(ids, { x: 20, y: 20 }); // Смещаем дубликаты
+    const exportNotesToObsidian = async (notes, generateAI = false) => {
+        try {
+            setIsProcessing(true);
+            const exportedShapeIds = [];
+            
+            for (const note of notes) {
+                const dbId = note.props?.dbId;
+                if (!dbId) continue;
+                
+                // Генерируем AI-теги если нужно И если у заметки нет тегов
+                if (generateAI && (!note.props?.tags || note.props.tags.length === 0)) {
+                    console.log(`Generating AI tags for note ${dbId}`);
+                    const tagResponse = await fetch('http://localhost:3001/api/tags/generate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'user-id': 'test-user-id'
+                        },
+                        body: JSON.stringify({ noteId: dbId })
+                    });
+                    
+                    if (tagResponse.ok) {
+                        const result = await tagResponse.json();
+                        
+                        // Применяем сгенерированные AI-теги к основному полю tags
+                        if (result.tags && result.tags.length > 0) {
+                            const tagsToApply = result.tags.map(tag => 
+                                typeof tag === 'string' ? tag.replace(/^#/, '') : tag.text.replace(/^#/, '')
+                            );
+                            
+                            console.log(`Applying AI tags to note ${dbId}:`, tagsToApply);
+                            
+                            // Обновляем основное поле tags
+                            const updateResponse = await fetch(`http://localhost:3001/api/tags/update/${dbId}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'user-id': 'test-user-id'
+                                },
+                                body: JSON.stringify({ tags: tagsToApply })
+                            });
+                            
+                            if (!updateResponse.ok) {
+                                console.error(`Failed to apply tags to note ${dbId}`);
+                            }
+                        }
+                    } else {
+                        console.error(`Failed to generate tags for note ${dbId}`);
+                    }
+                }
+                
+                // Экспортируем в Obsidian
+                const response = await fetch('http://localhost:3001/api/obsidian/export', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'user-id': 'test-user-id'
+                    },
+                    body: JSON.stringify({ noteId: dbId })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to export note ${dbId}`);
+                }
+                
+                // Запоминаем ID shape для удаления
+                exportedShapeIds.push(note.id);
+            }
+            
+            // Удаляем экспортированные заметки с холста
+            if (exportedShapeIds.length > 0) {
+                editor.deleteShapes(exportedShapeIds);
+            }
+            
+            showToast(`Экспортировано заметок: ${notes.length}`, 'success');
+        } catch (error) {
+            console.error('Error exporting to Obsidian:', error);
+            showToast('Ошибка при экспорте в Obsidian', 'error');
+        } finally {
+            setIsProcessing(false);
+            setShowAITagsConfirm(false);
+            setNotesForAI([]);
+        }
     };
     
     
     // Рендерим через portal для фиксированного размера (не масштабируется с canvas)
-    return ReactDOM.createPortal(
+    return (
+        <>
+            <DeleteConfirmModal
+                isOpen={showDeleteConfirm}
+                onClose={() => setShowDeleteConfirm(false)}
+                onConfirm={handleDeleteConfirm}
+                count={selectedNotes.length}
+                isProcessing={isProcessing}
+            />
+            
+            <AITagsConfirmModal
+                isOpen={showAITagsConfirm}
+                onClose={() => {
+                    setShowAITagsConfirm(false);
+                    setNotesForAI([]);
+                }}
+                onConfirm={async (generateAI) => {
+                    // Всегда экспортируем ВСЕ выбранные заметки, 
+                    // но генерируем AI-теги только для тех, у кого их нет
+                    await exportNotesToObsidian(selectedNotes, generateAI);
+                }}
+                count={notesForAI.length}
+                isProcessing={isProcessing}
+            />
+            
+            {shouldShowMenu && ReactDOM.createPortal(
         <div 
             className="selection-context-menu"
             style={{
@@ -254,13 +406,6 @@ export function SelectionContextMenu() {
             
             {/* Кнопки действий в ряд */}
             <MenuButton 
-                onClick={handleDuplicate}
-                icon="📋"
-                tooltip="Дублировать"
-                compact
-            />
-            
-            <MenuButton 
                 onClick={handleExportToObsidian}
                 icon="📤"
                 tooltip="Экспорт в Obsidian"
@@ -268,12 +413,200 @@ export function SelectionContextMenu() {
             />
             
             <MenuButton 
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 icon="🗑️"
                 tooltip="Удалить"
                 danger
                 compact
             />
+        </div>,
+        document.body
+            )}
+        </>
+    );
+}
+
+// Модалка подтверждения удаления
+function DeleteConfirmModal({ isOpen, onClose, onConfirm, count, isProcessing }) {
+    useModalEscape(
+        'delete-confirm-modal',
+        () => { 
+            if (!isProcessing) {
+                onClose(); 
+                return true;
+            }
+            return false;
+        },
+        isOpen ? 200 : -1
+    );
+    
+    if (!isOpen) return null;
+    
+    return ReactDOM.createPortal(
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+            <div style={{
+                backgroundColor: '#1a1a1a',
+                borderRadius: '8px',
+                padding: '24px',
+                maxWidth: '400px',
+                border: '1px solid #444'
+            }}>
+                <h3 style={{
+                    fontSize: '20px',
+                    fontWeight: '600',
+                    color: '#fff',
+                    marginBottom: '16px'
+                }}>
+                    Удалить заметки?
+                </h3>
+                <p style={{
+                    color: '#999',
+                    marginBottom: '24px'
+                }}>
+                    Вы уверены, что хотите удалить {count} {count === 1 ? 'заметку' : count < 5 ? 'заметки' : 'заметок'}?
+                </p>
+                <div style={{
+                    display: 'flex',
+                    gap: '12px',
+                    justifyContent: 'flex-end'
+                }}>
+                    <button
+                        onClick={onClose}
+                        disabled={isProcessing}
+                        style={{
+                            padding: '8px 16px',
+                            color: '#999',
+                            backgroundColor: 'transparent',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            cursor: isProcessing ? 'not-allowed' : 'pointer',
+                            opacity: isProcessing ? 0.5 : 1
+                        }}
+                    >
+                        Отмена
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        disabled={isProcessing}
+                        style={{
+                            padding: '8px 16px',
+                            backgroundColor: '#dc2626',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: isProcessing ? 'not-allowed' : 'pointer',
+                            opacity: isProcessing ? 0.5 : 1
+                        }}
+                    >
+                        {isProcessing ? 'Удаление...' : 'Удалить'}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+// Модалка для AI-генерации тегов при экспорте
+function AITagsConfirmModal({ isOpen, onClose, onConfirm, count, isProcessing }) {
+    useModalEscape(
+        'ai-tags-confirm-modal',
+        () => { 
+            if (!isProcessing) {
+                onClose(); 
+                return true;
+            }
+            return false;
+        },
+        isOpen ? 200 : -1
+    );
+    
+    if (!isOpen) return null;
+    
+    return ReactDOM.createPortal(
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+            <div style={{
+                backgroundColor: '#1a1a1a',
+                borderRadius: '8px',
+                padding: '24px',
+                maxWidth: '450px',
+                border: '1px solid #444'
+            }}>
+                <h3 style={{
+                    fontSize: '20px',
+                    fontWeight: '600',
+                    color: '#fff',
+                    marginBottom: '16px'
+                }}>
+                    Добавить AI-теги?
+                </h3>
+                <p style={{
+                    color: '#999',
+                    marginBottom: '24px',
+                    lineHeight: '1.5'
+                }}>
+                    У {count} {count === 1 ? 'заметки' : count < 5 ? 'заметок' : 'заметок'} отсутствуют теги. 
+                    Хотите добавить AI-рекомендации перед экспортом в Obsidian?
+                </p>
+                <div style={{
+                    display: 'flex',
+                    gap: '12px',
+                    justifyContent: 'flex-end'
+                }}>
+                    <button
+                        onClick={() => onConfirm(false)}
+                        disabled={isProcessing}
+                        style={{
+                            padding: '8px 16px',
+                            color: '#999',
+                            backgroundColor: 'transparent',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            cursor: isProcessing ? 'not-allowed' : 'pointer',
+                            opacity: isProcessing ? 0.5 : 1
+                        }}
+                    >
+                        Экспортировать без тегов
+                    </button>
+                    <button
+                        onClick={() => onConfirm(true)}
+                        disabled={isProcessing}
+                        style={{
+                            padding: '8px 16px',
+                            backgroundColor: '#2563eb',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: isProcessing ? 'not-allowed' : 'pointer',
+                            opacity: isProcessing ? 0.5 : 1
+                        }}
+                    >
+                        {isProcessing ? 'Обработка...' : 'Добавить AI-теги'}
+                    </button>
+                </div>
+            </div>
         </div>,
         document.body
     );
@@ -283,9 +616,17 @@ export function SelectionContextMenu() {
 function MenuButton({ onClick, icon, text, tooltip, danger = false, secondary = false, compact = false }) {
     const [isHovered, setIsHovered] = React.useState(false);
     
+    const handleClick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (onClick) {
+            onClick();
+        }
+    };
+    
     return (
         <button
-            onClick={onClick}
+            onClick={handleClick}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             title={tooltip || text} // Показываем tooltip при наведении

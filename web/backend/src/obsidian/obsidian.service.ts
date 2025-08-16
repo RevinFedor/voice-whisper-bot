@@ -161,9 +161,8 @@ source: WebApplication`;
       // Добавляем tags только если они есть
       if (tags.length > 0) {
         frontmatter += `\ntags:\n  - ${tags.join('\n  - ')}`;
-      } else {
-        frontmatter += `\ntags: []`;
       }
+      // Если тегов нет - не добавляем поле tags вообще
 
       frontmatter += `\ncreated: "${note.createdAt.toISOString()}"
 ---`;

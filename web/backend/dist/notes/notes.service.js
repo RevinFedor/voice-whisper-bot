@@ -205,6 +205,20 @@ let NotesService = class NotesService {
             where: { id: noteId },
         });
     }
+    async bulkDeleteNotes(noteIds, userId) {
+        console.log(`🗑️ Bulk delete request for notes:`, noteIds);
+        console.log(`   User-ID:`, userId);
+        const result = await this.prisma.note.deleteMany({
+            where: {
+                id: {
+                    in: noteIds,
+                },
+                userId: userId,
+            },
+        });
+        console.log(`✅ Deleted ${result.count} notes`);
+        return result.count;
+    }
     async getUniqueDates(userId) {
         const notes = await this.prisma.note.findMany({
             where: {

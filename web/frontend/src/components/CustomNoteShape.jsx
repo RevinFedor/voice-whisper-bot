@@ -52,6 +52,8 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         duration: T.string, // длительность для голосовых
         manuallyPositioned: T.boolean, // флаг перетаскивания
         dbId: T.string, // ID из базы данных
+        tags: T.arrayOf(T.string), // Теги заметки
+        aiSuggestedTags: T.any, // AI предложения тегов
     };
 
     getDefaultProps() {
@@ -74,6 +76,8 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             duration: '',
             manuallyPositioned: false,
             dbId: '',
+            tags: [],
+            aiSuggestedTags: [],
         };
     }
 

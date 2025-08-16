@@ -355,6 +355,8 @@ export default function SyncedProductionApp() {
                         '',
                     manuallyPositioned: note.manuallyPositioned || false,
                     dbId: note.id,
+                    tags: note.tags || [],
+                    aiSuggestedTags: note.aiSuggestedTags || [],
                 },
             };
             
@@ -1562,6 +1564,8 @@ export default function SyncedProductionApp() {
                     '',
                 manuallyPositioned: note.manuallyPositioned || false,
                 dbId: note.id,
+                tags: note.tags || [],
+                aiSuggestedTags: note.aiSuggestedTags || [],
             },
         });
         

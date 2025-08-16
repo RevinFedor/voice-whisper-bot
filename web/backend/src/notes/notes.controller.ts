@@ -105,6 +105,20 @@ export class NotesController {
     );
   }
 
+  @Delete('bulk')
+  @ApiOperation({ summary: 'Delete multiple notes' })
+  @ApiResponse({ status: 200, description: 'Notes deleted successfully' })
+  async bulkDeleteNotes(
+    @Body() data: { noteIds: string[] },
+    @Headers('user-id') userId: string = 'test-user-id',
+  ): Promise<{ message: string; deletedCount: number }> {
+    const deletedCount = await this.notesService.bulkDeleteNotes(data.noteIds, userId);
+    return { 
+      message: `Successfully deleted ${deletedCount} notes`,
+      deletedCount 
+    };
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a note' })
   @ApiResponse({ status: 200, description: 'Note deleted successfully' })

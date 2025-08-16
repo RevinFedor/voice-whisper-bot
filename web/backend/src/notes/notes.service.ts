@@ -292,6 +292,26 @@ export class NotesService {
   }
 
   /**
+   * Delete multiple notes
+   */
+  async bulkDeleteNotes(noteIds: string[], userId: string): Promise<number> {
+    console.log(`🗑️ Bulk delete request for notes:`, noteIds);
+    console.log(`   User-ID:`, userId);
+    
+    const result = await this.prisma.note.deleteMany({
+      where: {
+        id: {
+          in: noteIds,
+        },
+        userId: userId,
+      },
+    });
+    
+    console.log(`✅ Deleted ${result.count} notes`);
+    return result.count;
+  }
+
+  /**
    * Get unique dates for columns
    */
   async getUniqueDates(userId: string): Promise<Date[]> {
