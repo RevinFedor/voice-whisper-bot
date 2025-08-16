@@ -1022,6 +1022,28 @@ export default function SyncedProductionApp() {
             }
         });
         
+        // Добавляем глобальный обработчик Escape для снятия выделения
+        const handleGlobalEscape = (e) => {
+            if (e.key === 'Escape') {
+                // Если есть выделенные shapes и фокус на canvas/editor
+                if (editor.getSelectedShapes().length > 0) {
+                    const activeEl = document.activeElement;
+                    // Проверяем что фокус на canvas или body (не на кнопке)
+                    if (activeEl && (activeEl.tagName === 'BODY' || 
+                        activeEl.classList.contains('tl-canvas') ||
+                        activeEl.classList.contains('tl-container'))) {
+                        editor.setSelectedShapes([]);
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }
+            }
+        };
+        
+        // Слушаем на фазе bubbling (после ModalStackContext)
+        document.addEventListener('keydown', handleGlobalEscape, false);
+        editor._handleGlobalEscape = handleGlobalEscape;
+        
         // Сохраняем функцию отписки для очистки
         editor._unsubscribeSelection = unsubscribeSelection;
         

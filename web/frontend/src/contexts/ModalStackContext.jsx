@@ -102,7 +102,6 @@ export function ModalStackProvider({ children }) {
       if (e.key === 'Escape' && modalStack.length > 0) {
         // Получаем топовую модалку (с наивысшим приоритетом)
         const topModal = modalStack[0];
-        // console.log(`⌨️ Escape pressed, top modal: ${topModal.modalId}`);
         
         // Вызываем её обработчик
         if (topModal.escapeHandler) {
@@ -110,9 +109,6 @@ export function ModalStackProvider({ children }) {
           if (handled) {
             e.preventDefault();
             e.stopPropagation();
-            // console.log(`✅ Escape handled by: ${topModal.modalId}`);
-          } else {
-            // console.log(`⏭️ Escape not handled by: ${topModal.modalId}, passing to next`);
           }
         }
       }

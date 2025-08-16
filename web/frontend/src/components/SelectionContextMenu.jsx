@@ -191,7 +191,11 @@ export function SelectionContextMenu() {
     const shouldShowMenu = isVisible && menuPosition && selectedNotes.length > 0;
     
     // Обработчики для кнопок
-    const handleDeleteClick = () => {
+    const handleDeleteClick = (e) => {
+        // Убираем фокус с кнопки, чтобы Escape мог работать после закрытия модалки
+        if (e?.currentTarget) {
+            e.currentTarget.blur();
+        }
         setShowDeleteConfirm(true);
     };
     
@@ -220,6 +224,8 @@ export function SelectionContextMenu() {
             
             showToast(`Удалено заметок: ${selectedNotes.length}`, 'success');
             setShowDeleteConfirm(false);
+            // Возвращаем фокус к editor после успешного удаления
+            setTimeout(() => editor.focus(), 0);
         } catch (error) {
             console.error('Error deleting notes:', error);
             showToast('Ошибка при удалении заметок', 'error');
@@ -228,7 +234,12 @@ export function SelectionContextMenu() {
         }
     };
     
-    const handleExportToObsidian = async () => {
+    const handleExportToObsidian = async (e) => {
+        // Убираем фокус с кнопки, чтобы Escape мог работать после закрытия модалки
+        if (e?.currentTarget) {
+            e.currentTarget.blur();
+        }
+        
         // Проверяем заметки без тегов
         const notesWithoutTags = selectedNotes.filter(note => {
             const tags = note.props?.tags || [];
@@ -318,6 +329,8 @@ export function SelectionContextMenu() {
             }
             
             showToast(`Экспортировано заметок: ${notes.length}`, 'success');
+            // Возвращаем фокус к editor после успешного экспорта
+            setTimeout(() => editor.focus(), 0);
         } catch (error) {
             console.error('Error exporting to Obsidian:', error);
             showToast('Ошибка при экспорте в Obsidian', 'error');
@@ -334,7 +347,13 @@ export function SelectionContextMenu() {
         <>
             <DeleteConfirmModal
                 isOpen={showDeleteConfirm}
-                onClose={() => setShowDeleteConfirm(false)}
+                onClose={() => {
+                    setShowDeleteConfirm(false);
+                    // Возвращаем фокус к editor для работы Escape
+                    setTimeout(() => {
+                        editor.focus();
+                    }, 100);
+                }}
                 onConfirm={handleDeleteConfirm}
                 count={selectedNotes.length}
                 isProcessing={isProcessing}
@@ -345,6 +364,10 @@ export function SelectionContextMenu() {
                 onClose={() => {
                     setShowAITagsConfirm(false);
                     setNotesForAI([]);
+                    // Возвращаем фокус к editor для работы Escape
+                    setTimeout(() => {
+                        editor.focus();
+                    }, 100);
                 }}
                 onConfirm={async (generateAI) => {
                     // Всегда экспортируем ВСЕ выбранные заметки, 
@@ -429,25 +452,37 @@ function DeleteConfirmModal({ isOpen, onClose, onConfirm, count, isProcessing })
     if (!isOpen) return null;
     
     return ReactDOM.createPortal(
-        <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)'
-        }}>
-            <div style={{
-                backgroundColor: '#1a1a1a',
-                borderRadius: '8px',
-                padding: '24px',
-                maxWidth: '400px',
-                border: '1px solid #444'
-            }}>
+        <div 
+            onClick={(e) => {
+                // Закрываем при клике на фон
+                if (e.target === e.currentTarget && !isProcessing) {
+                    onClose();
+                }
+            }}
+            style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 10000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                cursor: 'pointer'
+            }}
+        >
+            <div 
+                onClick={(e) => e.stopPropagation()} // Предотвращаем закрытие при клике на модалку
+                style={{
+                    backgroundColor: '#1a1a1a',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    maxWidth: '400px',
+                    border: '1px solid #444',
+                    cursor: 'default'
+                }}>
                 <h3 style={{
                     fontSize: '20px',
                     fontWeight: '600',
@@ -521,25 +556,37 @@ function AITagsConfirmModal({ isOpen, onClose, onConfirm, count, isProcessing })
     if (!isOpen) return null;
     
     return ReactDOM.createPortal(
-        <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)'
-        }}>
-            <div style={{
-                backgroundColor: '#1a1a1a',
-                borderRadius: '8px',
-                padding: '24px',
-                maxWidth: '450px',
-                border: '1px solid #444'
-            }}>
+        <div 
+            onClick={(e) => {
+                // Закрываем при клике на фон
+                if (e.target === e.currentTarget && !isProcessing) {
+                    onClose();
+                }
+            }}
+            style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 10000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                cursor: 'pointer'
+            }}
+        >
+            <div 
+                onClick={(e) => e.stopPropagation()} // Предотвращаем закрытие при клике на модалку
+                style={{
+                    backgroundColor: '#1a1a1a',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    maxWidth: '450px',
+                    border: '1px solid #444',
+                    cursor: 'default'
+                }}>
                 <h3 style={{
                     fontSize: '20px',
                     fontWeight: '600',
@@ -606,7 +653,7 @@ function MenuButton({ onClick, icon, text, tooltip, danger = false, secondary = 
         e.stopPropagation();
         e.preventDefault();
         if (onClick) {
-            onClick();
+            onClick(e); // Передаем event в обработчик
         }
     };
     
