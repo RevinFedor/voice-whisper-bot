@@ -20,16 +20,10 @@ export const MODAL_PRIORITIES = {
 
 // Режимы работы групп модалок
 export const MODAL_GROUPS = {
-  // Группа заголовков (эксклюзивные - только одна открыта)
-  TITLE_GROUP: {
+  // ВСЕ панели (AI чаты, истории, теги) - взаимоисключающие
+  PANELS_GROUP: {
     mode: 'exclusive',
-    modals: ['title-ai-chat', 'title-history', 'title-prompt']
-  },
-  
-  // Группа тегов (эксклюзивные)
-  TAG_GROUP: {
-    mode: 'exclusive',
-    modals: ['tag-ai-chat', 'tag-history', 'obsidian-tags']
+    modals: ['title-ai-chat', 'title-history', 'tag-ai-chat', 'tag-history', 'obsidian-tags']
   },
   
   // Инпуты (могут быть параллельны с другими)

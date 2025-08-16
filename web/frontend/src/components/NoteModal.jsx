@@ -126,7 +126,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             return false;
         },
         (showPrompt || showHistory) ? MODAL_PRIORITIES.PROMPT_PANEL : -1,
-        { group: 'TITLE_GROUP', exclusive: true }
+        { group: 'PANELS_GROUP', exclusive: true }
     );
     
     // AI панели тегов
@@ -143,7 +143,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             return false;
         },
         (showTagChat || showTagHistory || showObsidianTags) ? MODAL_PRIORITIES.TAG_PANELS : -1,
-        { group: 'TAG_GROUP', exclusive: true }
+        { group: 'PANELS_GROUP', exclusive: true }
     );
     
     // Обновляем локальное состояние при изменении заметки
@@ -444,7 +444,11 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     const toggleHistory = async () => {
         const newShowHistory = !showHistory;
         setShowHistory(newShowHistory);
+        // Закрываем ВСЕ остальные панели
         setShowPrompt(false);
+        setShowTagChat(false);
+        setShowTagHistory(false);
+        setShowObsidianTags(false);
         
         // Загружаем историю при открытии
         if (newShowHistory && titleHistory.length === 0) {
@@ -453,8 +457,17 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     };
     
     const togglePrompt = () => {
-        setShowPrompt(!showPrompt);
+        const newShowPrompt = !showPrompt;
+        setShowPrompt(newShowPrompt);
+        // Закрываем ВСЕ остальные панели
         setShowHistory(false);
+        setShowTagChat(false);
+        setShowTagHistory(false);
+        setShowObsidianTags(false);
+        // Очищаем промпт при закрытии
+        if (!newShowPrompt) {
+            setPromptInput('');
+        }
     };
     
     const useHistoryTitle = (historyItem) => {
@@ -713,15 +726,26 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     
     // Переключение чата для тегов
     const toggleTagChat = () => {
-        setShowTagChat(!showTagChat);
+        const newShowTagChat = !showTagChat;
+        setShowTagChat(newShowTagChat);
+        // Закрываем ВСЕ остальные панели
+        setShowHistory(false);
+        setShowPrompt(false);
         setShowTagHistory(false);
         setShowObsidianTags(false);
+        // Очищаем промпт при закрытии
+        if (!newShowTagChat) {
+            setTagPromptInput('');
+        }
     };
     
     // Переключение истории для тегов
     const toggleTagHistory = async () => {
         const newShowHistory = !showTagHistory;
         setShowTagHistory(newShowHistory);
+        // Закрываем ВСЕ остальные панели
+        setShowHistory(false);
+        setShowPrompt(false);
         setShowTagChat(false);
         setShowObsidianTags(false);
         
@@ -734,6 +758,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // Переключение тегов Obsidian
     const toggleObsidianTags = () => {
         setShowObsidianTags(!showObsidianTags);
+        // Закрываем ВСЕ остальные панели
+        setShowHistory(false);
+        setShowPrompt(false);
         setShowTagChat(false);
         setShowTagHistory(false);
     };
