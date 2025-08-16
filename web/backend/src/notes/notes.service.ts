@@ -17,6 +17,17 @@ const LAYOUT_CONFIG = {
 export class NotesService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Helper to convert BigInt fields to strings for JSON serialization
+   */
+  private serializeNote(note: Note): any {
+    return {
+      ...note,
+      telegramMessageId: note.telegramMessageId ? note.telegramMessageId.toString() : null,
+      telegramChatId: note.telegramChatId ? note.telegramChatId.toString() : null,
+    };
+  }
+
   // X position calculation removed - now handled by frontend
 
   /**
@@ -72,6 +83,7 @@ export class NotesService {
     manuallyPositioned?: boolean;
     tags?: string[];
     aiSuggestedTags?: any;
+    telegramMessageId?: string;
   }): Promise<Note> {
     console.log('🔨 [NotesService] Creating note...');
     console.log('   userId:', userId);
@@ -137,6 +149,7 @@ export class NotesService {
         manuallyPositioned,
         tags: data.tags || [],
         aiSuggestedTags: data.aiSuggestedTags || null,
+        telegramMessageId: data.telegramMessageId ? BigInt(data.telegramMessageId) : null,
       },
     });
     
@@ -146,7 +159,8 @@ export class NotesService {
     console.log('   Date:', noteDate.toISOString());
     console.log('   Tags:', createdNote.tags);
     
-    return createdNote;
+    // Convert BigInt to string for JSON serialization
+    return this.serializeNote(createdNote);
   }
 
   /**
@@ -196,7 +210,7 @@ export class NotesService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     
-    return this.prisma.note.findMany({
+    const notes = await this.prisma.note.findMany({
       where: {
         userId,
         date: { gte: startDate },
@@ -207,6 +221,9 @@ export class NotesService {
         { y: 'asc' },
       ],
     });
+    
+    // Convert BigInt fields to strings
+    return notes.map(note => this.serializeNote(note));
   }
 
   /**
@@ -224,7 +241,25 @@ export class NotesService {
       throw new Error(`Note with ID ${noteId} not found`);
     }
 
-    return note;
+    return this.serializeNote(note);
+  }
+
+  /**
+   * Get a note by Telegram message ID
+   */
+  async getNoteByTelegramId(messageId: string, userId: string): Promise<Note> {
+    const note = await this.prisma.note.findFirst({
+      where: {
+        telegramMessageId: BigInt(messageId),
+        userId,
+      },
+    });
+
+    if (!note) {
+      throw new Error(`Note with Telegram message ID ${messageId} not found`);
+    }
+
+    return this.serializeNote(note);
   }
 
   /**
@@ -244,7 +279,7 @@ export class NotesService {
 
     console.log(`📝 Content update for note ${noteId}:`, updateData);
 
-    return this.prisma.note.update({
+    const updatedNote = await this.prisma.note.update({
       where: { id: noteId },
       data: {
         ...(updateData.title !== undefined && { title: updateData.title }),
@@ -252,6 +287,8 @@ export class NotesService {
         updatedAt: new Date(),
       },
     });
+    
+    return this.serializeNote(updatedNote);
   }
 
   /**
@@ -277,7 +314,7 @@ export class NotesService {
       newPosition: { x, y },
     });
 
-    return this.prisma.note.update({
+    const updatedNote = await this.prisma.note.update({
       where: { id: noteId },
       data: {
         x,
@@ -285,6 +322,8 @@ export class NotesService {
         manuallyPositioned: true, // Any manual position update marks it as manually positioned
       },
     });
+    
+    return this.serializeNote(updatedNote);
   }
 
   /**

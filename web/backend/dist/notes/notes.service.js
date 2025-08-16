@@ -25,6 +25,13 @@ let NotesService = class NotesService {
     constructor(prisma) {
         this.prisma = prisma;
     }
+    serializeNote(note) {
+        return {
+            ...note,
+            telegramMessageId: note.telegramMessageId ? note.telegramMessageId.toString() : null,
+            telegramChatId: note.telegramChatId ? note.telegramChatId.toString() : null,
+        };
+    }
     async findNextAvailableY(userId, date) {
         const notesInColumn = await this.prisma.note.findMany({
             where: {
@@ -100,6 +107,7 @@ let NotesService = class NotesService {
                 manuallyPositioned,
                 tags: data.tags || [],
                 aiSuggestedTags: data.aiSuggestedTags || null,
+                telegramMessageId: data.telegramMessageId ? BigInt(data.telegramMessageId) : null,
             },
         });
         console.log('✅ [NotesService] Note created successfully!');
@@ -107,7 +115,7 @@ let NotesService = class NotesService {
         console.log('   Position: x=' + x + ', y=' + y);
         console.log('   Date:', noteDate.toISOString());
         console.log('   Tags:', createdNote.tags);
-        return createdNote;
+        return this.serializeNote(createdNote);
     }
     async createRandomNote(userId) {
         const types = ['voice', 'text'];
@@ -143,7 +151,7 @@ let NotesService = class NotesService {
     async getNotes(userId, days = 14) {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
-        return this.prisma.note.findMany({
+        const notes = await this.prisma.note.findMany({
             where: {
                 userId,
                 date: { gte: startDate },
@@ -154,6 +162,7 @@ let NotesService = class NotesService {
                 { y: 'asc' },
             ],
         });
+        return notes.map(note => this.serializeNote(note));
     }
     async getNoteById(noteId, userId) {
         const note = await this.prisma.note.findFirst({
@@ -165,7 +174,19 @@ let NotesService = class NotesService {
         if (!note) {
             throw new Error(`Note with ID ${noteId} not found`);
         }
-        return note;
+        return this.serializeNote(note);
+    }
+    async getNoteByTelegramId(messageId, userId) {
+        const note = await this.prisma.note.findFirst({
+            where: {
+                telegramMessageId: BigInt(messageId),
+                userId,
+            },
+        });
+        if (!note) {
+            throw new Error(`Note with Telegram message ID ${messageId} not found`);
+        }
+        return this.serializeNote(note);
     }
     async updateNote(noteId, updateData) {
         const note = await this.prisma.note.findUnique({
@@ -175,7 +196,7 @@ let NotesService = class NotesService {
             throw new Error('Note not found');
         }
         console.log(`📝 Content update for note ${noteId}:`, updateData);
-        return this.prisma.note.update({
+        const updatedNote = await this.prisma.note.update({
             where: { id: noteId },
             data: {
                 ...(updateData.title !== undefined && { title: updateData.title }),
@@ -183,6 +204,7 @@ let NotesService = class NotesService {
                 updatedAt: new Date(),
             },
         });
+        return this.serializeNote(updatedNote);
     }
     async updateNotePosition(noteId, x, y) {
         const note = await this.prisma.note.findUnique({
@@ -194,7 +216,7 @@ let NotesService = class NotesService {
         console.log(`📍 Position update for note ${noteId}:`, {
             newPosition: { x, y },
         });
-        return this.prisma.note.update({
+        const updatedNote = await this.prisma.note.update({
             where: { id: noteId },
             data: {
                 x,
@@ -202,6 +224,7 @@ let NotesService = class NotesService {
                 manuallyPositioned: true,
             },
         });
+        return this.serializeNote(updatedNote);
     }
     async deleteNote(noteId) {
         await this.prisma.note.delete({

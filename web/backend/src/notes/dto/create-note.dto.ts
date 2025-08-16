@@ -45,4 +45,9 @@ export class CreateNoteDto {
   @ApiProperty({ description: 'AI suggested tags', required: false })
   @IsOptional()
   aiSuggestedTags?: any;
+
+  @ApiProperty({ description: 'Telegram message ID', required: false })
+  @IsOptional()
+  @IsString()
+  telegramMessageId?: string;
 }

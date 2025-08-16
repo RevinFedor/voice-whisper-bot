@@ -32,6 +32,17 @@ export class NotesController {
     return this.notesService.getNotes(userId, daysNumber);
   }
 
+  @Get('telegram/:messageId')
+  @ApiOperation({ summary: 'Get a note by Telegram message ID' })
+  @ApiResponse({ status: 200, description: 'Returns the note' })
+  @ApiResponse({ status: 404, description: 'Note not found' })
+  async getNoteByTelegramId(
+    @Param('messageId') messageId: string,
+    @Headers('user-id') userId: string = 'test-user-id',
+  ): Promise<Note> {
+    return this.notesService.getNoteByTelegramId(messageId, userId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a single note by ID' })
   @ApiResponse({ status: 200, description: 'Returns the note' })

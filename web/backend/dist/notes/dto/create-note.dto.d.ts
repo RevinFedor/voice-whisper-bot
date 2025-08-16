@@ -9,4 +9,5 @@ export declare class CreateNoteDto {
     manuallyPositioned?: boolean;
     tags?: string[];
     aiSuggestedTags?: any;
+    telegramMessageId?: string;
 }

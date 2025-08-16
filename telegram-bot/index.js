@@ -30,6 +30,9 @@ const openai = new OpenAI({
 const messageQueue = [];
 let isProcessing = false;
 
+// Store last created note for merge command
+let lastCreatedNote = null;
+
 // Process messages from queue
 async function processQueue() {
     if (isProcessing || messageQueue.length === 0) {
@@ -108,7 +111,7 @@ async function generateTitle(content) {
 }
 
 // Save note to database
-async function saveNoteToDatabase(title, content, type = 'voice') {
+async function saveNoteToDatabase(title, content, type = 'voice', telegramMessageId = null) {
     try {
         const response = await axios.post(`${API_URL}/notes`, {
             title,
@@ -116,13 +119,17 @@ async function saveNoteToDatabase(title, content, type = 'voice') {
             type,
             date: new Date().toISOString(),
             // Don't send x,y - let backend calculate position automatically
-            tags: []
+            tags: [],
+            telegramMessageId: telegramMessageId ? telegramMessageId.toString() : null
         }, {
             headers: {
                 'user-id': 'test-user-id', // Same as web app to show on same canvas
                 'Content-Type': 'application/json'
             }
         });
+        
+        // Store last created note
+        lastCreatedNote = response.data;
         
         return response.data;
     } catch (error) {
@@ -131,10 +138,45 @@ async function saveNoteToDatabase(title, content, type = 'voice') {
     }
 }
 
+// Find note by telegram message ID
+async function findNoteByTelegramId(messageId) {
+    try {
+        const response = await axios.get(`${API_URL}/notes/telegram/${messageId}`, {
+            headers: {
+                'user-id': 'test-user-id'
+            }
+        });
+        return response.data;
+    } catch (error) {
+        if (error.response?.status === 404) {
+            return null;
+        }
+        console.error('Ошибка поиска заметки:', error);
+        return null;
+    }
+}
+
+// Update existing note
+async function updateNote(noteId, updates) {
+    try {
+        const response = await axios.patch(`${API_URL}/notes/${noteId}`, updates, {
+            headers: {
+                'user-id': 'test-user-id',
+                'Content-Type': 'application/json'
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Ошибка обновления заметки:', error);
+        throw error;
+    }
+}
+
 // Actual voice message handler
 async function handleVoiceMessage(ctx) {
     const userId = ctx.from.id;
     const voiceFileId = ctx.message.voice.file_id;
+    const messageId = ctx.message.message_id;
     
     // Send initial message
     const processingMsg = await ctx.reply('⏳ Начинаю обработку голосового сообщения...');
@@ -164,8 +206,35 @@ async function handleVoiceMessage(ctx) {
         // Generate title
         const title = await generateTitle(transcription);
         
-        // Save to database
-        await saveNoteToDatabase(title, transcription, 'voice');
+        // Check if this is a reply to another message
+        if (ctx.message.reply_to_message) {
+            const replyToId = ctx.message.reply_to_message.message_id;
+            const originalNote = await findNoteByTelegramId(replyToId);
+            
+            if (originalNote) {
+                // Merge with existing note
+                const mergedTitle = originalNote.title + ' / ' + title;
+                const mergedContent = originalNote.content + '\n\n////// \n\n' + transcription;
+                
+                await updateNote(originalNote.id, {
+                    title: mergedTitle,
+                    content: mergedContent
+                });
+                
+                await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
+                await ctx.reply(
+                    `🔄 Заметка объединена с существующей\n\n📝 *${mergedTitle}*`,
+                    {
+                        reply_to_message_id: ctx.message.message_id,
+                        parse_mode: 'Markdown'
+                    }
+                );
+                return;
+            }
+        }
+        
+        // Save as new note
+        await saveNoteToDatabase(title, transcription, 'voice', messageId);
         
         // Delete processing message
         await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
@@ -204,15 +273,97 @@ bot.start((ctx) => {
         '• 🎤 Голосовые сообщения - расшифрую и сохраню\n' +
         '• 📄 Текстовые сообщения - сохраню как есть\n' +
         '• 🎵 Аудио файлы (MP3) - расшифрую и сохраню\n' +
-        '• 🎬 Видео файлы (MP4) - извлеку звук и расшифрую\n\n' +
+        '• 🎬 Видео файлы (MP4) - извлеку звук и расшифрую\n' +
+        '• 🔄 Ответ на сообщение - объединю заметки\n' +
+        '• /merge - объединить последнюю заметку с той, на которую ответите\n\n' +
         'Все заметки сохраняются в веб-приложение.\n' +
         'Просто отправьте мне любое сообщение!'
     );
 });
 
+// Handle merge command
+bot.command('merge', async (ctx) => {
+    // Check if this is a reply
+    if (!ctx.message.reply_to_message) {
+        await ctx.reply(
+            '❌ Используйте эту команду в ответ на сообщение, с которым хотите объединить последнюю заметку',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
+    
+    // Check if we have a last created note
+    if (!lastCreatedNote) {
+        await ctx.reply(
+            '❌ Нет последней заметки для объединения. Сначала создайте заметку.',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+        return;
+    }
+    
+    const replyToId = ctx.message.reply_to_message.message_id;
+    
+    try {
+        // Find the target note
+        const targetNote = await findNoteByTelegramId(replyToId);
+        
+        if (!targetNote) {
+            await ctx.reply(
+                '❌ Не найдена заметка для этого сообщения',
+                { reply_to_message_id: ctx.message.message_id }
+            );
+            return;
+        }
+        
+        // Check if trying to merge with itself
+        if (targetNote.id === lastCreatedNote.id) {
+            await ctx.reply(
+                '❌ Нельзя объединить заметку саму с собой',
+                { reply_to_message_id: ctx.message.message_id }
+            );
+            return;
+        }
+        
+        // Merge notes
+        const mergedTitle = targetNote.title + ' / ' + lastCreatedNote.title;
+        const mergedContent = targetNote.content + '\n\n////// \n\n' + lastCreatedNote.content;
+        
+        // Update target note
+        await updateNote(targetNote.id, {
+            title: mergedTitle,
+            content: mergedContent
+        });
+        
+        // Delete the last created note
+        await axios.delete(`${API_URL}/notes/${lastCreatedNote.id}`, {
+            headers: {
+                'user-id': 'test-user-id'
+            }
+        });
+        
+        // Clear last created note
+        lastCreatedNote = null;
+        
+        await ctx.reply(
+            `✅ Заметки успешно объединены\n\n📝 *${mergedTitle}*`,
+            {
+                reply_to_message_id: ctx.message.message_id,
+                parse_mode: 'Markdown'
+            }
+        );
+    } catch (error) {
+        console.error('Ошибка при объединении заметок:', error);
+        await ctx.reply(
+            '❌ Ошибка при объединении заметок',
+            { reply_to_message_id: ctx.message.message_id }
+        );
+    }
+});
+
 // Actual audio message handler
 async function handleAudioMessage(ctx) {
     const audioFileId = ctx.message.audio.file_id;
+    const messageId = ctx.message.message_id;
     const processingMsg = await ctx.reply('⏳ Начинаю обработку аудио файла...');
     
     try {
@@ -240,8 +391,35 @@ async function handleAudioMessage(ctx) {
         // Generate title
         const title = await generateTitle(transcription);
         
-        // Save to database
-        await saveNoteToDatabase(title, transcription, 'voice');
+        // Check if this is a reply to another message
+        if (ctx.message.reply_to_message) {
+            const replyToId = ctx.message.reply_to_message.message_id;
+            const originalNote = await findNoteByTelegramId(replyToId);
+            
+            if (originalNote) {
+                // Merge with existing note
+                const mergedTitle = originalNote.title + ' / ' + title;
+                const mergedContent = originalNote.content + '\n\n////// \n\n' + transcription;
+                
+                await updateNote(originalNote.id, {
+                    title: mergedTitle,
+                    content: mergedContent
+                });
+                
+                await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
+                await ctx.reply(
+                    `🔄 Заметка объединена с существующей\n\n📝 *${mergedTitle}*`,
+                    {
+                        reply_to_message_id: ctx.message.message_id,
+                        parse_mode: 'Markdown'
+                    }
+                );
+                return;
+            }
+        }
+        
+        // Save as new note
+        await saveNoteToDatabase(title, transcription, 'voice', messageId);
         
         // Delete processing message
         await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
@@ -271,6 +449,7 @@ bot.on('audio', (ctx) => {
 // Actual video message handler
 async function handleVideoMessage(ctx) {
     const videoFileId = ctx.message.video.file_id;
+    const messageId = ctx.message.message_id;
     const processingMsg = await ctx.reply('⏳ Начинаю обработку видео файла...');
     
     try {
@@ -298,8 +477,35 @@ async function handleVideoMessage(ctx) {
         // Generate title
         const title = await generateTitle(transcription);
         
-        // Save to database
-        await saveNoteToDatabase(title, transcription, 'voice');
+        // Check if this is a reply to another message
+        if (ctx.message.reply_to_message) {
+            const replyToId = ctx.message.reply_to_message.message_id;
+            const originalNote = await findNoteByTelegramId(replyToId);
+            
+            if (originalNote) {
+                // Merge with existing note
+                const mergedTitle = originalNote.title + ' / ' + title;
+                const mergedContent = originalNote.content + '\n\n////// \n\n' + transcription;
+                
+                await updateNote(originalNote.id, {
+                    title: mergedTitle,
+                    content: mergedContent
+                });
+                
+                await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
+                await ctx.reply(
+                    `🔄 Заметка объединена с существующей\n\n📝 *${mergedTitle}*`,
+                    {
+                        reply_to_message_id: ctx.message.message_id,
+                        parse_mode: 'Markdown'
+                    }
+                );
+                return;
+            }
+        }
+        
+        // Save as new note
+        await saveNoteToDatabase(title, transcription, 'voice', messageId);
         
         // Delete processing message
         await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
@@ -329,6 +535,7 @@ bot.on('video', (ctx) => {
 // Actual text message handler
 async function handleTextMessage(ctx) {
     const text = ctx.message.text;
+    const messageId = ctx.message.message_id;
     
     try {
         // Generate title from first 50 chars or first line
@@ -337,8 +544,34 @@ async function handleTextMessage(ctx) {
             ? firstLine.substring(0, 47) + '...' 
             : firstLine;
         
-        // Save to database
-        await saveNoteToDatabase(title, text, 'text');
+        // Check if this is a reply to another message
+        if (ctx.message.reply_to_message) {
+            const replyToId = ctx.message.reply_to_message.message_id;
+            const originalNote = await findNoteByTelegramId(replyToId);
+            
+            if (originalNote) {
+                // Merge with existing note
+                const mergedTitle = originalNote.title + ' / ' + title;
+                const mergedContent = originalNote.content + '\n\n////// \n\n' + text;
+                
+                await updateNote(originalNote.id, {
+                    title: mergedTitle,
+                    content: mergedContent
+                });
+                
+                await ctx.reply(
+                    `🔄 Заметка объединена с существующей\n\n📝 *${mergedTitle}*`,
+                    {
+                        reply_to_message_id: ctx.message.message_id,
+                        parse_mode: 'Markdown'
+                    }
+                );
+                return;
+            }
+        }
+        
+        // Save as new note
+        await saveNoteToDatabase(title, text, 'text', messageId);
         
         // Send confirmation
         await ctx.reply(

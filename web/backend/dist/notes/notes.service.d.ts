@@ -3,6 +3,7 @@ import { Note, NoteType } from '@prisma/client';
 export declare class NotesService {
     private prisma;
     constructor(prisma: PrismaService);
+    private serializeNote;
     private findNextAvailableY;
     createNote(userId: string, data: {
         title: string;
@@ -14,10 +15,12 @@ export declare class NotesService {
         manuallyPositioned?: boolean;
         tags?: string[];
         aiSuggestedTags?: any;
+        telegramMessageId?: string;
     }): Promise<Note>;
     createRandomNote(userId: string): Promise<Note>;
     getNotes(userId: string, days?: number): Promise<Note[]>;
     getNoteById(noteId: string, userId: string): Promise<Note>;
+    getNoteByTelegramId(messageId: string, userId: string): Promise<Note>;
     updateNote(noteId: string, updateData: {
         title?: string;
         content?: string;
