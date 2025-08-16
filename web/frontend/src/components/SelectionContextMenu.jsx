@@ -9,6 +9,10 @@ export function SelectionContextMenu() {
     const [isVisible, setIsVisible] = React.useState(false);
     const delayTimerRef = React.useRef(null);
     
+    // Отслеживаем была ли использована рамка выделения (brush)
+    const wasBrushUsedRef = React.useRef(false);
+    const prevSelectedCountRef = React.useRef(0);
+    
     // Отслеживаем выделенные custom-note заметки
     const selectedNotes = useValue(
         'selected notes',
@@ -27,21 +31,58 @@ export function SelectionContextMenu() {
         [editor]
     );
     
-    // Отслеживаем процесс выделения (упрощенная логика)
-    const isSelecting = useValue(
-        'is selecting',
-        () => {
-            // Простая проверка: есть ли активная рамка выделения
-            const hasBrush = editor.getInstanceState().brush !== null;
-            
-            // Или мы в состоянии начала выделения на холсте
-            const currentPath = editor.getPath();
-            const isPointingCanvas = currentPath.includes('select.pointing_canvas');
-            
-            return hasBrush || isPointingCanvas;
-        },
+    // Отслеживаем активную рамку выделения (brush)
+    const hasBrush = useValue(
+        'has brush',
+        () => editor.getInstanceState().brush !== null,
         [editor]
     );
+    
+    // Отслеживаем текущее состояние инструмента
+    const currentPath = useValue(
+        'current path',
+        () => editor.getPath(),
+        [editor]
+    );
+    
+    // Если есть активная рамка - запоминаем это
+    React.useEffect(() => {
+        if (hasBrush) {
+            console.log('🎯 Brush detected, setting wasBrushUsedRef = true');
+            wasBrushUsedRef.current = true;
+        }
+    }, [hasBrush]);
+    
+    // Сбрасываем флаг когда выделение снимается или меняется на клик
+    React.useEffect(() => {
+        const isPointingShape = currentPath.includes('select.pointing_shape');
+        const isBrushing = currentPath.includes('select.brushing');
+        const isIdle = currentPath.includes('select.idle');
+        
+        console.log('📊 Selection change:', {
+            selectedCount: selectedNotes.length,
+            currentPath,
+            isPointingShape,
+            isBrushing,
+            isIdle,
+            wasBrushUsed: wasBrushUsedRef.current
+        });
+        
+        // Сбрасываем флаг ТОЛЬКО когда:
+        // 1. Нет выделения И не идет brushing И в idle состоянии
+        if (selectedNotes.length === 0 && !isBrushing && !hasBrush && isIdle) {
+            console.log('🔄 No selection and idle, resetting wasBrushUsedRef');
+            wasBrushUsedRef.current = false;
+            prevSelectedCountRef.current = 0;
+        }
+        // 2. Клик на заметку после выделения рамкой
+        else if (isPointingShape && wasBrushUsedRef.current) {
+            console.log('🔄 Click after brush, resetting wasBrushUsedRef');
+            wasBrushUsedRef.current = false;
+        }
+        
+        prevSelectedCountRef.current = selectedNotes.length;
+    }, [selectedNotes.length, currentPath, hasBrush]);
     
     // Отслеживаем предыдущее состояние камеры для определения задержки
     const prevCameraStateRef = React.useRef(cameraState);
@@ -54,8 +95,38 @@ export function SelectionContextMenu() {
             delayTimerRef.current = null;
         }
         
-        // Нет выделенных заметок или идет выделение - скрываем
-        if (selectedNotes.length === 0 || isSelecting) {
+        // Проверяем текущее состояние
+        const isTranslating = currentPath.includes('select.translating');
+        const isPointingShape = currentPath.includes('select.pointing_shape');
+        const isBrushing = currentPath.includes('select.brushing');
+        
+        console.log('🎨 Menu visibility check:', {
+            selectedCount: selectedNotes.length,
+            wasBrushUsed: wasBrushUsedRef.current,
+            isTranslating,
+            isBrushing,
+            hasBrush,
+            cameraState,
+            currentPath
+        });
+        
+        // НЕ показываем меню если:
+        // 1. Нет выделенных заметок
+        // 2. Не была использована рамка выделения
+        // 3. Идет перемещение (translating)
+        // 4. Идет активное выделение рамкой
+        if (selectedNotes.length === 0 || 
+            !wasBrushUsedRef.current ||
+            isTranslating ||
+            isBrushing ||
+            hasBrush) {
+            console.log('❌ Menu hidden, reason:', 
+                selectedNotes.length === 0 ? 'no selection' :
+                !wasBrushUsedRef.current ? 'no brush used' :
+                isTranslating ? 'translating' :
+                isBrushing ? 'brushing' :
+                'has active brush'
+            );
             setIsVisible(false);
             prevCameraStateRef.current = cameraState;
             return;
@@ -68,7 +139,11 @@ export function SelectionContextMenu() {
             return;
         }
         
-        // Камера остановилась и есть выделенные заметки
+        // Показываем меню только если:
+        // - Есть выделенные заметки
+        // - Была использована рамка выделения
+        // - Не идет перемещение
+        // - Камера не движется
         const wasCameraMoving = prevCameraStateRef.current !== 'idle';
         
         if (wasCameraMoving) {
@@ -78,7 +153,7 @@ export function SelectionContextMenu() {
                 setIsVisible(true);
             }, delay);
         } else {
-            // Просто завершилось выделение - показываем сразу
+            // Выделение рамкой завершилось - показываем сразу
             setIsVisible(true);
         }
         
@@ -91,7 +166,7 @@ export function SelectionContextMenu() {
                 delayTimerRef.current = null;
             }
         };
-    }, [selectedNotes.length, cameraState, isSelecting]);
+    }, [selectedNotes.length, cameraState, hasBrush, currentPath]);
     
     // Вычисляем позицию меню
     const menuPosition = useValue(

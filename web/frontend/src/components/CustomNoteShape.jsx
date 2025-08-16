@@ -382,4 +382,5 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             />
         );
     }
+    
 }

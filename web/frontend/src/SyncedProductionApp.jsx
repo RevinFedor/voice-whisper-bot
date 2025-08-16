@@ -849,6 +849,26 @@ export default function SyncedProductionApp() {
         const dbId = shape.props?.dbId;
         if (!dbId) return;
         
+        // Снимаем выделение при открытии модалки
+        console.log('🎯 Before selectNone:', {
+            selectedBefore: editor.getSelectedShapeIds(),
+            hoveredBefore: editor.getHoveredShapeId(),
+            currentTool: editor.getCurrentToolId()
+        });
+        
+        editor.selectNone();
+        
+        // Также сбрасываем hover состояние если нужно
+        if (editor.getHoveredShapeId() === shapeId) {
+            editor.setHoveredShape(null);
+        }
+        
+        console.log('✅ After selectNone:', {
+            selectedAfter: editor.getSelectedShapeIds(),
+            hoveredAfter: editor.getHoveredShapeId(),
+            currentTool: editor.getCurrentToolId()
+        });
+        
         try {
             // Fetch full note data from backend
             const response = await fetch(`${API_URL}/notes/${dbId}`, {
@@ -901,6 +921,7 @@ export default function SyncedProductionApp() {
             delete window.handleNoteClick;
         };
     }, [handleNoteClick]);
+    
     
     // Handle editor mount
     const handleMount = useCallback(async (editor) => {
@@ -1293,6 +1314,23 @@ export default function SyncedProductionApp() {
         
         // Function to open modal - defined inside handleMount to access setters
         const handleNoteModalOpen = async (dbId, shape) => {
+            // Снимаем выделение при открытии модалки
+            console.log('🎯 Before selectNone in handleNoteModalOpen:', {
+                selectedBefore: editor.getSelectedShapeIds(),
+                hoveredBefore: editor.getHoveredShapeId()
+            });
+            
+            editor.selectNone();
+            
+            // Также сбрасываем hover состояние
+            if (shape && editor.getHoveredShapeId() === shape.id) {
+                editor.setHoveredShape(null);
+            }
+            
+            console.log('✅ After selectNone in handleNoteModalOpen:', {
+                selectedAfter: editor.getSelectedShapeIds(),
+                hoveredAfter: editor.getHoveredShapeId()
+            });
             
             try {
                 // Fetch full note data from backend
