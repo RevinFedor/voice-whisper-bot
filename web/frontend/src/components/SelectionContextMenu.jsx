@@ -109,15 +109,7 @@ export function SelectionContextMenu() {
         const isPointingShape = currentPath.includes('select.pointing_shape');
         const isBrushing = currentPath.includes('select.brushing');
         
-        console.log('🎨 Menu visibility check:', {
-            selectedCount: selectedNotes.length,
-            wasBrushUsed: wasBrushUsedRef.current,
-            isTranslating,
-            isBrushing,
-            hasBrush,
-            cameraState,
-            currentPath
-        });
+     
         
         // НЕ показываем меню если:
         // 1. Нет выделенных заметок
@@ -129,13 +121,7 @@ export function SelectionContextMenu() {
             isTranslating ||
             isBrushing ||
             hasBrush) {
-            console.log('❌ Menu hidden, reason:', 
-                selectedNotes.length === 0 ? 'no selection' :
-                !wasBrushUsedRef.current ? 'no brush used' :
-                isTranslating ? 'translating' :
-                isBrushing ? 'brushing' :
-                'has active brush'
-            );
+           
             setIsVisible(false);
             prevCameraStateRef.current = cameraState;
             return;

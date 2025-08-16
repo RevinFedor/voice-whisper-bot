@@ -430,14 +430,7 @@ export default function SyncedProductionApp() {
             const shape1Area = (bounds1.right - bounds1.left) * (bounds1.bottom - bounds1.top);
             const overlapPercentage = intersectionArea / shape1Area;
             
-            console.log(`📐 Overlap calculation:`, {
-                shape1Id: shape1.id,
-                shape2Id: shape2.id,
-                intersectionArea,
-                shape1Area,
-                overlapPercentage: (overlapPercentage * 100).toFixed(1) + '%'
-            });
-            
+           
             return overlapPercentage;
         }
         
@@ -770,7 +763,6 @@ export default function SyncedProductionApp() {
                                     if (targetElement) {
                                         targetElement.classList.add('merge-target');
                                         highlightedTarget = foundTarget.id;
-                                        console.log(`💡 Highlighting merge target: ${foundTarget.id} (${(maxOverlap * 100).toFixed(1)}% overlap)`);
                                     }
                                 } else if (highlightedTarget) {
                                     // Remove highlight if no target found
