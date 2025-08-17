@@ -15,7 +15,10 @@ import './utils/finalTest';
 import './utils/debugModalStack';
 
 // API configuration
-const API_URL = import.meta.env.VITE_API_URL
+if (!import.meta.env.VITE_API_URL) {
+  throw new Error('VITE_API_URL is required in environment variables');
+}
+const API_URL = import.meta.env.VITE_API_URL;
 const USER_ID = 'test-user-id';
 
 // Custom styles

@@ -26,13 +26,12 @@ export class AiTitlesService {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
-    const apiKey = this.configService.get<string>('OPENAI_KEY');
-    if (!apiKey) {
-      throw new Error('OPENAI_KEY is not configured');
+    if (!process.env.OPENAI_KEY) {
+      throw new Error('OPENAI_KEY is required in environment variables');
     }
     
     this.openai = new OpenAI({
-      apiKey,
+      apiKey: process.env.OPENAI_KEY,
     });
   }
 

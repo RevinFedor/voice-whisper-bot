@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "Voice Whisper Bot with Telegram, Backend and Frontend",
   "scripts": {
-    "dev:all": "concurrently -n \"BOT,BACKEND,FRONTEND\" -c \"green,yellow,cyan\" \"cd telegram-bot && node -r dotenv/config index.js dotenv_config_path=../.env.dev\" \"cd web/backend && PORT=3001 npm run start:dev\" \"cd web/frontend && VITE_API_URL=http://localhost:3001/api npm run dev\"",
-    "prod:build": "cd web/backend && npm run build && cd ../frontend && VITE_API_URL=http://localhost:3002/api npm run build",
-    "prod:all": "npm run prod:build && concurrently -n \"BOT,BACKEND,FRONTEND\" -c \"red,magenta,blue\" \"cd telegram-bot && node -r dotenv/config index.js dotenv_config_path=../.env.prod\" \"cd web/backend && PORT=3002 npm run start:prod\" \"cd web/frontend && npm run preview\"",
+    "dev:all": "dotenv -e .env.dev -- concurrently -n \"BOT,BACKEND,FRONTEND\" -c \"green,yellow,cyan\" \"cd telegram-bot && node index.js\" \"cd web/backend && npm run start:dev\" \"cd web/frontend && npm run dev\"",
+    "prod:build": "dotenv -e .env.prod -- bash -c 'cd web/backend && npm run build && cd ../frontend && npm run build'",
+    "prod:all": "npm run prod:build && dotenv -e .env.prod -- concurrently -n \"BOT,BACKEND,FRONTEND\" -c \"red,magenta,blue\" \"cd telegram-bot && node index.js\" \"cd web/backend && npm run start:prod\" \"cd web/frontend && npm run preview\"",
     "deploy": "npm run db:migrate && npm run prod:build",
     "db:migrate": "cd web/backend && DATABASE_URL='postgresql://postgres:postgres@localhost:5433/voice_notes_db?schema=public' npx prisma db pull && DATABASE_URL='postgresql://postgres:postgres@localhost:5434/voice_notes_db_prod?schema=public' npx prisma db push",
     "install:all": "npm install && cd telegram-bot && npm install && cd ../web/backend && npm install && cd ../frontend && npm install",
@@ -17,6 +17,7 @@
     "db:prod:init": "cd web/backend && DATABASE_URL='postgresql://postgres:postgres@localhost:5434/voice_notes_db_prod?schema=public' npx prisma migrate deploy"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "dotenv-cli": "^10.0.0"
   }
 }

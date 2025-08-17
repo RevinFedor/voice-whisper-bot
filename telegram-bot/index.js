@@ -13,6 +13,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Configuration - all from environment variables
+if (!process.env.TELEGRAM_TOKEN) throw new Error('TELEGRAM_TOKEN is required in environment variables');
+if (!process.env.OPENAI_KEY) throw new Error('OPENAI_KEY is required in environment variables');
+if (!process.env.API_URL) throw new Error('API_URL is required in environment variables');
+
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 const API_URL = process.env.API_URL; // Web app backend URL

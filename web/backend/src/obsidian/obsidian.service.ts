@@ -9,11 +9,16 @@ export class ObsidianService {
   private readonly defaultFolder: string;
 
   constructor(private prisma: PrismaService) {
-    const host = process.env.OBSIDIAN_HOST || '127.0.0.1';
-    const port = process.env.OBSIDIAN_PORT || '27123';
+    if (!process.env.OBSIDIAN_HOST) throw new Error('OBSIDIAN_HOST is required in environment variables');
+    if (!process.env.OBSIDIAN_PORT) throw new Error('OBSIDIAN_PORT is required in environment variables');
+    if (!process.env.OBSIDIAN_API_KEY) throw new Error('OBSIDIAN_API_KEY is required in environment variables');
+    if (!process.env.OBSIDIAN_FOLDER) throw new Error('OBSIDIAN_FOLDER is required in environment variables');
+    
+    const host = process.env.OBSIDIAN_HOST;
+    const port = process.env.OBSIDIAN_PORT;
     this.baseUrl = `http://${host}:${port}`;
-    this.apiKey = process.env.OBSIDIAN_API_KEY || '';
-    this.defaultFolder = process.env.OBSIDIAN_FOLDER || 'Telegram Voice Notes';
+    this.apiKey = process.env.OBSIDIAN_API_KEY;
+    this.defaultFolder = process.env.OBSIDIAN_FOLDER;
   }
 
   async getAllTags(): Promise<string[]> {
@@ -206,7 +211,8 @@ ${note.content || ''}`;
         console.log('   🗑️ Заметка удалена из БД');
 
         // Формируем URL для открытия в Obsidian
-        const vaultName = process.env.OBSIDIAN_VAULT_NAME || 'Obsidian';
+        if (!process.env.OBSIDIAN_VAULT_NAME) throw new Error('OBSIDIAN_VAULT_NAME is required in environment variables');
+        const vaultName = process.env.OBSIDIAN_VAULT_NAME;
         // Для Obsidian URL нужно использовать только имя файла, не полный путь
         const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(filepath)}`;
 

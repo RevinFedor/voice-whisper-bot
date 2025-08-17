@@ -11,6 +11,7 @@ export class AiTagsService {
     private prisma: PrismaService,
     private obsidianService: ObsidianService,
   ) {
+    if (!process.env.OPENAI_KEY) throw new Error('OPENAI_KEY is required in environment variables');
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_KEY,
     });

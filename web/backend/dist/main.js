@@ -21,7 +21,9 @@ async function bootstrap() {
         .build();
     const document = swagger_1.SwaggerModule.createDocument(app, config);
     swagger_1.SwaggerModule.setup('api', app, document);
-    const port = process.env.PORT || 3001;
+    if (!process.env.PORT)
+        throw new Error('PORT is required in environment variables');
+    const port = process.env.PORT;
     await app.listen(port);
     console.log(`🚀 Application is running on: http://localhost:${port}`);
     console.log(`📚 Swagger docs available at: http://localhost:${port}/api`);
