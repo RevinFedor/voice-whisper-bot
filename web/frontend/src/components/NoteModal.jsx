@@ -3,6 +3,12 @@ import { useScrollPreservingTextarea } from '../hooks/useScrollPreservingTextare
 import { useModalEscape, MODAL_PRIORITIES } from '../contexts/ModalStackContext';
 import obsidianIcon from '../assets/obsidian-icon.svg';
 
+// API configuration
+if (!import.meta.env.VITE_API_URL) {
+  throw new Error('VITE_API_URL is required in environment variables');
+}
+const API_URL = import.meta.env.VITE_API_URL;
+
 const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => {
     // Уникальный ID для этого экземпляра модалки
     const modalId = useRef(`note-modal-${Date.now()}`).current;
@@ -188,7 +194,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         setHistoryLoading(true);
         try {
-            const response = await fetch(`http://localhost:3001/api/ai-titles/history/${note?.id}`, {
+            const response = await fetch(`${API_URL}/ai-titles/history/${note?.id}`, {
                 headers: {
                     'user-id': 'test-user-id'
                 }
@@ -213,7 +219,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         statusSetter('saving');
         
         try {
-            const response = await fetch(`http://localhost:3001/api/notes/${note?.id}`, {
+            const response = await fetch(`${API_URL}/notes/${note?.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -380,7 +386,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         // Сохраняем текущий заголовок в историю если он не пустой
         if (localTitle && localTitle.trim()) {
             try {
-                await fetch(`http://localhost:3001/api/ai-titles/save-current/${note?.id}`, {
+                await fetch(`${API_URL}/ai-titles/save-current/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'user-id': 'test-user-id'
@@ -392,7 +398,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         }
         
         try {
-            const response = await fetch('http://localhost:3001/api/ai-titles/generate', {
+            const response = await fetch(`${API_URL}/ai-titles/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -484,7 +490,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         e.stopPropagation(); // Предотвращаем выбор элемента
         
         try {
-            const response = await fetch(`http://localhost:3001/api/ai-titles/history/${historyId}`, {
+            const response = await fetch(`${API_URL}/ai-titles/history/${historyId}`, {
                 method: 'DELETE',
                 headers: {
                     'user-id': 'test-user-id'
@@ -514,7 +520,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // Загрузка тегов из Obsidian
     const loadObsidianTags = useCallback(async () => {
         try {
-            const response = await fetch('http://localhost:3001/api/tags/obsidian', {
+            const response = await fetch(`${API_URL}/tags/obsidian`, {
                 headers: {
                     'user-id': 'test-user-id'
                 }
@@ -535,7 +541,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         setTagHistoryLoading(true);
         try {
-            const response = await fetch(`http://localhost:3001/api/tags/history/${note?.id}`, {
+            const response = await fetch(`${API_URL}/tags/history/${note?.id}`, {
                 headers: {
                     'user-id': 'test-user-id'
                 }
@@ -559,7 +565,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setIsGeneratingTags(true);
         
         try {
-            const response = await fetch('http://localhost:3001/api/tags/generate', {
+            const response = await fetch(`${API_URL}/tags/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -611,7 +617,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             
             // Сохраняем на сервер
             try {
-                await fetch(`http://localhost:3001/api/tags/update/${note?.id}`, {
+                await fetch(`${API_URL}/tags/update/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -621,7 +627,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                 });
                 
                 // Обновляем AI предложения на сервере
-                await fetch(`http://localhost:3001/api/tags/update-suggestions/${note?.id}`, {
+                await fetch(`${API_URL}/tags/update-suggestions/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -645,7 +651,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         // Сохраняем на сервер
         try {
-            await fetch(`http://localhost:3001/api/tags/update/${note?.id}`, {
+            await fetch(`${API_URL}/tags/update/${note?.id}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -679,7 +685,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             
             // Сохраняем на сервер
             try {
-                await fetch(`http://localhost:3001/api/tags/update/${note?.id}`, {
+                await fetch(`${API_URL}/tags/update/${note?.id}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -702,7 +708,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // Очистить историю тегов
     const clearTagHistory = async () => {
         try {
-            await fetch(`http://localhost:3001/api/tags/history/${note?.id}`, {
+            await fetch(`${API_URL}/tags/history/${note?.id}`, {
                 method: 'DELETE',
                 headers: {
                     'user-id': 'test-user-id'
@@ -787,7 +793,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                 await saveToServer('content', localContent);
             }
             
-            const response = await fetch('http://localhost:3001/api/obsidian/export', {
+            const response = await fetch(`${API_URL}/obsidian/export`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

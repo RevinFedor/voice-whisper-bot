@@ -1,6 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { useModalEscape, MODAL_PRIORITIES } from '../contexts/ModalStackContext';
 
+// API configuration
+if (!import.meta.env.VITE_API_URL) {
+  throw new Error('VITE_API_URL is required in environment variables');
+}
+const API_URL = import.meta.env.VITE_API_URL;
+
 const modalStyles = {
     overlay: {
         position: 'fixed',
@@ -219,7 +225,7 @@ export default function DatePickerModal({ isOpen, onClose, onSelectDate }) {
         setIsGeneratingMockData(true);
         
         try {
-            const response = await fetch('http://localhost:3001/api/mock-data/generate-week', {
+            const response = await fetch(`${API_URL}/mock-data/generate-week`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

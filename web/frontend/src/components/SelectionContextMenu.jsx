@@ -4,6 +4,12 @@ import { useEditor, useValue } from '@tldraw/editor';
 import { useModalEscape } from '../contexts/ModalStackContext';
 import { useToast } from '../hooks/useToast';
 
+// API configuration
+if (!import.meta.env.VITE_API_URL) {
+  throw new Error('VITE_API_URL is required in environment variables');
+}
+const API_URL = import.meta.env.VITE_API_URL;
+
 export function SelectionContextMenu() {
     const editor = useEditor();
     const { showToast } = useToast();
@@ -205,7 +211,7 @@ export function SelectionContextMenu() {
             const noteIds = selectedNotes.map(note => note.props?.dbId).filter(Boolean);
             
             // Удаляем на бэкенде
-            const response = await fetch('http://localhost:3001/api/notes/bulk', {
+            const response = await fetch(`${API_URL}/notes/bulk`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -266,7 +272,7 @@ export function SelectionContextMenu() {
                 // Генерируем AI-теги если нужно И если у заметки нет тегов
                 if (generateAI && (!note.props?.tags || note.props.tags.length === 0)) {
                     console.log(`Generating AI tags for note ${dbId}`);
-                    const tagResponse = await fetch('http://localhost:3001/api/tags/generate', {
+                    const tagResponse = await fetch(`${API_URL}/tags/generate`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -287,7 +293,7 @@ export function SelectionContextMenu() {
                             console.log(`Applying AI tags to note ${dbId}:`, tagsToApply);
                             
                             // Обновляем основное поле tags
-                            const updateResponse = await fetch(`http://localhost:3001/api/tags/update/${dbId}`, {
+                            const updateResponse = await fetch(`${API_URL}/tags/update/${dbId}`, {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -306,7 +312,7 @@ export function SelectionContextMenu() {
                 }
                 
                 // Экспортируем в Obsidian
-                const response = await fetch('http://localhost:3001/api/obsidian/export', {
+                const response = await fetch(`${API_URL}/obsidian/export`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
