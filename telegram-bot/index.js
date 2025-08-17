@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import dotenv from 'dotenv';
 import { Telegraf } from 'telegraf';
 import axios from 'axios';
 import fs from 'fs/promises';
@@ -13,14 +12,10 @@ import OpenAI from 'openai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Load environment variables from root directory
-const envFile = process.env.NODE_ENV === 'prod' ? '.env.prod' : '.env.dev';
-dotenv.config({ path: path.resolve(__dirname, '..', envFile) });
-
-// Configuration
+// Configuration - all from environment variables
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
-const API_URL = 'http://localhost:3001/api'; // Web app backend URL
+const API_URL = process.env.API_URL; // Web app backend URL
 
 // Initialize bot and OpenAI
 const bot = new Telegraf(TELEGRAM_TOKEN);
