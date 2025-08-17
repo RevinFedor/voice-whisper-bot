@@ -1,2 +1,10 @@
 .DS_Store
 /web/backend/dist
+
+# Environment files
+.env.dev
+.env.prod
+.env
+
+# Node modules
+node_modules/

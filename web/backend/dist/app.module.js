@@ -22,6 +22,9 @@ exports.AppModule = AppModule = __decorate([
         imports: [
             config_1.ConfigModule.forRoot({
                 isGlobal: true,
+                envFilePath: process.env.NODE_ENV === 'prod'
+                    ? '../../.env.prod'
+                    : '../../.env.dev',
             }),
             prisma_module_1.PrismaModule,
             notes_module_1.NotesModule,

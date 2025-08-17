@@ -13,7 +13,9 @@ import OpenAI from 'openai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-dotenv.config();
+// Load environment variables from root directory
+const envFile = process.env.NODE_ENV === 'prod' ? '.env.prod' : '.env.dev';
+dotenv.config({ path: path.resolve(__dirname, '..', envFile) });
 
 // Configuration
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;

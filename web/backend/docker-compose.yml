@@ -1,26 +1,43 @@
-version: '3.8'
+name: voice-notes
 
 services:
-  postgres:
+  postgres-dev:
     image: postgres:14-alpine
-    container_name: postgres
+    container_name: postgres-dev
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: voice_notes_db
     ports:
-      - "5433:5432"  # Используем 5433 чтобы не конфликтовать с другими контейнерами
+      - "5433:5432"
     volumes:
-      - voice_notes_data:/var/lib/postgresql/data
+      - dev_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - voice-notes-network
+
+  postgres-prod:
+    image: postgres:14-alpine
+    container_name: postgres-prod
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: voice_notes_db_prod
+    ports:
+      - "5434:5432"
+    volumes:
+      - prod_data:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - voice-notes-network
 
 volumes:
-  voice_notes_data:
-    external: true
-    name: backend_voice_notes_data
+  dev_data:
+    name: voice-notes-dev-data
+  prod_data:
+    name: voice-notes-prod-data
 
 networks:
   voice-notes-network:
+    name: voice-notes-network
     driver: bridge

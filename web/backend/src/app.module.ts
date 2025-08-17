@@ -11,6 +11,9 @@ import { MockDataModule } from './mock-data/mock-data.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: process.env.NODE_ENV === 'prod' 
+        ? '../../.env.prod' 
+        : '../../.env.dev',
     }),
     PrismaModule,
     NotesModule,
