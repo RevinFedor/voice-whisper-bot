@@ -337,15 +337,36 @@ export class NotesService {
       throw new Error('Invalid date format');
     }
 
+    // Получаем текущую заметку
+    const currentNote = await this.prisma.note.findUnique({
+      where: { id: noteId },
+    });
+
+    if (!currentNote) {
+      throw new Error('Note not found');
+    }
+
     console.log('📅 [Notes] Updating note date');
     console.log(`   Note ID: ${noteId}`);
     console.log(`   New date: ${newDate.toISOString()}`);
+    console.log(`   manuallyPositioned: ${currentNote.manuallyPositioned}`);
+
+    // Подготавливаем данные для обновления
+    const updateData: any = { 
+      date: newDate,
+    };
+
+    // Если заметка не была перемещена вручную, пересчитываем позицию для новой колонки
+    if (!currentNote.manuallyPositioned) {
+      const newY = await this.findNextAvailableY(currentNote.userId, newDate);
+      updateData.y = newY;
+      updateData.x = 0; // X=0 для колоночных заметок, frontend пересчитает
+      console.log(`   📍 Новая позиция в колонке: y=${newY}`);
+    }
 
     const updatedNote = await this.prisma.note.update({
       where: { id: noteId },
-      data: { 
-        date: newDate,
-      },
+      data: updateData,
     });
     
     return this.serializeNote(updatedNote);

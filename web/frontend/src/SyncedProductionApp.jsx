@@ -610,7 +610,7 @@ export default function SyncedProductionApp() {
         } catch (error) {
             console.error('❌ Error during merge:', error);
             
-            // Remove loading animation on error
+            // Remove animation on error
             if (targetElement) {
                 targetElement.style.animation = '';
                 targetElement.style.boxShadow = '';
@@ -1831,13 +1831,14 @@ export default function SyncedProductionApp() {
                                 // Если дата изменилась и заметка не перемещена вручную, обновляем позицию
                                 if (!updatedNote.manuallyPositioned) {
                                     const newX = calculateColumnX(updatedNote.date);
-                                    if (Math.abs(shape.x - newX) > 1) { // Если позиция изменилась
+                                    // Backend уже пересчитал Y позицию, используем её
+                                    if (Math.abs(shape.x - newX) > 1 || Math.abs(shape.y - updatedNote.y) > 1) { // Если позиция изменилась
                                         isProgrammaticUpdateRef.current = true; // Устанавливаем флаг перед программным обновлением
                                         editor.updateShape({
                                             id: shape.id,
                                             type: 'custom-note',
                                             x: newX,
-                                            y: updatedNote.y
+                                            y: updatedNote.y // Используем Y от backend (он нашел свободное место)
                                         });
                                         // Сбрасываем флаг после обновления
                                         setTimeout(() => {

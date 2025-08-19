@@ -8,3 +8,5 @@
 
 # Node modules
 node_modules/
+/web/backend/dist
+web/backend/dist
