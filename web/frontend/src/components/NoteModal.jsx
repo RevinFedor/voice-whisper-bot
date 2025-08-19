@@ -68,6 +68,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     const [obsidianTags, setObsidianTags] = useState([]);
     const [showObsidianTags, setShowObsidianTags] = useState(false);
     const [aiSuggestionsKey, setAiSuggestionsKey] = useState(0); // Ключ для перезапуска анимации
+    const [tagSearchInput, setTagSearchInput] = useState(''); // Поиск по тегам
+    const [filteredObsidianTags, setFilteredObsidianTags] = useState([]); // Отфильтрованные теги Obsidian
     
     // === СОСТОЯНИЕ ЭКСПОРТА ===
     const [isExporting, setIsExporting] = useState(false);
@@ -769,6 +771,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setShowPrompt(false);
         setShowTagChat(false);
         setShowTagHistory(false);
+        // Сбрасываем поиск при закрытии
+        if (showObsidianTags) {
+            setTagSearchInput('');
+        }
     };
     
     // Загрузка тегов Obsidian при монтировании
@@ -777,6 +783,24 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             loadObsidianTags();
         }
     }, [isOpen, loadObsidianTags]);
+    
+    // Фильтрация тегов Obsidian при изменении поискового запроса
+    useEffect(() => {
+        if (tagSearchInput.trim() === '') {
+            setFilteredObsidianTags(obsidianTags);
+        } else {
+            const searchTerm = tagSearchInput.toLowerCase().trim();
+            const filtered = obsidianTags.filter(tag => 
+                tag.toLowerCase().includes(searchTerm)
+            );
+            setFilteredObsidianTags(filtered);
+        }
+    }, [tagSearchInput, obsidianTags]);
+    
+    // Обновляем отфильтрованные теги при загрузке
+    useEffect(() => {
+        setFilteredObsidianTags(obsidianTags);
+    }, [obsidianTags]);
     
     // Экспорт заметки в Obsidian
     const handleExportToObsidian = useCallback(async () => {
@@ -1976,62 +2000,97 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                             <div
                                 style={{
                                     marginTop: '12px',
-                                    maxHeight: '250px',
-                                    overflowY: 'auto',
                                     padding: '12px',
                                     backgroundColor: '#181818',
                                     border: '1px solid #333',
                                     borderRadius: '8px',
                                 }}
                             >
-                                
+                                {/* Поиск по тегам */}
+                                <div style={{ marginBottom: '12px' }}>
+                                    <input
+                                        type="text"
+                                        value={tagSearchInput}
+                                        onChange={(e) => setTagSearchInput(e.target.value)}
+                                        placeholder="Поиск по тегам..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px 12px',
+                                            backgroundColor: '#222',
+                                            border: '1px solid #444',
+                                            borderRadius: '6px',
+                                            color: 'white',
+                                            fontSize: '14px',
+                                            outline: 'none',
+                                            boxSizing: 'border-box',
+                                        }}
+                                        onFocus={(e) => (e.currentTarget.style.borderColor = '#ff9500')}
+                                        onBlur={(e) => (e.currentTarget.style.borderColor = '#444')}
+                                    />
+                                </div>
 
+                                {/* Теги */}
                                 {obsidianTags.length > 0 ? (
                                     <div
                                         style={{
                                             display: 'flex',
                                             flexWrap: 'wrap',
                                             gap: '8px',
+                                            maxHeight: 'fit-content',
                                         }}
                                     >
-                                        {obsidianTags.map((tag, index) => {
-                                            const isUsed = localTags.includes(tag.replace(/^#/, ''));
-                                            return (
-                                                <div
-                                                    key={index}
-                                                    onClick={() => !isUsed && addManualTag(tag.replace(/^#/, ''))}
-                                                    style={{
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        padding: '2px 8px',
-                                                        backgroundColor: isUsed ? '#2a2a2a' : '#1a2d3d',
-                                                        border: '1px solid',
-                                                        borderColor: isUsed ? '#444' : '#2288aa',
-                                                        borderRadius: '16px',
-                                                        fontSize: '14px',
-                                                        color: isUsed ? '#666' : '#4ec7e7',
-                                                        cursor: isUsed ? 'default' : 'pointer',
-                                                        opacity: isUsed ? 0.6 : 0.9,
-                                                        transition: 'all 0.2s ease',
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        if (!isUsed) {
-                                                            e.currentTarget.style.opacity = '1';
-                                                            e.currentTarget.style.transform = 'scale(1.05)';
-                                                        }
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        if (!isUsed) {
-                                                            e.currentTarget.style.opacity = '0.9';
-                                                            e.currentTarget.style.transform = 'scale(1)';
-                                                        }
-                                                    }}
-                                                    title={isUsed ? 'Тег уже добавлен' : 'Нажмите чтобы добавить'}
-                                                >
-                                                    {tag}
-                                                </div>
-                                            );
-                                        })}
+                                        {filteredObsidianTags.length > 0 ? (
+                                            filteredObsidianTags.map((tag, index) => {
+                                                const isUsed = localTags.includes(tag.replace(/^#/, ''));
+                                                return (
+                                                    <div
+                                                        key={index}
+                                                        onClick={() => !isUsed && addManualTag(tag.replace(/^#/, ''))}
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            padding: '6px 12px',
+                                                            backgroundColor: isUsed ? '#2a2a2a' : '#1a2d3d',
+                                                            border: '1px solid',
+                                                            borderColor: isUsed ? '#444' : '#2288aa',
+                                                            borderRadius: '16px',
+                                                            fontSize: '14px',
+                                                            color: isUsed ? '#666' : '#4ec7e7',
+                                                            cursor: isUsed ? 'default' : 'pointer',
+                                                            opacity: isUsed ? 0.6 : 0.9,
+                                                            transition: 'all 0.2s ease',
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            if (!isUsed) {
+                                                                e.currentTarget.style.opacity = '1';
+                                                                e.currentTarget.style.transform = 'scale(1.05)';
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (!isUsed) {
+                                                                e.currentTarget.style.opacity = '0.9';
+                                                                e.currentTarget.style.transform = 'scale(1)';
+                                                            }
+                                                        }}
+                                                        title={isUsed ? 'Тег уже добавлен' : 'Нажмите чтобы добавить'}
+                                                    >
+                                                        {tag}
+                                                    </div>
+                                                );
+                                            })
+                                        ) : (
+                                            <div
+                                                style={{
+                                                    textAlign: 'center',
+                                                    padding: '20px',
+                                                    color: '#666',
+                                                    fontSize: '14px',
+                                                    width: '100%',
+                                                }}
+                                            >
+                                                Теги не найдены по запросу "{tagSearchInput}"
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <div
