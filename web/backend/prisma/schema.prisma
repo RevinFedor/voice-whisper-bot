@@ -19,7 +19,7 @@ model Note {
   type            NoteType
   
   // Position data (for tldraw)
-  date            DateTime @db.Date
+  date            DateTime @db.Timestamp
   x               Float    // Actual position in tldraw
   y               Float    // Actual position in tldraw
   manuallyPositioned Boolean @default(false) // Flag if user dragged the note

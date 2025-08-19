@@ -9,6 +9,30 @@ if (!import.meta.env.VITE_API_URL) {
 }
 const API_URL = import.meta.env.VITE_API_URL;
 
+// Вспомогательная функция для конвертации даты в формат для datetime-local input
+// ВАЖНО: Показываем ЛОКАЛЬНОЕ время (как в колонках)
+const formatDateForInput = (dateString) => {
+    if (!dateString) {
+        // Для новой заметки используем текущее локальное время
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+    
+    // Для существующей заметки конвертируем UTC в локальное время
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => {
     // Уникальный ID для этого экземпляра модалки
     const modalId = useRef(`note-modal-${Date.now()}`).current;
@@ -16,10 +40,12 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // === ЛОКАЛЬНОЕ СОСТОЯНИЕ (для мгновенного UI) ===
     const [localTitle, setLocalTitle] = useState(note?.title || '');
     const [localContent, setLocalContent] = useState(note?.content || '');
+    const [localDate, setLocalDate] = useState(() => formatDateForInput(note?.date));
     
     // === СЕРВЕРНОЕ СОСТОЯНИЕ (для отслеживания синхронизации) ===
     const [serverTitle, setServerTitle] = useState(note?.title || '');
     const [serverContent, setServerContent] = useState(note?.content || '');
+    const [serverDate, setServerDate] = useState(() => formatDateForInput(note?.date));
     
     // === СОСТОЯНИЕ UI ===
     const [isExpanded, setIsExpanded] = useState(false);
@@ -38,8 +64,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // === СОСТОЯНИЕ СОХРАНЕНИЯ ===
     const [titleSaveStatus, setTitleSaveStatus] = useState('idle'); // idle | saving | success | error
     const [contentSaveStatus, setContentSaveStatus] = useState('idle');
+    const [dateSaveStatus, setDateSaveStatus] = useState('idle');
     const [titleChanged, setTitleChanged] = useState(false);
     const [contentChanged, setContentChanged] = useState(false);
+    const [dateChanged, setDateChanged] = useState(false);
     
     // === REFS ===
     const inputRef = useRef(null);
@@ -162,8 +190,14 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             setLocalContent(note?.content || '');
             setServerTitle(note?.title || '');
             setServerContent(note?.content || '');
+            
+            // Обновляем дату
+            const dateForInput = formatDateForInput(note?.date);
+            setLocalDate(dateForInput);
+            setServerDate(dateForInput);
             setTitleChanged(false);
             setContentChanged(false);
+            setDateChanged(false);
             setLocalTags(note?.tags || []);
             setAiSuggestions(note?.aiSuggestedTags || []);
         } else {
@@ -172,8 +206,15 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             setLocalContent(note?.content || '');
             setServerTitle(note?.title || '');
             setServerContent(note?.content || '');
+            
+            // Инициализируем дату для новой заметки
+            const dateForInput = formatDateForInput(note?.date);
+            setLocalDate(dateForInput);
+            setServerDate(dateForInput);
+            
             setTitleChanged(false);
             setContentChanged(false);
+            setDateChanged(false);
             // Сбрасываем историю при смене заметки
             setTitleHistory([]);
             setShowHistory(false);
@@ -215,21 +256,41 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     
     // === ОПТИМИСТИЧНЫЕ ОБНОВЛЕНИЯ ===
     const saveToServer = useCallback(async (field, value) => {
-        const statusSetter = field === 'title' ? setTitleSaveStatus : setContentSaveStatus;
-        const serverSetter = field === 'title' ? setServerTitle : setServerContent;
+        let statusSetter, serverSetter, endpoint, body;
+        
+        if (field === 'title') {
+            statusSetter = setTitleSaveStatus;
+            serverSetter = setServerTitle;
+            endpoint = `${API_URL}/notes/${note?.id}`;
+            body = { [field]: value };
+        } else if (field === 'content') {
+            statusSetter = setContentSaveStatus;
+            serverSetter = setServerContent;
+            endpoint = `${API_URL}/notes/${note?.id}`;
+            body = { [field]: value };
+        } else if (field === 'date') {
+            statusSetter = setDateSaveStatus;
+            serverSetter = setServerDate;
+            endpoint = `${API_URL}/notes/${note?.id}/date`;
+            // Конвертируем локальное время из input в UTC для backend
+            // value = "2025-08-13T12:22" (локальное время)
+            const [datePart, timePart] = value.split('T');
+            const [year, month, day] = datePart.split('-').map(Number);
+            const [hours, minutes] = timePart.split(':').map(Number);
+            const localDate = new Date(year, month - 1, day, hours, minutes);
+            body = { date: localDate.toISOString() };
+        }
         
         statusSetter('saving');
         
         try {
-            const response = await fetch(`${API_URL}/notes/${note?.id}`, {
+            const response = await fetch(endpoint, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     'user-id': 'test-user-id'
                 },
-                body: JSON.stringify({
-                    [field]: value
-                })
+                body: JSON.stringify(body)
             });
             
             if (!response.ok) throw new Error('Failed to save');
@@ -237,15 +298,19 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             const updatedNote = await response.json();
             
             // Обновляем серверное состояние
-            serverSetter(value);
+            if (field === 'date') {
+                serverSetter(value); // value уже в формате YYYY-MM-DDTHH:MM
+            } else {
+                serverSetter(value);
+            }
             
             // Сбрасываем флаг изменений
             if (field === 'title') setTitleChanged(false);
-            else setContentChanged(false);
+            else if (field === 'content') setContentChanged(false);
+            else if (field === 'date') setDateChanged(false);
             
             // Вызываем callback для обновления списка заметок
-            // Но не вызываем если значение не изменилось (чтобы избежать лишних рендеров)
-            if (onNoteUpdate && updatedNote[field] !== note[field]) {
+            if (onNoteUpdate) {
                 onNoteUpdate(updatedNote);
             }
             
@@ -259,13 +324,15 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             // При ошибке откатываем локальное состояние к серверному
             if (field === 'title') {
                 setLocalTitle(serverTitle);
-            } else {
+            } else if (field === 'content') {
                 setLocalContent(serverContent);
+            } else if (field === 'date') {
+                setLocalDate(serverDate);
             }
             
             setTimeout(() => statusSetter('idle'), 2000);
         }
-    }, [note, serverTitle, serverContent, onNoteUpdate]);
+    }, [note, serverTitle, serverContent, serverDate, onNoteUpdate]);
     
     
     // === ЛОГИКА ЗАГОЛОВКА ===
@@ -363,6 +430,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setLocalContent(newValue);
         setContentChanged(newValue !== serverContent);
         // Убираем автосохранение - сохраняем только на blur
+    };
+
+    const handleDateChange = (e) => {
+        const newValue = e.target.value;
+        setLocalDate(newValue);
+        setDateChanged(newValue !== serverDate);
+    };
+
+    const handleDateBlur = () => {
+        if (localDate !== serverDate) {
+            saveToServer('date', localDate);
+        }
     };
     
     const handleTitleBlur = () => {
@@ -2128,8 +2207,35 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     <div>
                         <span style={{ color: '#555' }}>Тип:</span> <span style={{ color: '#888' }}>{getTypeLabel(note?.type)}</span>
                     </div>
-                    <div>
-                        <span style={{ color: '#555' }}>Дата:</span> {formatDate(note?.date)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ color: '#555' }}>Дата:</span>
+                        <input
+                            type="datetime-local"
+                            value={localDate}
+                            onChange={handleDateChange}
+                            onBlur={handleDateBlur}
+                            style={{
+                                backgroundColor: '#333',
+                                border: '1px solid #555',
+                                borderRadius: '4px',
+                                color: 'white',
+                                padding: '4px 8px',
+                                fontSize: '13px',
+                                outline: 'none',
+                            }}
+                        />
+                        {dateSaveStatus === 'saving' && (
+                            <span style={{ color: '#ff9500', fontSize: '12px' }}>💾</span>
+                        )}
+                        {dateSaveStatus === 'success' && (
+                            <span style={{ color: '#4aff4a', fontSize: '12px' }}>✅</span>
+                        )}
+                        {dateSaveStatus === 'error' && (
+                            <span style={{ color: '#ff4444', fontSize: '12px' }}>❌</span>
+                        )}
+                        {dateChanged && dateSaveStatus === 'idle' && (
+                            <span style={{ color: '#888', fontSize: '12px' }}>●</span>
+                        )}
                     </div>
                     <div>
                         <span style={{ color: '#555' }}>Создано:</span> {formatDateTime(note?.createdAt)}

@@ -18,6 +18,7 @@ const swagger_1 = require("@nestjs/swagger");
 const notes_service_1 = require("./notes.service");
 const create_note_dto_1 = require("./dto/create-note.dto");
 const update_position_dto_1 = require("./dto/update-position.dto");
+const update_date_dto_1 = require("./dto/update-date.dto");
 let NotesController = class NotesController {
     constructor(notesService) {
         this.notesService = notesService;
@@ -56,6 +57,9 @@ let NotesController = class NotesController {
     }
     async updatePosition(noteId, updatePositionDto) {
         return this.notesService.updateNotePosition(noteId, updatePositionDto.x, updatePositionDto.y);
+    }
+    async updateDate(noteId, updateDateDto) {
+        return this.notesService.updateNoteDate(noteId, updateDateDto.date);
     }
     async bulkDeleteNotes(data, userId = 'test-user-id') {
         const deletedCount = await this.notesService.bulkDeleteNotes(data.noteIds, userId);
@@ -154,6 +158,16 @@ __decorate([
     __metadata("design:paramtypes", [String, update_position_dto_1.UpdatePositionDto]),
     __metadata("design:returntype", Promise)
 ], NotesController.prototype, "updatePosition", null);
+__decorate([
+    (0, common_1.Patch)(':id/date'),
+    (0, swagger_1.ApiOperation)({ summary: 'Update note date and time' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: 'Date updated successfully' }),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_date_dto_1.UpdateDateDto]),
+    __metadata("design:returntype", Promise)
+], NotesController.prototype, "updateDate", null);
 __decorate([
     (0, common_1.Delete)('bulk'),
     (0, swagger_1.ApiOperation)({ summary: 'Delete multiple notes' }),

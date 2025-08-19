@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { NotesService } from './notes.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdatePositionDto } from './dto/update-position.dto';
+import { UpdateDateDto } from './dto/update-date.dto';
 import { Note } from '@prisma/client';
 
 @ApiTags('notes')
@@ -115,6 +116,16 @@ export class NotesController {
       updatePositionDto.x,
       updatePositionDto.y,
     );
+  }
+
+  @Patch(':id/date')
+  @ApiOperation({ summary: 'Update note date and time' })
+  @ApiResponse({ status: 200, description: 'Date updated successfully' })
+  async updateDate(
+    @Param('id') noteId: string,
+    @Body() updateDateDto: UpdateDateDto,
+  ): Promise<Note> {
+    return this.notesService.updateNoteDate(noteId, updateDateDto.date);
   }
 
   @Delete('bulk')

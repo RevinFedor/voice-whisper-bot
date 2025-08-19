@@ -1,6 +1,7 @@
 import { NotesService } from './notes.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdatePositionDto } from './dto/update-position.dto';
+import { UpdateDateDto } from './dto/update-date.dto';
 import { Note } from '@prisma/client';
 export declare class NotesController {
     private readonly notesService;
@@ -18,6 +19,7 @@ export declare class NotesController {
         content?: string;
     }): Promise<Note>;
     updatePosition(noteId: string, updatePositionDto: UpdatePositionDto): Promise<Note>;
+    updateDate(noteId: string, updateDateDto: UpdateDateDto): Promise<Note>;
     bulkDeleteNotes(data: {
         noteIds: string[];
     }, userId?: string): Promise<{

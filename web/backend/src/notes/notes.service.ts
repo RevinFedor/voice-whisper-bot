@@ -34,11 +34,21 @@ export class NotesService {
    * Find the next available Y position in a column (fills gaps)
    */
   private async findNextAvailableY(userId: string, date: Date): Promise<number> {
+    // Get start and end of day for date range query
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
     // Get all notes in this column that haven't been manually moved
     const notesInColumn = await this.prisma.note.findMany({
       where: {
         userId,
-        date,
+        date: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
         manuallyPositioned: false, // Only include notes that are in the column
         isArchived: false,
       },
@@ -93,26 +103,16 @@ export class NotesService {
     // No user management needed - app is local
     // Skip user creation completely - just use the userId as string identifier
     
-    // Use provided date or today
+    // Use provided date or current time
     let noteDate: Date;
     if (data.date) {
-      // Handle both Date object and string format
-      if (typeof data.date === 'string') {
-        // Parse YYYY-MM-DD format as UTC midnight to avoid timezone shifts
-        const [year, month, day] = data.date.split('-').map(Number);
-        noteDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-      } else {
-        noteDate = new Date(data.date);
-      }
+      noteDate = new Date(data.date);
     } else {
-      // Default to today at UTC midnight
-      const today = new Date();
-      noteDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
+      noteDate = new Date(); // Current date and time
     }
     // Ensure it's a valid date
     if (isNaN(noteDate.getTime())) {
-      const today = new Date();
-      noteDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
+      noteDate = new Date(); // Fallback to current time if invalid
     }
     // Don't call setHours for UTC dates - they're already at midnight UTC
     
@@ -320,6 +320,31 @@ export class NotesService {
         x,
         y,
         manuallyPositioned: true, // Any manual position update marks it as manually positioned
+      },
+    });
+    
+    return this.serializeNote(updatedNote);
+  }
+
+  /**
+   * Update note date and time
+   */
+  async updateNoteDate(noteId: string, dateString: string): Promise<Note> {
+    const newDate = new Date(dateString);
+    
+    // Validate date
+    if (isNaN(newDate.getTime())) {
+      throw new Error('Invalid date format');
+    }
+
+    console.log('📅 [Notes] Updating note date');
+    console.log(`   Note ID: ${noteId}`);
+    console.log(`   New date: ${newDate.toISOString()}`);
+
+    const updatedNote = await this.prisma.note.update({
+      where: { id: noteId },
+      data: { 
+        date: newDate,
       },
     });
     

@@ -148,8 +148,11 @@ export class ObsidianService {
       const filename = `${sanitizedTitle}.md`;
       const filepath = `${targetFolder}/${filename}`;
 
-      // Формируем frontmatter
-      const formattedDate = note.date.toISOString().slice(0, 16).replace('T', ' ');
+      // Формируем frontmatter с полными датами для Obsidian
+      // Используем формат YYYY-MM-DD HH:mm:ss для лучшей совместимости с Obsidian
+      const dateForDisplay = note.date.toISOString().slice(0, 19).replace('T', ' ');
+      const createdDate = note.date.toISOString().slice(0, 19).replace('T', ' ');
+      const modifiedDate = note.updatedAt.toISOString().slice(0, 19).replace('T', ' ');
       const tags = note.tags?.length > 0 ? note.tags : [];
       
       // Экранируем title для YAML (заключаем в кавычки если содержит спецсимволы)
@@ -157,10 +160,12 @@ export class ObsidianService {
         ? `"${note.title.replace(/"/g, '\\"')}"` 
         : note.title;
 
-      // Формируем YAML frontmatter
+      // Формируем YAML frontmatter с полями created и modified для Obsidian
       let frontmatter = `---
 title: ${escapedTitle}
-date: "${formattedDate}"
+date: "${dateForDisplay}"
+created: "${createdDate}"
+modified: "${modifiedDate}"
 source: WebApplication`;
 
       // Добавляем tags только если они есть
@@ -169,8 +174,7 @@ source: WebApplication`;
       }
       // Если тегов нет - не добавляем поле tags вообще
 
-      frontmatter += `\ncreated: "${note.createdAt.toISOString()}"
----`;
+      frontmatter += `\n---`;
 
       const content = `${frontmatter}
 
