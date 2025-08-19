@@ -167,9 +167,55 @@ export class CustomNoteShapeUtil extends ShapeUtil {
         }, [isHovered, editor, shape.id]);
 
         const { richText, noteType, time, duration, color, manuallyPositioned } = shape.props;
-        const [isMergeTarget, setIsMergeTarget] = React.useState(false);
+        
+        // State для tooltip и merge target
         const [showTooltip, setShowTooltip] = React.useState(false);
         const [tooltipPosition, setTooltipPosition] = React.useState({ x: 0, y: 0 });
+        const titleRef = React.useRef(null);
+        const [isMergeTarget, setIsMergeTarget] = React.useState(false);
+        
+        // Извлекаем заголовок из richText (ПЕРЕД использованием в useEffect)
+        let title = '';
+        if (richText && richText.content) {
+            const paragraphs = richText.content.filter((p) => p.content && p.content[0]).map((p) => p.content[0].text);
+            if (paragraphs.length > 0) {
+                title = paragraphs[0];
+            }
+        }
+
+        // Tooltip management based on tldraw hover state
+        React.useEffect(() => {
+            console.log('🔸 Tooltip effect:', { isHovered, title, hasRef: !!titleRef.current });
+            if (isHovered && title && titleRef.current) {
+                // Check if text is truncated before showing tooltip
+                const element = titleRef.current;
+                const scrollWidth = element.scrollWidth;
+                const clientWidth = element.clientWidth;
+                const isTruncated = scrollWidth > clientWidth;
+                
+                console.log('📏 Text dimensions:', { scrollWidth, clientWidth, isTruncated });
+                
+                if (isTruncated) {
+                    // Get title element position (more precise than whole shape)
+                    const rect = element.getBoundingClientRect();
+                    console.log('📐 Title rect:', rect);
+                    
+                    const position = {
+                        x: rect.left + rect.width / 2, // Center over title
+                        y: rect.top - 10, // Above the title
+                    };
+                    
+                    console.log('🎯 Setting tooltip over title:', position);
+                    setTooltipPosition(position);
+                    setShowTooltip(true);
+                } else {
+                    console.log('📏 Text not truncated, no tooltip needed');
+                }
+            } else {
+                console.log('🔸 Hiding tooltip immediately');
+                setShowTooltip(false);
+            }
+        }, [isHovered, title, editor, shape.id]);
 
         // Listen for merge target highlighting
         React.useEffect(() => {
@@ -192,16 +238,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
 
             return () => observer.disconnect();
         }, [shape.id]);
-
-        // Извлекаем заголовок из richText
-        let title = '';
-        if (richText && richText.content) {
-            const paragraphs = richText.content.filter((p) => p.content && p.content[0]).map((p) => p.content[0].text);
-
-            if (paragraphs.length > 0) {
-                title = paragraphs[0];
-            }
-        }
 
         // Определяем цвет границы по типу и статусу
         let borderColor = NOTE_COLORS[noteType] || NOTE_COLORS.default;
@@ -279,8 +315,9 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                                 minWidth: 0, // Важно для text-overflow
                             }}
                         >
-                            {/* Заголовок с мгновенным tooltip */}
+                            {/* Заголовок с tldraw hover tooltip */}
                             <div
+                                ref={titleRef}
                                 style={{
                                     fontSize: '13px',
                                     fontWeight: '500',
@@ -290,21 +327,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                                     whiteSpace: 'nowrap',
                                     flex: 1,
                                     position: 'relative',
-                                }}
-                                onMouseEnter={(e) => {
-                                    // Показываем tooltip только если текст обрезан
-                                    const element = e.currentTarget;
-                                    if (element.scrollWidth > element.clientWidth && title) {
-                                        const rect = element.getBoundingClientRect();
-                                        setTooltipPosition({
-                                            x: rect.left + rect.width / 2, // Центрируем по горизонтали
-                                            y: rect.top - 10, // Небольшой отступ от верха элемента
-                                        });
-                                        setShowTooltip(true);
-                                    }
-                                }}
-                                onMouseLeave={() => {
-                                    setShowTooltip(false);
                                 }}
                             >
                                 {title || 'Без заголовка'}
@@ -325,8 +347,10 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                 </HTMLContainer>
 
                 {/* Мгновенный кастомный tooltip через Portal */}
-                {showTooltip &&
-                    title &&
+                {(() => {
+                    console.log('🎨 Tooltip render check:', { showTooltip, hasTitle: !!title, position: tooltipPosition });
+                    return showTooltip && title;
+                })() &&
                     ReactDOM.createPortal(
                         <div
                             style={{
@@ -367,6 +391,20 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                         </div>,
                         document.body
                     )}
+                
+                {/* CSS для анимации тултипа */}
+                <style>{`
+                    @keyframes fadeIn {
+                        from {
+                            opacity: 0;
+                            transform: translate(-50%, -100%) translateY(-5px);
+                        }
+                        to {
+                            opacity: 1;
+                            transform: translate(-50%, -100%) translateY(0);
+                        }
+                    }
+                `}</style>
             </>
         );
     }
