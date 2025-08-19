@@ -362,7 +362,7 @@ export default function SyncedProductionApp() {
                     labelColor: 'black',
                     richText: toRichText(note.title + '\n\n' + (note.content || '')),
                     noteType: note.type,
-                    time: new Date(note.createdAt).toLocaleTimeString('ru-RU', { 
+                    time: new Date(note.date).toLocaleTimeString('ru-RU', { 
                         hour: '2-digit', 
                         minute: '2-digit' 
                     }),
@@ -978,9 +978,7 @@ export default function SyncedProductionApp() {
                     y: shape.y,
                     manuallyPositioned: shape.props.manuallyPositioned || false,
                     voiceDuration: shape.props.duration ? parseInt(shape.props.duration.split(':')[0]) * 60 + parseInt(shape.props.duration.split(':')[1]) : null,
-                    date: new Date().toISOString(),
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
+                    date: new Date().toISOString()
                 });
                 setIsNoteModalOpen(true);
             }
@@ -1486,9 +1484,7 @@ export default function SyncedProductionApp() {
                         y: shape.y,
                         manuallyPositioned: shape.props.manuallyPositioned || false,
                         voiceDuration: shape.props.duration ? parseInt(shape.props.duration.split(':')[0]) * 60 + parseInt(shape.props.duration.split(':')[1]) : null,
-                        date: new Date().toISOString(),
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
+                        date: new Date().toISOString()
                     });
                     setIsNoteModalOpen(true);
                 }
@@ -1671,7 +1667,7 @@ export default function SyncedProductionApp() {
                 labelColor: 'black',
                 richText: toRichText(note.title + '\n\n' + (note.content || '')),
                 noteType: note.type,
-                time: new Date(note.createdAt).toLocaleTimeString('ru-RU', { 
+                time: new Date(note.date).toLocaleTimeString('ru-RU', { 
                     hour: '2-digit', 
                     minute: '2-digit' 
                 }),
@@ -1830,11 +1826,34 @@ export default function SyncedProductionApp() {
                                     ]
                                 };
                                 
+                                // Обновляем время на карточке
+                                const time = new Date(updatedNote.date).toLocaleTimeString('ru-RU', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit' 
+                                });
+                                
+                                // Обновляем props карточки
                                 editor.updateShape({
                                     id: shape.id,
                                     type: 'custom-note',
-                                    props: { richText }
+                                    props: { 
+                                        richText,
+                                        time // Обновляем время на карточке
+                                    }
                                 });
+                                
+                                // Если дата изменилась и заметка не перемещена вручную, обновляем позицию
+                                if (!updatedNote.manuallyPositioned) {
+                                    const newX = calculateColumnX(updatedNote.date);
+                                    if (Math.abs(shape.x - newX) > 1) { // Если позиция изменилась
+                                        editor.updateShape({
+                                            id: shape.id,
+                                            type: 'custom-note',
+                                            x: newX,
+                                            y: updatedNote.y
+                                        });
+                                    }
+                                }
                             }
                             
                             // Обновляем selectedNote чтобы модалка показывала актуальные данные
