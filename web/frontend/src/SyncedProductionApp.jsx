@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Tldraw, createShapeId } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
@@ -233,6 +233,9 @@ export default function SyncedProductionApp() {
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
     const [showExportToast, setShowExportToast] = useState(false);
     const [exportToastData, setExportToastData] = useState(null);
+    
+    // Флаг для отслеживания программных обновлений позиции (используется в обоих useEffect)
+    const isProgrammaticUpdateRef = useRef(false);
     
     // Load notes from backend
     const loadNotes = useCallback(async () => {
@@ -689,6 +692,11 @@ export default function SyncedProductionApp() {
                     if (to.type === 'custom-note' && (from.x !== to.x || from.y !== to.y)) {
                         // Get DB ID from shape props
                         const dbId = to.props?.dbId;
+                        
+                        // Игнорируем программные обновления позиции
+                        if (isProgrammaticUpdateRef.current) {
+                            return;
+                        }
                         
                         // Track dragged notes
                         
@@ -1824,12 +1832,17 @@ export default function SyncedProductionApp() {
                                 if (!updatedNote.manuallyPositioned) {
                                     const newX = calculateColumnX(updatedNote.date);
                                     if (Math.abs(shape.x - newX) > 1) { // Если позиция изменилась
+                                        isProgrammaticUpdateRef.current = true; // Устанавливаем флаг перед программным обновлением
                                         editor.updateShape({
                                             id: shape.id,
                                             type: 'custom-note',
                                             x: newX,
                                             y: updatedNote.y
                                         });
+                                        // Сбрасываем флаг после обновления
+                                        setTimeout(() => {
+                                            isProgrammaticUpdateRef.current = false;
+                                        }, 100);
                                     }
                                 }
                             }

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 @Injectable()
 export class ObsidianService {
@@ -148,11 +152,8 @@ export class ObsidianService {
       const filename = `${sanitizedTitle}.md`;
       const filepath = `${targetFolder}/${filename}`;
 
-      // Формируем frontmatter с полными датами для Obsidian
-      // Используем формат YYYY-MM-DD HH:mm:ss для лучшей совместимости с Obsidian
+      // Формируем frontmatter для Obsidian
       const dateForDisplay = note.date.toISOString().slice(0, 19).replace('T', ' ');
-      const createdDate = note.date.toISOString().slice(0, 19).replace('T', ' ');
-      const modifiedDate = note.updatedAt.toISOString().slice(0, 19).replace('T', ' ');
       const tags = note.tags?.length > 0 ? note.tags : [];
       
       // Экранируем title для YAML (заключаем в кавычки если содержит спецсимволы)
@@ -160,12 +161,10 @@ export class ObsidianService {
         ? `"${note.title.replace(/"/g, '\\"')}"` 
         : note.title;
 
-      // Формируем YAML frontmatter с полями created и modified для Obsidian
+      // Формируем YAML frontmatter - только необходимые поля
       let frontmatter = `---
 title: ${escapedTitle}
 date: "${dateForDisplay}"
-created: "${createdDate}"
-modified: "${modifiedDate}"
 source: WebApplication`;
 
       // Добавляем tags только если они есть
@@ -207,6 +206,9 @@ ${note.content || ''}`;
         console.log(`   📝 Заголовок: ${note.title}`);
         console.log(`   📁 Папка: ${targetFolder}`);
         console.log(`   🏷️ Теги: ${tags.length > 0 ? tags.join(', ') : 'нет'}`);
+
+        // Устанавливаем правильные системные даты файла
+        await this.setFileDates(filepath, note.date, note.updatedAt);
 
         // Удаляем заметку из БД после успешного экспорта
         await this.prisma.note.delete({
@@ -256,6 +258,45 @@ ${note.content || ''}`;
         success: false,
         error: errorMessage,
       };
+    }
+  }
+
+  /**
+   * Устанавливает системные даты создания и модификации файла
+   * Использует команду SetFile на macOS
+   */
+  private async setFileDates(filepath: string, createdDate: Date, modifiedDate: Date): Promise<void> {
+    try {
+      // Получаем путь к vault
+      const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '/Users/fedor/Documents/Obsidian Vault';
+      const fullPath = `${vaultPath}/${filepath}`;
+      
+      // Форматируем даты для SetFile (MM/DD/YYYY HH:MM:SS)
+      const formatDate = (date: Date) => {
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${month}/${day}/${year} ${hours}:${minutes}:${seconds}`;
+      };
+      
+      const createdStr = formatDate(createdDate);
+      const modifiedStr = formatDate(modifiedDate);
+      
+      // Устанавливаем дату создания
+      await execAsync(`SetFile -d '${createdStr}' "${fullPath}"`);
+      console.log(`   📅 Дата создания установлена: ${createdStr}`);
+      
+      // Устанавливаем дату модификации
+      await execAsync(`SetFile -m '${modifiedStr}' "${fullPath}"`);
+      console.log(`   📅 Дата модификации установлена: ${modifiedStr}`);
+      
+    } catch (error) {
+      // Не критичная ошибка - файл создан, просто даты системные не изменены
+      console.warn(`   ⚠️ Не удалось изменить системные даты: ${error.message}`);
+      console.log(`   ℹ️ Файл создан с правильным frontmatter (created/modified)`);
     }
   }
 }
