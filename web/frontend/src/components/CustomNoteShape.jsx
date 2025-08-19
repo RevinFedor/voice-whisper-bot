@@ -130,10 +130,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                 const hoveredId = editor.getHoveredShapeId();
                 const result = hoveredId === shape.id;
 
-                // Debug logging for hover state
-                if (window.DEBUG_HOVER && result) {
-                    console.log(`🔸 Component: Shape ${shape.id.substring(0, 8)} isHovered=${result}`);
-                }
 
                 return result;
             },
@@ -147,9 +143,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
             if (isHovered) {
                 // Set pointer cursor through tldraw's cursor system
                 editor.setCursor({ type: 'pointer', rotation: 0 });
-                if (window.DEBUG_HOVER) {
-                    console.log(`🎯 Setting tldraw cursor to pointer for ${shape.id.substring(0, 8)}`);
-                }
             } else {
                 // Reset to default cursor when not hovered
                 // Check if we're not hovering ANY custom-note to avoid conflicts
@@ -159,9 +152,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                 // Only reset if not hovering another custom-note
                 if (!hoveredShape || hoveredShape.type !== 'custom-note') {
                     editor.setCursor({ type: 'default', rotation: 0 });
-                    if (window.DEBUG_HOVER) {
-                        console.log(`🔄 Resetting tldraw cursor to default (unhover ${shape.id.substring(0, 8)})`);
-                    }
                 }
             }
         }, [isHovered, editor, shape.id]);
@@ -185,7 +175,6 @@ export class CustomNoteShapeUtil extends ShapeUtil {
 
         // Tooltip management based on tldraw hover state
         React.useEffect(() => {
-            console.log('🔸 Tooltip effect:', { isHovered, title, hasRef: !!titleRef.current });
             if (isHovered && title && titleRef.current) {
                 // Check if text is truncated before showing tooltip
                 const element = titleRef.current;
@@ -193,26 +182,19 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                 const clientWidth = element.clientWidth;
                 const isTruncated = scrollWidth > clientWidth;
                 
-                console.log('📏 Text dimensions:', { scrollWidth, clientWidth, isTruncated });
-                
                 if (isTruncated) {
                     // Get title element position (more precise than whole shape)
                     const rect = element.getBoundingClientRect();
-                    console.log('📐 Title rect:', rect);
                     
                     const position = {
                         x: rect.left + rect.width / 2, // Center over title
                         y: rect.top - 10, // Above the title
                     };
                     
-                    console.log('🎯 Setting tooltip over title:', position);
                     setTooltipPosition(position);
                     setShowTooltip(true);
-                } else {
-                    console.log('📏 Text not truncated, no tooltip needed');
                 }
             } else {
-                console.log('🔸 Hiding tooltip immediately');
                 setShowTooltip(false);
             }
         }, [isHovered, title, editor, shape.id]);
@@ -347,10 +329,7 @@ export class CustomNoteShapeUtil extends ShapeUtil {
                 </HTMLContainer>
 
                 {/* Мгновенный кастомный tooltip через Portal */}
-                {(() => {
-                    console.log('🎨 Tooltip render check:', { showTooltip, hasTitle: !!title, position: tooltipPosition });
-                    return showTooltip && title;
-                })() &&
+                {showTooltip && title &&
                     ReactDOM.createPortal(
                         <div
                             style={{

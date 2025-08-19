@@ -63,7 +63,6 @@ export function SelectionContextMenu() {
     // Если есть активная рамка - запоминаем это
     React.useEffect(() => {
         if (hasBrush) {
-            console.log('🎯 Brush detected, setting wasBrushUsedRef = true');
             wasBrushUsedRef.current = true;
         }
     }, [hasBrush]);
