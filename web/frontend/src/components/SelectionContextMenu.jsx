@@ -10,7 +10,7 @@ if (!import.meta.env.VITE_API_URL) {
 }
 const API_URL = import.meta.env.VITE_API_URL;
 
-export function SelectionContextMenu() {
+export function SelectionContextMenu({ onAfterDelete }) {
     const editor = useEditor();
     const { showToast } = useToast();
     
@@ -229,6 +229,12 @@ export function SelectionContextMenu() {
             
             showToast(`Удалено заметок: ${selectedNotes.length}`, 'success');
             setShowDeleteConfirm(false);
+            
+            // Call callback to update headers after deletion
+            if (onAfterDelete) {
+                onAfterDelete();
+            }
+            
             // Возвращаем фокус к editor после успешного удаления
             setTimeout(() => editor.focus(), 0);
         } catch (error) {

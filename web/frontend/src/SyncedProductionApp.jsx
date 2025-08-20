@@ -253,7 +253,9 @@ export default function SyncedProductionApp() {
             setNotes(data);
             
             // Build date column map from unique dates (normalized to days)
-            const normalizedDates = data.map(note => {
+            // Only consider notes that are NOT manually positioned for column calculation
+            const columnNotes = data.filter(note => !note.manuallyPositioned);
+            const normalizedDates = columnNotes.map(note => {
                 const date = new Date(note.date);
                 date.setHours(0, 0, 0, 0);
                 return date.toISOString();
@@ -274,7 +276,7 @@ export default function SyncedProductionApp() {
             });
             setDateColumnMap(mapping);
             
-            console.log(`📊 Loaded ${data.length} notes with ${uniqueDates.length} unique dates`);
+            console.log(`📊 Loaded ${data.length} notes (${columnNotes.length} in columns, ${data.length - columnNotes.length} manually positioned) with ${uniqueDates.length} unique column dates`);
             return { notes: data, dateMap: mapping };
         } catch (error) {
             console.error('❌ Error loading notes:', error);
@@ -342,21 +344,68 @@ export default function SyncedProductionApp() {
     const generateDateHeaders = useCallback((editor, customDateMap = null) => {
         if (!editor) return;
         
-        // All header operations should be marked as programmatic
+        console.log('🔍 === generateDateHeaders START ===');
+        console.log('🔍 Call stack:', new Error().stack.split('\n')[2]);
+        
+        // Get ALL shapes first
+        const allShapes = editor.getCurrentPageShapes();
+        console.log('🔍 Total shapes before:', allShapes.length);
+        console.log('🔍 Shape types before:', allShapes.reduce((acc, s) => {
+            acc[s.type] = (acc[s.type] || 0) + 1;
+            return acc;
+        }, {}));
+        
+        // Get existing headers BEFORE mergeRemoteChanges
+        const existingHeaders = allShapes.filter(s => 
+            s.type === 'text' || s.type === 'static-date-header' || 
+            (s.type === 'geo' && s.props?.w === 2 && s.props?.h === 800) // Our separator
+        );
+        
+        console.log('🔍 Headers to delete:', existingHeaders.length);
+        
+        // Delete headers OUTSIDE of mergeRemoteChanges first (deleteShapes doesn't work inside mergeRemoteChanges)
+        if (existingHeaders.length > 0) {
+            const idsToDelete = existingHeaders.map(s => s.id);
+            console.log('🔍 Deleting IDs:', idsToDelete.length);
+            
+            // Check if they are locked
+            const lockedHeaders = existingHeaders.filter(s => s.isLocked);
+            console.log('🔍 Locked headers:', lockedHeaders.length);
+            
+            if (lockedHeaders.length > 0) {
+                console.log('🔍 Unlocking headers first...');
+                // Unlock all headers first
+                lockedHeaders.forEach(header => {
+                    editor.updateShape({
+                        id: header.id,
+                        type: header.type,
+                        isLocked: false
+                    });
+                });
+            }
+            
+            // Check they exist before delete
+            const existBefore = idsToDelete.filter(id => editor.getShape(id));
+            console.log('🔍 Exist before delete:', existBefore.length);
+            
+            editor.deleteShapes(idsToDelete);
+            
+            // Check they were deleted
+            const existAfter = idsToDelete.filter(id => editor.getShape(id));
+            console.log('🔍 Still exist after delete:', existAfter.length);
+            
+            if (existAfter.length > 0) {
+                console.log('⚠️ PROBLEM: Headers not deleted:', existAfter);
+            }
+        }
+        
+        // Now create new headers inside mergeRemoteChanges
         editor.store.mergeRemoteChanges(() => {
-            // Remove existing date headers and separators
-            const existingHeaders = editor.getCurrentPageShapes().filter(s => 
-                s.type === 'text' || s.type === 'static-date-header' || 
-                (s.type === 'geo' && s.props?.w === 2 && s.props?.h === 800) // Our separator
-            );
-            editor.deleteShapes(existingHeaders.map(s => s.id));
             
             const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().split('T')[0];
         const STATIC_DAYS = 7;
-        
-        console.log('🎯 Generating hybrid date headers...');
         
         // 1. Generate static 7 days headers (always visible)
         for (let i = -STATIC_DAYS; i <= 0; i++) {
@@ -383,7 +432,6 @@ export default function SyncedProductionApp() {
                 },
             });
         }
-        console.log(`✅ Created ${STATIC_DAYS + 1} static day headers`);
         
         // 2. Generate dynamic old dates headers (only for existing dates)
         const mapToUse = customDateMap || dateColumnMap;
@@ -420,8 +468,6 @@ export default function SyncedProductionApp() {
                 });
             });
             
-            console.log(`✅ Created ${oldDates.length} dynamic old date headers`);
-            
             // 3. Add visual separator if there are old dates  
             if (oldDates.length > 0) {
                 // Create a vertical line using geo shape (more reliable than line)
@@ -442,19 +488,46 @@ export default function SyncedProductionApp() {
                         size: 's',
                     },
                 });
-                console.log('✅ Added separator between zones');
             }
         }
         });
+        
+        // Check final state
+        console.log('🔍 After creating new headers:');
+        const finalShapes = editor.getCurrentPageShapes();
+        console.log('🔍 Total shapes after:', finalShapes.length);
+        console.log('🔍 Shape types after:', finalShapes.reduce((acc, s) => {
+            acc[s.type] = (acc[s.type] || 0) + 1;
+            return acc;
+        }, {}));
+        
+        // Check for duplicates
+        const finalHeaders = finalShapes.filter(s => 
+            s.type === 'static-date-header' || s.type === 'text'
+        );
+        const positionMap = {};
+        finalHeaders.forEach(h => {
+            const key = `${Math.round(h.x)}_${Math.round(h.y)}`;
+            if (!positionMap[key]) positionMap[key] = [];
+            positionMap[key].push(h.id);
+        });
+        
+        const duplicates = Object.entries(positionMap).filter(([_, ids]) => ids.length > 1);
+        if (duplicates.length > 0) {
+            console.log('⚠️ DUPLICATES FOUND:', duplicates);
+        }
+        
+        console.log('🔍 === generateDateHeaders END ===');
     }, [dateColumnMap]); // dateColumnMap is still a dependency for when customDateMap is not provided
     
     // Generate date headers when dateColumnMap updates
-    useEffect(() => {
-        if (editor) {
-            // Always generate static headers, dynamic headers will be added if dateColumnMap has old dates
-            generateDateHeaders(editor);
-        }
-    }, [editor, dateColumnMap, generateDateHeaders]);
+    // DISABLED: This causes double generation after loadNotes
+    // useEffect(() => {
+    //     if (editor) {
+    //         // Always generate static headers, dynamic headers will be added if dateColumnMap has old dates
+    //         generateDateHeaders(editor);
+    //     }
+    // }, [editor, dateColumnMap, generateDateHeaders]);
     
     // Create shapes from notes
     const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false, customDateMap = null) => {
@@ -843,6 +916,12 @@ export default function SyncedProductionApp() {
                                     },
                                 });
                             });
+                            
+                            // If note became manually positioned, reload to update dateColumnMap
+                            if (updatedNote.manuallyPositioned) {
+                                console.log('🔄 Note became manually positioned, reloading to update columns');
+                                await loadNotes();
+                            }
                         }
                     }
                 }
@@ -1345,6 +1424,60 @@ export default function SyncedProductionApp() {
             window.DEBUG_HOVER = false;
             console.log('❌ Hover debugging disabled');
         };
+        
+        // DEBUG: Test header deletion
+        window.testDelete = () => {
+            console.log('🧪 Testing header deletion');
+            const headers = editor.getCurrentPageShapes().filter(s => 
+                s.type === 'static-date-header' || s.type === 'text' || 
+                (s.type === 'geo' && s.props?.w === 2 && s.props?.h === 800)
+            );
+            console.log('🧪 Found headers:', headers.length);
+            
+            if (headers.length > 0) {
+                const first = headers[0];
+                console.log('🧪 First header:', {
+                    id: first.id,
+                    type: first.type,
+                    isLocked: first.isLocked,
+                    x: first.x,
+                    y: first.y
+                });
+                
+                // Check if locked
+                if (first.isLocked) {
+                    console.log('🧪 Header is LOCKED! Trying to unlock first...');
+                    editor.updateShape({
+                        id: first.id,
+                        type: first.type,
+                        isLocked: false
+                    });
+                    const afterUnlock = editor.getShape(first.id);
+                    console.log('🧪 Still locked after unlock attempt?', afterUnlock?.isLocked);
+                }
+                
+                // Test different delete methods
+                console.log('🧪 Method 1: deleteShapes([id])');
+                editor.deleteShapes([first.id]);
+                const stillExists1 = !!editor.getShape(first.id);
+                console.log('🧪 Still exists after deleteShapes?', stillExists1);
+                
+                if (stillExists1) {
+                    console.log('🧪 Method 2: deleteShape(id)');
+                    editor.deleteShape(first.id);
+                    const stillExists2 = !!editor.getShape(first.id);
+                    console.log('🧪 Still exists after deleteShape?', stillExists2);
+                    
+                    if (stillExists2) {
+                        console.log('🧪 Method 3: remove([id])');
+                        editor.remove([first.id]);
+                        const stillExists3 = !!editor.getShape(first.id);
+                        console.log('🧪 Still exists after remove?', stillExists3);
+                    }
+                }
+            }
+        };
+        
         
         // Debug selection state for menu visibility
         window.debugSelection = () => {
@@ -2087,7 +2220,15 @@ export default function SyncedProductionApp() {
                         onAddNote={handleOpenDatePicker}
                         isSyncing={isSyncing}
                     />
-                    <SelectionContextMenu />
+                    <SelectionContextMenu 
+                        onAfterDelete={async () => {
+                            // Reload notes and regenerate headers after deletion
+                            const result = await loadNotes();
+                            const dateMap = result.dateMap || null;
+                            // Regenerate headers with the new dateMap
+                            generateDateHeaders(editor, dateMap);
+                        }}
+                    />
                 </Tldraw>
                 
                 <DatePickerModal
