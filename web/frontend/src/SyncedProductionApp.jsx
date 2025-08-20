@@ -235,9 +235,6 @@ export default function SyncedProductionApp() {
     const [showExportToast, setShowExportToast] = useState(false);
     const [exportToastData, setExportToastData] = useState(null);
     
-    // Флаг для отслеживания программных обновлений позиции (используется в обоих useEffect)
-    const isProgrammaticUpdateRef = useRef(false);
-    
     // Load notes from backend
     const loadNotes = useCallback(async () => {
         setIsSyncing(true);
@@ -345,14 +342,16 @@ export default function SyncedProductionApp() {
     const generateDateHeaders = useCallback((editor) => {
         if (!editor) return;
         
-        // Remove existing date headers and separators
-        const existingHeaders = editor.getCurrentPageShapes().filter(s => 
-            s.type === 'text' || s.type === 'static-date-header' || 
-            (s.type === 'geo' && s.props?.w === 2 && s.props?.h === 800) // Our separator
-        );
-        editor.deleteShapes(existingHeaders.map(s => s.id));
-        
-        const today = new Date();
+        // All header operations should be marked as programmatic
+        editor.store.mergeRemoteChanges(() => {
+            // Remove existing date headers and separators
+            const existingHeaders = editor.getCurrentPageShapes().filter(s => 
+                s.type === 'text' || s.type === 'static-date-header' || 
+                (s.type === 'geo' && s.props?.w === 2 && s.props?.h === 800) // Our separator
+            );
+            editor.deleteShapes(existingHeaders.map(s => s.id));
+            
+            const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().split('T')[0];
         const STATIC_DAYS = 7;
@@ -445,6 +444,7 @@ export default function SyncedProductionApp() {
                 console.log('✅ Added separator between zones');
             }
         }
+        });
     }, [dateColumnMap]);
     
     // Generate date headers when dateColumnMap updates
@@ -468,17 +468,19 @@ export default function SyncedProductionApp() {
             // console.log('📸 Saved camera position:', savedCamera);
         }
         
-        // Clear existing shapes
-        const existingShapes = editor.getCurrentPageShapes();
-        editor.deleteShapes(existingShapes.map(s => s.id));
-        
-        // Create new ID map
+        // Create new ID map before mergeRemoteChanges
         const newNoteIdMap = new Map();
         
-        // Create shapes for each note
-        notesData.forEach(note => {
-            const shapeId = createShapeId();
-            newNoteIdMap.set(note.id, shapeId);
+        // All shape creation/deletion should be marked as programmatic
+        editor.store.mergeRemoteChanges(() => {
+            // Clear existing shapes
+            const existingShapes = editor.getCurrentPageShapes();
+            editor.deleteShapes(existingShapes.map(s => s.id));
+            
+            // Create shapes for each note
+            notesData.forEach(note => {
+                const shapeId = createShapeId();
+                newNoteIdMap.set(note.id, shapeId);
             
             // Calculate X position for column notes, use saved X for manually positioned
             let x;
@@ -515,12 +517,14 @@ export default function SyncedProductionApp() {
                 },
             };
             
-            editor.createShape(shapeData);
+                editor.createShape(shapeData);
+            });
+            
+            // Generate date headers (always show them even if no notes)
+            generateDateHeaders(editor);
         });
         
-        // Generate date headers (always show them even if no notes)
-        generateDateHeaders(editor);
-        
+        // Set the noteIdMap after all shapes are created
         // console.log('📊 Setting noteIdMap with', newNoteIdMap.size, 'entries');
         setNoteIdMap(newNoteIdMap);
         
@@ -591,8 +595,18 @@ export default function SyncedProductionApp() {
             return;
         }
         
+        // DEBUG: Показываем удаление при слиянии
+        if (window.DEBUG_SYNC) {
+            console.log('🔀 УДАЛЕНИЕ при слиянии:', {
+                действие: 'Удаляем перетаскиваемую заметку',
+                пометка: 'source: remote (слушатель НЕ попытается обработать)'
+            });
+        }
+        
         // Immediately hide the dragged note
-        editor.deleteShapes([draggedNote.id]);
+        editor.store.mergeRemoteChanges(() => {
+            editor.deleteShapes([draggedNote.id]);
+        });
         
         // Add loading animation to target note
         const targetElement = document.querySelector(`[data-shape="${targetNote.id}"]`);
@@ -790,13 +804,16 @@ export default function SyncedProductionApp() {
                     if (shapeId) {
                         const shape = editor.getShape(shapeId);
                         if (shape) {
-                            editor.updateShape({
-                                id: shapeId,
-                                type: shape.type,
-                                props: {
-                                    ...shape.props,
-                                    manuallyPositioned: updatedNote.manuallyPositioned,
-                                },
+                            // Use mergeRemoteChanges to mark as programmatic update
+                            editor.store.mergeRemoteChanges(() => {
+                                editor.updateShape({
+                                    id: shapeId,
+                                    type: shape.type,
+                                    props: {
+                                        ...shape.props,
+                                        manuallyPositioned: updatedNote.manuallyPositioned,
+                                    },
+                                });
                             });
                         }
                     }
@@ -809,11 +826,14 @@ export default function SyncedProductionApp() {
         // Subscribe to shape position changes
         let unsubscribe;
         unsubscribe = editor.store.listen((change) => {
-            // Убираем лишние логи для компактности
-            // console.log('🎯 Store change detected:', {
-            //     hasUpdates: Object.values(change.changes.updated).length > 0,
-            //     source: change.source,
-            // });
+            // DEBUG: Показываем что приходит в слушатель
+            if (window.DEBUG_SYNC) {
+                console.log('🔍 СЛУШАТЕЛЬ ПОЛУЧИЛ СОБЫТИЕ:', {
+                    source: change.source,
+                    количество_изменений: Object.values(change.changes.updated).length,
+                    тип: change.source === 'user' ? '👤 ОТ ПОЛЬЗОВАТЕЛЯ' : '🤖 ОТ ПРОГРАММЫ'
+                });
+            }
             
             // Handle position updates
             for (const [from, to] of Object.values(change.changes.updated)) {
@@ -831,9 +851,14 @@ export default function SyncedProductionApp() {
                         // Get DB ID from shape props
                         const dbId = to.props?.dbId;
                         
-                        // Игнорируем программные обновления позиции
-                        if (isProgrammaticUpdateRef.current) {
-                            return;
+                        // DEBUG: Показываем что обрабатываем
+                        if (window.DEBUG_SYNC) {
+                            console.log('📍 ОБРАБАТЫВАЕМ движение заметки:', {
+                                dbId,
+                                старая_позиция: { x: from.x, y: from.y },
+                                новая_позиция: { x: to.x, y: to.y },
+                                источник: 'USER (только пользовательские попадают сюда)'
+                            });
                         }
                         
                         // Track dragged notes
@@ -1803,8 +1828,9 @@ export default function SyncedProductionApp() {
         
         console.log(`📝 Adding single note at calculated X=${x}, Y=${note.y}, date: ${note.date}`);
         
-        // Create the shape
-        editor.createShape({
+        // Create the shape as programmatic update
+        editor.store.mergeRemoteChanges(() => {
+            editor.createShape({
             id: shapeId,
             type: 'custom-note',
             x: x,
@@ -1828,6 +1854,7 @@ export default function SyncedProductionApp() {
                 tags: note.tags || [],
                 aiSuggestedTags: note.aiSuggestedTags || [],
             },
+            });
         });
         
         console.log(`✨ Added single note shape without full reload`);
@@ -1983,34 +2010,42 @@ export default function SyncedProductionApp() {
                                     minute: '2-digit' 
                                 });
                                 
-                                // Обновляем props карточки
-                                editor.updateShape({
-                                    id: shape.id,
-                                    type: 'custom-note',
-                                    props: { 
-                                        richText,
-                                        time // Обновляем время на карточке
+                                // DEBUG: Показываем программное обновление
+                                if (window.DEBUG_SYNC) {
+                                    console.log('🤖 ПРОГРАММНОЕ ОБНОВЛЕНИЕ (смена даты):', {
+                                        действие: 'Двигаем заметку в новую колонку',
+                                        новая_дата: updatedNote.date,
+                                        новая_X: calculateColumnX(updatedNote.date),
+                                        пометка: 'source: remote (слушатель это НЕ увидит)'
+                                    });
+                                }
+                                
+                                // Use mergeRemoteChanges for all programmatic updates
+                                editor.store.mergeRemoteChanges(() => {
+                                    // Обновляем props карточки
+                                    editor.updateShape({
+                                        id: shape.id,
+                                        type: 'custom-note',
+                                        props: { 
+                                            richText,
+                                            time // Обновляем время на карточке
+                                        }
+                                    });
+                                    
+                                    // Если дата изменилась и заметка не перемещена вручную, обновляем позицию
+                                    if (!updatedNote.manuallyPositioned) {
+                                        const newX = calculateColumnX(updatedNote.date);
+                                        // Backend уже пересчитал Y позицию, используем её
+                                        if (Math.abs(shape.x - newX) > 1 || Math.abs(shape.y - updatedNote.y) > 1) { // Если позиция изменилась
+                                            editor.updateShape({
+                                                id: shape.id,
+                                                type: 'custom-note',
+                                                x: newX,
+                                                y: updatedNote.y // Используем Y от backend (он нашел свободное место)
+                                            });
+                                        }
                                     }
                                 });
-                                
-                                // Если дата изменилась и заметка не перемещена вручную, обновляем позицию
-                                if (!updatedNote.manuallyPositioned) {
-                                    const newX = calculateColumnX(updatedNote.date);
-                                    // Backend уже пересчитал Y позицию, используем её
-                                    if (Math.abs(shape.x - newX) > 1 || Math.abs(shape.y - updatedNote.y) > 1) { // Если позиция изменилась
-                                        isProgrammaticUpdateRef.current = true; // Устанавливаем флаг перед программным обновлением
-                                        editor.updateShape({
-                                            id: shape.id,
-                                            type: 'custom-note',
-                                            x: newX,
-                                            y: updatedNote.y // Используем Y от backend (он нашел свободное место)
-                                        });
-                                        // Сбрасываем флаг после обновления
-                                        setTimeout(() => {
-                                            isProgrammaticUpdateRef.current = false;
-                                        }, 100);
-                                    }
-                                }
                             }
                             
                             // Обновляем selectedNote чтобы модалка показывала актуальные данные
@@ -2027,7 +2062,9 @@ export default function SyncedProductionApp() {
                             const shapes = editor.getCurrentPageShapes();
                             const shape = shapes.find(s => s.props?.dbId === exportData.noteId);
                             if (shape) {
-                                editor.deleteShape(shape.id);
+                                editor.store.mergeRemoteChanges(() => {
+                                    editor.deleteShape(shape.id);
+                                });
                             }
                         }
                         
