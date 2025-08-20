@@ -339,7 +339,7 @@ export default function SyncedProductionApp() {
     }, [dateColumnMap]);
     
     // Generate date headers with hybrid approach
-    const generateDateHeaders = useCallback((editor) => {
+    const generateDateHeaders = useCallback((editor, customDateMap = null) => {
         if (!editor) return;
         
         // All header operations should be marked as programmatic
@@ -386,8 +386,9 @@ export default function SyncedProductionApp() {
         console.log(`✅ Created ${STATIC_DAYS + 1} static day headers`);
         
         // 2. Generate dynamic old dates headers (only for existing dates)
-        if (dateColumnMap) {
-            const oldDates = Object.keys(dateColumnMap)
+        const mapToUse = customDateMap || dateColumnMap;
+        if (mapToUse) {
+            const oldDates = Object.keys(mapToUse)
                 .filter(d => {
                     const date = new Date(d);
                     date.setHours(0, 0, 0, 0);
@@ -445,7 +446,7 @@ export default function SyncedProductionApp() {
             }
         }
         });
-    }, [dateColumnMap]);
+    }, [dateColumnMap]); // dateColumnMap is still a dependency for when customDateMap is not provided
     
     // Generate date headers when dateColumnMap updates
     useEffect(() => {
@@ -521,7 +522,7 @@ export default function SyncedProductionApp() {
             });
             
             // Generate date headers (always show them even if no notes)
-            generateDateHeaders(editor);
+            generateDateHeaders(editor, customDateMap);
         });
         
         // Set the noteIdMap after all shapes are created
@@ -646,10 +647,7 @@ export default function SyncedProductionApp() {
         }
         
         try {
-            // Small delay to ensure position updates are synced
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            // Get note data from backend
+            // Get note data from backend immediately - no delay needed
             const [draggedResponse, targetResponse] = await Promise.all([
                 fetch(`${API_URL}/notes/${draggedDbId}`, {
                     headers: { 'user-id': USER_ID }
@@ -1884,56 +1882,54 @@ export default function SyncedProductionApp() {
         const notesData = result.notes || result; // Handle both old and new return format
         const dateMap = result.dateMap || null;
         
-        // Wait a bit for dateColumnMap to be set by React state update
-        setTimeout(() => {
-            // Always generate static headers first
-            generateDateHeaders(editor);
-            
-            // Then create notes if any
-            if (notesData.length > 0) {
-                createShapesFromNotes(notesData, editor, false, dateMap);
-            } else {
-                // No notes - try to restore camera position or center on TODAY
-                const storedCameraStr = localStorage.getItem('tldraw-camera-position');
-                if (storedCameraStr) {
-                    try {
-                        const storedCamera = JSON.parse(storedCameraStr);
-                        // Check if position is not too old (24 hours)
-                        if (storedCamera.timestamp && Date.now() - storedCamera.timestamp < 24 * 60 * 60 * 1000) {
-                            editor.setCamera({ x: storedCamera.x, y: storedCamera.y, z: storedCamera.z });
-                            console.log('📸 No notes, but restored camera position from localStorage');
-                        } else {
-                            // Position too old
-                            const TODAY_X = 5000;
-                            const COLUMN_WIDTH = 180;
-                            editor.centerOnPoint({ 
-                                x: TODAY_X + (COLUMN_WIDTH / 2),
-                                y: 200 
-                            });
-                            console.log('📸 No notes, camera position too old, centered on TODAY');
-                        }
-                    } catch (e) {
-                        // Invalid stored data
+        // Generate headers and shapes immediately with the dateMap we have
+        // No need to wait for React state update
+        generateDateHeaders(editor, dateMap);
+        
+        // Then create notes if any
+        if (notesData.length > 0) {
+            createShapesFromNotes(notesData, editor, false, dateMap);
+        } else {
+            // No notes - try to restore camera position or center on TODAY
+            const storedCameraStr = localStorage.getItem('tldraw-camera-position');
+            if (storedCameraStr) {
+                try {
+                    const storedCamera = JSON.parse(storedCameraStr);
+                    // Check if position is not too old (24 hours)
+                    if (storedCamera.timestamp && Date.now() - storedCamera.timestamp < 24 * 60 * 60 * 1000) {
+                        editor.setCamera({ x: storedCamera.x, y: storedCamera.y, z: storedCamera.z });
+                        console.log('📸 No notes, but restored camera position from localStorage');
+                    } else {
+                        // Position too old
                         const TODAY_X = 5000;
                         const COLUMN_WIDTH = 180;
                         editor.centerOnPoint({ 
                             x: TODAY_X + (COLUMN_WIDTH / 2),
                             y: 200 
                         });
-                        console.log('📸 No notes, invalid stored position, centered on TODAY');
+                        console.log('📸 No notes, camera position too old, centered on TODAY');
                     }
-                } else {
-                    // No stored position
+                } catch (e) {
+                    // Invalid stored data
                     const TODAY_X = 5000;
                     const COLUMN_WIDTH = 180;
                     editor.centerOnPoint({ 
                         x: TODAY_X + (COLUMN_WIDTH / 2),
                         y: 200 
                     });
-                    console.log('📸 No notes found, centered on TODAY column');
+                    console.log('📸 No notes, invalid stored position, centered on TODAY');
                 }
+            } else {
+                // No stored position
+                const TODAY_X = 5000;
+                const COLUMN_WIDTH = 180;
+                editor.centerOnPoint({ 
+                    x: TODAY_X + (COLUMN_WIDTH / 2),
+                    y: 200 
+                });
+                console.log('📸 No notes found, centered on TODAY column');
             }
-        }, 100);
+        }
     }, [loadNotes, createShapesFromNotes, generateDateHeaders, handleNoteClick, calculateColumnX]);
     
     // Add single note shape without full reload
