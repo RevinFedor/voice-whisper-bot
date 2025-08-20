@@ -273,6 +273,19 @@ export default function SyncedProductionApp() {
             setDateColumnMap(mapping);
             
             console.log(`📊 Loaded ${data.length} notes with ${uniqueDates.length} unique dates`);
+            console.log('📅 Unique dates:', uniqueDates);
+            console.log('🗺️ Date mapping:', mapping);
+            
+            // Debug: check which dates are in static vs dynamic zones
+            const todayForDebug = new Date();
+            todayForDebug.setHours(0, 0, 0, 0);
+            uniqueDates.forEach(dateStr => {
+                const date = new Date(dateStr);
+                date.setHours(0, 0, 0, 0);
+                const daysDiff = Math.floor((date - todayForDebug) / (24 * 60 * 60 * 1000));
+                const zone = daysDiff >= -7 ? 'STATIC' : 'DYNAMIC';
+                console.log(`  ${dateStr.split('T')[0]} → ${zone} zone (day ${daysDiff})`);
+            });
             return { notes: data, dateMap: mapping };
         } catch (error) {
             console.error('❌ Error loading notes:', error);
@@ -283,12 +296,15 @@ export default function SyncedProductionApp() {
     }, []);
     
     // Calculate X position with hybrid approach: static 7 days + dynamic old dates
-    const calculateColumnX = useCallback((dateStr) => {
+    const calculateColumnX = useCallback((dateStr, customDateMap = null) => {
         const TODAY_X = 5000;
         const COLUMN_SPACING = 230;
         const STATIC_DAYS = 7; // Show 7 days back statically
         const SEPARATOR_X = 3300; // Position of visual separator
         const OLD_DATES_START_X = 3070; // Where old dates start
+        
+        // Use provided map or fall back to state
+        const mapToUse = customDateMap || dateColumnMap;
         
         // Calculate days difference from today
         const today = new Date();
@@ -300,13 +316,13 @@ export default function SyncedProductionApp() {
         // Static zone: last 7 days (including today)
         if (daysDiff >= -STATIC_DAYS && daysDiff <= 0) {
             const x = TODAY_X + (daysDiff * COLUMN_SPACING);
-            console.log(`📍 Static zone: ${dateStr.split('T')[0]} → X=${x} (day ${daysDiff})`);
+            // console.log(`📍 Static zone: ${dateStr.split('T')[0]} → X=${x} (day ${daysDiff})`);
             return x;
         }
         
         // Dynamic zone: older dates
         // Get all old dates from the map and sort them
-        const oldDates = Object.keys(dateColumnMap)
+        const oldDates = Object.keys(mapToUse)
             .filter(d => {
                 const date = new Date(d);
                 date.setHours(0, 0, 0, 0);
@@ -319,12 +335,13 @@ export default function SyncedProductionApp() {
         const oldDateIndex = oldDates.indexOf(dateStr);
         if (oldDateIndex !== -1) {
             const x = OLD_DATES_START_X - (oldDateIndex * COLUMN_SPACING);
-            console.log(`📚 Dynamic zone: ${dateStr.split('T')[0]} → X=${x} (index ${oldDateIndex})`);
+            // console.log(`📚 Dynamic zone: ${dateStr.split('T')[0]} → X=${x} (index ${oldDateIndex})`);
             return x;
         }
         
         // Fallback (shouldn't happen)
         console.warn(`⚠️ Date ${dateStr} not properly categorized, using fallback`);
+        console.warn(`  Available dates in map:`, Object.keys(mapToUse));
         return TODAY_X + (daysDiff * COLUMN_SPACING);
     }, [dateColumnMap]);
     
@@ -443,7 +460,7 @@ export default function SyncedProductionApp() {
     }, [editor, dateColumnMap, generateDateHeaders]);
     
     // Create shapes from notes
-    const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false) => {
+    const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false, customDateMap = null) => {
         if (!editor) return;
         
         // console.log('🎨 Creating shapes from notes:', notesData.length);
@@ -463,6 +480,7 @@ export default function SyncedProductionApp() {
         const newNoteIdMap = new Map();
         
         // Create shapes for each note
+        console.log('🎨 Creating shapes for notes...');
         notesData.forEach(note => {
             const shapeId = createShapeId();
             newNoteIdMap.set(note.id, shapeId);
@@ -471,9 +489,11 @@ export default function SyncedProductionApp() {
             let x;
             if (note.manuallyPositioned) {
                 x = note.x;
+                console.log(`  📌 Manual note at X=${x}: ${note.title}`);
             } else {
                 // Always use calculateColumnX for non-manual notes
-                x = calculateColumnX(note.date);
+                x = calculateColumnX(note.date, customDateMap);
+                console.log(`  📍 Auto note "${note.title}" date=${note.date.split('T')[0]} → X=${x}`);
             }
             
             const shapeData = {
@@ -722,7 +742,7 @@ export default function SyncedProductionApp() {
             const result = await loadNotes();
             const allNotes = result.notes || result;
             const dateMap = result.dateMap || null;
-            createShapesFromNotes(allNotes, editor, true);
+            createShapesFromNotes(allNotes, editor, true, dateMap);
             
             console.log('✨ Merge completed successfully');
             
@@ -1760,7 +1780,7 @@ export default function SyncedProductionApp() {
             
             // Then create notes if any
             if (notesData.length > 0) {
-                createShapesFromNotes(notesData, editor, false);
+                createShapesFromNotes(notesData, editor, false, dateMap);
             } else {
                 // No notes - still need to center camera on TODAY
                 const TODAY_X = 5000;
@@ -1883,7 +1903,7 @@ export default function SyncedProductionApp() {
                 const result = await loadNotes();
                 const allNotes = result.notes || result;
                 const dateMap = result.dateMap || null;
-                createShapesFromNotes(allNotes, editor, true);
+                createShapesFromNotes(allNotes, editor, true, dateMap);
             }, 5000); // Sync after 5 seconds
             
         } catch (error) {
