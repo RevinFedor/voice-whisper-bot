@@ -94,7 +94,6 @@ web/frontend/src/components/
 ### 4️⃣ ИЗУЧИ TELEGRAM БОТ
 ```bash
 telegram-bot/index.js        # Весь функционал в одном файле
-telegram-bot/index.js.archive # Старая версия с полным функционалом
 ```
 
 **Ключевые функции:**
