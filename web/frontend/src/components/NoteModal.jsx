@@ -2,6 +2,7 @@ import React, { useState, useRef, useLayoutEffect, useCallback, useEffect } from
 import { useScrollPreservingTextarea } from '../hooks/useScrollPreservingTextarea';
 import { useModalEscape, MODAL_PRIORITIES } from '../contexts/ModalStackContext';
 import { useClickOutside } from '../hooks/useClickOutside';
+import TagDropdown from './ux/TagDropdown';
 import obsidianIcon from '../assets/obsidian-icon.svg';
 
 // API configuration
@@ -95,10 +96,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     const [showAddTagInput, setShowAddTagInput] = useState(false);
     const [newTagInput, setNewTagInput] = useState('');
     const [obsidianTags, setObsidianTags] = useState([]);
-    const [showObsidianTags, setShowObsidianTags] = useState(false);
+    const [showTagDropdown, setShowTagDropdown] = useState(false);
     const [aiSuggestionsKey, setAiSuggestionsKey] = useState(0); // Ключ для перезапуска анимации
-    const [tagSearchInput, setTagSearchInput] = useState(''); // Поиск по тегам
-    const [filteredObsidianTags, setFilteredObsidianTags] = useState([]); // Отфильтрованные теги Obsidian
     
     // === СОСТОЯНИЕ ЭКСПОРТА ===
     const [isExporting, setIsExporting] = useState(false);
@@ -130,13 +129,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         }
     }, showTagHistory);
     
-    const obsidianTagsPanelRef = useClickOutside(() => {
-        if (showObsidianTags) {
-            setShowObsidianTags(false);
-            setTagSearchInput('');
-        }
-    }, showObsidianTags);
-    
     const addTagInputRef = useClickOutside(() => {
         if (showAddTagInput) {
             // Если тег не пустой - сохраняем его перед закрытием
@@ -148,6 +140,17 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         }
     }, showAddTagInput);
     
+    const tagDropdownRef = useClickOutside(() => {
+        if (showTagDropdown) {
+            // Если тег не пустой - сохраняем его перед закрытием
+            if (newTagInput.trim()) {
+                addManualTag(newTagInput);
+            }
+            setShowTagDropdown(false);
+            setNewTagInput('');
+        }
+    }, showTagDropdown, [addTagInputRef]); // Исключаем клик по самому input
+    
     // === ФУНКЦИЯ СБРОСА ВСЕХ ПАНЕЛЕЙ ===
     const resetAllPanels = useCallback(() => {
         setIsExpanded(false);
@@ -156,11 +159,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setPromptInput('');
         setShowTagChat(false);
         setShowTagHistory(false);
-        setShowObsidianTags(false);
+        setShowTagDropdown(false);
         setTagPromptInput('');
         setShowAddTagInput(false);
         setNewTagInput('');
-        setTagSearchInput('');
         setIsTitleFocused(false);
         setIsContentFocused(false);
     }, []);
@@ -177,7 +179,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         modalId,
         () => {
             // Проверяем, нет ли открытых вложенных элементов
-            if (isExpanded || showHistory || showPrompt || showTagChat || showAddTagInput || showTagHistory || showObsidianTags) {
+            if (isExpanded || showHistory || showPrompt || showTagChat || showAddTagInput || showTagHistory) {
                 return false; // Не закрываем основную модалку, есть вложенные элементы
             }
             handleModalClose();
@@ -238,16 +240,16 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     useModalEscape(
         `${modalId}-tag-panels`,
         () => {
-            if (showTagChat || showTagHistory || showObsidianTags) {
+            if (showTagChat || showTagHistory) {
                 setShowTagChat(false);
                 setShowTagHistory(false);
-                setShowObsidianTags(false);
+                setShowTagDropdown(false);
                 setTagPromptInput('');
                 return true;
             }
             return false;
         },
-        (showTagChat || showTagHistory || showObsidianTags) ? MODAL_PRIORITIES.TAG_PANELS : -1,
+        (showTagChat || showTagHistory) ? MODAL_PRIORITIES.TAG_PANELS : -1,
         { group: 'PANELS_GROUP', exclusive: true }
     );
     
@@ -607,7 +609,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setShowPrompt(false);
         setShowTagChat(false);
         setShowTagHistory(false);
-        setShowObsidianTags(false);
+        setShowTagDropdown(false);
         
         // Загружаем историю при открытии
         if (newShowHistory && titleHistory.length === 0) {
@@ -622,7 +624,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setShowHistory(false);
         setShowTagChat(false);
         setShowTagHistory(false);
-        setShowObsidianTags(false);
+        setShowTagDropdown(false);
         // Очищаем промпт при закрытии
         if (!newShowPrompt) {
             setPromptInput('');
@@ -857,6 +859,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         setNewTagInput('');
         setShowAddTagInput(false);
+        setShowTagDropdown(false);
     }, [localTags, note, onNoteUpdate]);
     
     // Очистить историю тегов
@@ -892,7 +895,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setShowHistory(false);
         setShowPrompt(false);
         setShowTagHistory(false);
-        setShowObsidianTags(false);
+        setShowTagDropdown(false);
         // Очищаем промпт при закрытии
         if (!newShowTagChat) {
             setTagPromptInput('');
@@ -907,7 +910,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setShowHistory(false);
         setShowPrompt(false);
         setShowTagChat(false);
-        setShowObsidianTags(false);
+        setShowTagDropdown(false);
         
         // Загружаем историю при открытии
         if (newShowHistory && tagHistory.length === 0) {
@@ -915,19 +918,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         }
     };
     
-    // Переключение тегов Obsidian
-    const toggleObsidianTags = () => {
-        setShowObsidianTags(!showObsidianTags);
-        // Закрываем ВСЕ остальные панели
-        setShowHistory(false);
-        setShowPrompt(false);
-        setShowTagChat(false);
-        setShowTagHistory(false);
-        // Сбрасываем поиск при закрытии
-        if (showObsidianTags) {
-            setTagSearchInput('');
-        }
-    };
     
     // Загрузка тегов Obsidian при монтировании
     useEffect(() => {
@@ -936,23 +926,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         }
     }, [isOpen, loadObsidianTags]);
     
-    // Фильтрация тегов Obsidian при изменении поискового запроса
-    useEffect(() => {
-        if (tagSearchInput.trim() === '') {
-            setFilteredObsidianTags(obsidianTags);
-        } else {
-            const searchTerm = tagSearchInput.toLowerCase().trim();
-            const filtered = obsidianTags.filter(tag => 
-                tag.toLowerCase().includes(searchTerm)
-            );
-            setFilteredObsidianTags(filtered);
-        }
-    }, [tagSearchInput, obsidianTags]);
     
-    // Обновляем отфильтрованные теги при загрузке
-    useEffect(() => {
-        setFilteredObsidianTags(obsidianTags);
-    }, [obsidianTags]);
     
     // Экспорт заметки в Obsidian
     const handleExportToObsidian = useCallback(async () => {
@@ -1720,29 +1694,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                 >
                                     ✨
                                 </button>
-                                {/* Кнопка тегов Obsidian */}
-                                <button
-                                    onClick={toggleObsidianTags}
-                                    title="Все теги Obsidian"
-                                    style={{
-                                        width: '32px',
-                                        height: '32px',
-                                        padding: '0',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '14px',
-                                        backgroundColor: showObsidianTags ? '#22aa44' : '#2a2a2a',
-                                        border: '1px solid',
-                                        borderColor: showObsidianTags ? '#22aa44' : '#444',
-                                        borderRadius: '6px',
-                                        color: showObsidianTags ? 'white' : '#888',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                    }}
-                                >
-                                    🏷️
-                                </button>
                             </div>
                         </div>
 
@@ -1806,7 +1757,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                 style={{
                                                     color: '#666',
                                                     cursor: 'pointer',
-                                                    fontSize: '16px',
+                                                    fontSize: '18px',
                                                     lineHeight: '1',
                                                     marginLeft: '4px',
                                                     fontWeight: 'bold',
@@ -1847,31 +1798,72 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                             + Добавить
                                         </button>
                                     ) : (
-                                        <input
-                                            ref={addTagInputRef}
-                                            type="text"
-                                            value={newTagInput}
-                                            onChange={(e) => setNewTagInput(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    addManualTag(newTagInput);
-                                                }
-                                                // Убрали обработку Escape - теперь это делает useModalEscape
-                                            }}
-                                            // onBlur убрали - теперь обработка через useClickOutside
-                                            placeholder="Введите тег..."
-                                            autoFocus
-                                            style={{
-                                                padding: '6px 12px',
-                                                backgroundColor: '#222',
-                                                border: '1px solid #ff9500',
-                                                borderRadius: '16px',
-                                                color: 'white',
-                                                fontSize: '14px',
-                                                outline: 'none',
-                                                width: '150px',
-                                            }}
-                                        />
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                ref={addTagInputRef}
+                                                type="text"
+                                                value={newTagInput}
+                                                onChange={(e) => {
+                                                    setNewTagInput(e.target.value);
+                                                    // Показываем dropdown при вводе
+                                                    if (!showTagDropdown && obsidianTags.length > 0) {
+                                                        setShowTagDropdown(true);
+                                                    }
+                                                }}
+                                                onFocus={(e) => {
+                                                    // Показываем dropdown при фокусе
+                                                    if (obsidianTags.length > 0) {
+                                                        setShowTagDropdown(true);
+                                                    }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        // Если есть отфильтрованные теги, берем первый
+                                                        const filtered = obsidianTags.filter(tag => 
+                                                            tag.toLowerCase().includes(newTagInput.toLowerCase())
+                                                        );
+                                                        if (filtered.length > 0 && newTagInput) {
+                                                            addManualTag(filtered[0].replace(/^#/, ''));
+                                                        } else if (newTagInput) {
+                                                            addManualTag(newTagInput);
+                                                        }
+                                                    }
+                                                    // Убрали обработку Escape - теперь это делает useModalEscape
+                                                }}
+                                                // onBlur убрали - теперь обработка через useClickOutside
+                                                placeholder="Введите тег..."
+                                                autoFocus
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    backgroundColor: '#222',
+                                                    border: '1px solid #ff9500',
+                                                    borderRadius: '16px',
+                                                    color: 'white',
+                                                    fontSize: '14px',
+                                                    outline: 'none',
+                                                    width: '150px',
+                                                }}
+                                            />
+                                            
+                                            {/* Dropdown с тегами Obsidian */}
+                                            <TagDropdown
+                                                ref={tagDropdownRef}
+                                                isOpen={showTagDropdown && showAddTagInput}
+                                                tags={obsidianTags}
+                                                usedTags={localTags}
+                                                searchValue={newTagInput}
+                                                onTagSelect={(tag) => {
+                                                    addManualTag(tag.replace(/^#/, ''));
+                                                    setShowTagDropdown(false);
+                                                }}
+                                                verticalPosition={'top'}
+                                                horizontalPosition="center"
+                                                maxHeight={200}
+                                                width={400}
+                                                noResultsText="Теги не найдены"
+                                                allUsedText="Все подходящие теги уже добавлены"
+                                            />
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -1937,7 +1929,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                 setShowHistory(false);
                                                 setShowPrompt(false);
                                                 setShowTagHistory(false);
-                                                setShowObsidianTags(false);
+                                                setShowTagDropdown(false);
                                                 // Генерируем default теги
                                                 setTimeout(() => generateAITags(), 100);
                                             }}
@@ -2172,119 +2164,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                             </div>
                         )}
 
-                        {/* Панель тегов Obsidian */}
-                        {showObsidianTags && (
-                            <div
-                                ref={obsidianTagsPanelRef}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                style={{
-                                    marginTop: '12px',
-                                    padding: '12px',
-                                    backgroundColor: '#181818',
-                                    border: '1px solid #333',
-                                    borderRadius: '8px',
-                                }}
-                            >
-                                {/* Поиск по тегам */}
-                                <div style={{ marginBottom: '12px' }}>
-                                    <input
-                                        type="text"
-                                        value={tagSearchInput}
-                                        onChange={(e) => setTagSearchInput(e.target.value)}
-                                        placeholder="Поиск по тегам..."
-                                        style={{
-                                            width: '100%',
-                                            padding: '8px 12px',
-                                            backgroundColor: '#222',
-                                            border: '1px solid #444',
-                                            borderRadius: '6px',
-                                            color: 'white',
-                                            fontSize: '14px',
-                                            outline: 'none',
-                                            boxSizing: 'border-box',
-                                        }}
-                                        onFocus={(e) => (e.currentTarget.style.borderColor = '#ff9500')}
-                                        onBlur={(e) => (e.currentTarget.style.borderColor = '#444')}
-                                    />
-                                </div>
-
-                                {/* Теги */}
-                                {obsidianTags.length > 0 ? (
-                                    <div
-                                        style={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            gap: '8px',
-                                            maxHeight: 'fit-content',
-                                        }}
-                                    >
-                                        {filteredObsidianTags.length > 0 ? (
-                                            filteredObsidianTags.map((tag, index) => {
-                                                const isUsed = localTags.includes(tag.replace(/^#/, ''));
-                                                return (
-                                                    <div
-                                                        key={index}
-                                                        onClick={() => !isUsed && addManualTag(tag.replace(/^#/, ''))}
-                                                        style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            padding: '6px 12px',
-                                                            backgroundColor: isUsed ? '#2a2a2a' : '#1a2d3d',
-                                                            border: '1px solid',
-                                                            borderColor: isUsed ? '#444' : '#2288aa',
-                                                            borderRadius: '16px',
-                                                            fontSize: '14px',
-                                                            color: isUsed ? '#666' : '#4ec7e7',
-                                                            cursor: isUsed ? 'default' : 'pointer',
-                                                            opacity: isUsed ? 0.6 : 0.9,
-                                                            transition: 'all 0.2s ease',
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            if (!isUsed) {
-                                                                e.currentTarget.style.opacity = '1';
-                                                                e.currentTarget.style.transform = 'scale(1.05)';
-                                                            }
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            if (!isUsed) {
-                                                                e.currentTarget.style.opacity = '0.9';
-                                                                e.currentTarget.style.transform = 'scale(1)';
-                                                            }
-                                                        }}
-                                                        title={isUsed ? 'Тег уже добавлен' : 'Нажмите чтобы добавить'}
-                                                    >
-                                                        {tag}
-                                                    </div>
-                                                );
-                                            })
-                                        ) : (
-                                            <div
-                                                style={{
-                                                    textAlign: 'center',
-                                                    padding: '20px',
-                                                    color: '#666',
-                                                    fontSize: '14px',
-                                                    width: '100%',
-                                                }}
-                                            >
-                                                Теги не найдены по запросу "{tagSearchInput}"
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div
-                                        style={{
-                                            textAlign: 'center',
-                                            padding: '20px',
-                                            color: '#666',
-                                            fontSize: '14px',
-                                        }}
-                                    >
-                                        Загрузка тегов из Obsidian...
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
                 </div>
 
