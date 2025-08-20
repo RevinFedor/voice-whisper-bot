@@ -2064,16 +2064,14 @@ export default function SyncedProductionApp() {
             const newNote = await response.json();
             console.log('✨ Created new note:', newNote);
             
-            // Just add the single new note without full reload
-            addSingleNoteShape(newNote, editor);
-            
-            // Optional: Full sync after a delay to ensure consistency
-            setTimeout(async () => {
-                const result = await loadNotes();
-                const allNotes = result.notes || result;
+            // Reload all notes to update dateColumnMap if needed
+            const result = await loadNotes();
+            if (result && editor) {
+                const allNotes = result.notes || [];
                 const dateMap = result.dateMap || null;
+                // Redraw all shapes with correct column positions
                 createShapesFromNotes(allNotes, editor, true, dateMap);
-            }, 5000); // Sync after 5 seconds
+            }
             
         } catch (error) {
             console.error('❌ Error creating note:', error);
