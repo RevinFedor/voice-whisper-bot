@@ -2118,11 +2118,14 @@ export default function SyncedProductionApp() {
                     />
                     <SelectionContextMenu 
                         onAfterDelete={async () => {
-                            // Reload notes and regenerate headers after deletion
+                            // Reload notes and redraw everything after deletion
                             const result = await loadNotes();
-                            const dateMap = result.dateMap || null;
-                            // Regenerate headers with the new dateMap
-                            generateDateHeaders(editor, dateMap);
+                            if (result && editor) {
+                                const allNotes = result.notes || [];
+                                const dateMap = result.dateMap || null;
+                                // Redraw all shapes with updated positions
+                                createShapesFromNotes(allNotes, editor, true, dateMap);
+                            }
                         }}
                     />
                 </Tldraw>
