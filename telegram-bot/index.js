@@ -115,13 +115,20 @@ async function generateTitle(content) {
 }
 
 // Save note to database
-async function saveNoteToDatabase(title, content, type = 'voice', telegramMessageId = null) {
+async function saveNoteToDatabase(title, content, type = 'voice', telegramMessageId = null, messageDate = null) {
     try {
+        // Используем переданную дату или текущую
+        const noteDate = messageDate ? new Date(messageDate * 1000).toISOString() : new Date().toISOString();
+        
+        console.log('📅 [saveNoteToDatabase] Сохраняем с датой:');
+        console.log('   messageDate (Unix):', messageDate);
+        console.log('   noteDate (ISO):', noteDate);
+        
         const response = await axios.post(`${API_URL}/notes`, {
             title,
             content,
             type,
-            date: new Date().toISOString(),
+            date: noteDate,
             // Don't send x,y - let backend calculate position automatically
             tags: [],
             telegramMessageId: telegramMessageId ? telegramMessageId.toString() : null
@@ -182,6 +189,14 @@ async function handleVoiceMessage(ctx) {
     const voiceFileId = ctx.message.voice.file_id;
     const messageId = ctx.message.message_id;
     
+    // Используем оригинальную дату для пересланных сообщений
+    const messageDate = ctx.message.forward_date || ctx.message.date;
+    
+    console.log('📅 [handleVoiceMessage] Определяем дату:');
+    console.log('   forward_date:', ctx.message.forward_date);
+    console.log('   message.date:', ctx.message.date);
+    console.log('   Используем messageDate:', messageDate);
+    
     // Send initial message
     const processingMsg = await ctx.reply('⏳ Начинаю обработку голосового сообщения...');
     
@@ -219,7 +234,8 @@ async function handleVoiceMessage(ctx) {
                 title,
                 content: transcription,
                 type: 'voice',
-                telegramMessageId: messageId
+                telegramMessageId: messageId,
+                messageDate: messageDate
             });
             
             console.log(`📝 Added voice note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
@@ -263,7 +279,7 @@ async function handleVoiceMessage(ctx) {
         }
         
         // Save as new note
-        await saveNoteToDatabase(title, transcription, 'voice', messageId);
+        await saveNoteToDatabase(title, transcription, 'voice', messageId, messageDate);
         
         // Delete processing message
         await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
@@ -424,8 +440,8 @@ const handleMergeEnd = async (ctx) => {
     }
     
     try {
-        // Save merged note
-        await saveNoteToDatabase(mergedTitle, mergedContent, 'text');
+        // Save merged note with current date
+        await saveNoteToDatabase(mergedTitle, mergedContent, 'text', null, null);
         
         const notesCount = mergeState.notes.length;
         
@@ -473,7 +489,7 @@ const handleMergeCancel = async (ctx) => {
     // Save accumulated notes separately if any
     if (notesCount > 0) {
         for (const note of mergeState.notes) {
-            await saveNoteToDatabase(note.title, note.content, note.type, note.telegramMessageId);
+            await saveNoteToDatabase(note.title, note.content, note.type, note.telegramMessageId, note.messageDate);
         }
     }
     
@@ -580,6 +596,9 @@ async function handleAudioMessage(ctx) {
     const processingMsg = await ctx.reply('⏳ Начинаю обработку аудио файла...');
     const userId = ctx.from.id;
     
+    // Используем оригинальную дату для пересланных сообщений
+    const messageDate = ctx.message.forward_date || ctx.message.date;
+    
     try {
         // Download audio file
         const fileLink = await ctx.telegram.getFileLink(audioFileId);
@@ -613,7 +632,8 @@ async function handleAudioMessage(ctx) {
                 title,
                 content: transcription,
                 type: 'voice',
-                telegramMessageId: messageId
+                telegramMessageId: messageId,
+                messageDate: messageDate
             });
             
             console.log(`📝 Added voice note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
@@ -657,7 +677,7 @@ async function handleAudioMessage(ctx) {
         }
         
         // Save as new note
-        await saveNoteToDatabase(title, transcription, 'voice', messageId);
+        await saveNoteToDatabase(title, transcription, 'voice', messageId, messageDate);
         
         // Delete processing message
         await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
@@ -690,6 +710,9 @@ async function handleVideoMessage(ctx) {
     const messageId = ctx.message.message_id;
     const processingMsg = await ctx.reply('⏳ Начинаю обработку видео файла...');
     const userId = ctx.from.id;
+    
+    // Используем оригинальную дату для пересланных сообщений
+    const messageDate = ctx.message.forward_date || ctx.message.date;
     
     try {
         // Download video file
@@ -724,7 +747,8 @@ async function handleVideoMessage(ctx) {
                 title,
                 content: transcription,
                 type: 'voice',
-                telegramMessageId: messageId
+                telegramMessageId: messageId,
+                messageDate: messageDate
             });
             
             console.log(`📝 Added voice note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
@@ -768,7 +792,7 @@ async function handleVideoMessage(ctx) {
         }
         
         // Save as new note
-        await saveNoteToDatabase(title, transcription, 'voice', messageId);
+        await saveNoteToDatabase(title, transcription, 'voice', messageId, messageDate);
         
         // Delete processing message
         await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id);
@@ -801,6 +825,9 @@ async function handleTextMessage(ctx) {
     const messageId = ctx.message.message_id;
     const userId = ctx.from.id;
     
+    // Используем оригинальную дату для пересланных сообщений
+    const messageDate = ctx.message.forward_date || ctx.message.date;
+    
     try {
         // Generate title from first 50 chars or first line
         const firstLine = text.split('\n')[0];
@@ -816,7 +843,8 @@ async function handleTextMessage(ctx) {
                 title,
                 content: text,
                 type: 'text',
-                telegramMessageId: messageId
+                telegramMessageId: messageId,
+                messageDate: messageDate
             });
             
             console.log(`📝 Added text note to merge queue. User: ${userId}, Total notes: ${mergeState.notes.length}`);
@@ -858,7 +886,7 @@ async function handleTextMessage(ctx) {
         }
         
         // Save as new note
-        await saveNoteToDatabase(title, text, 'text', messageId);
+        await saveNoteToDatabase(title, text, 'text', messageId, messageDate);
         
         // Send confirmation
         await ctx.reply(
