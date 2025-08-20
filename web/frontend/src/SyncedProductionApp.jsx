@@ -255,11 +255,16 @@ export default function SyncedProductionApp() {
             const data = await response.json();
             setNotes(data);
             
-            // Build date column map from unique dates
-            const uniqueDates = [...new Set(data.map(note => note.date))].sort();
+            // Build date column map from unique dates (normalized to days)
+            const normalizedDates = data.map(note => {
+                const date = new Date(note.date);
+                date.setHours(0, 0, 0, 0);
+                return date.toISOString();
+            });
+            const uniqueDates = [...new Set(normalizedDates)].sort();
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            const todayStr = today.toISOString().split('T')[0];
+            const todayStr = today.toISOString();
             
             // Find today's index or use 0 if today has no notes
             const todayIndex = uniqueDates.indexOf(todayStr);
@@ -273,19 +278,6 @@ export default function SyncedProductionApp() {
             setDateColumnMap(mapping);
             
             console.log(`📊 Loaded ${data.length} notes with ${uniqueDates.length} unique dates`);
-            console.log('📅 Unique dates:', uniqueDates);
-            console.log('🗺️ Date mapping:', mapping);
-            
-            // Debug: check which dates are in static vs dynamic zones
-            const todayForDebug = new Date();
-            todayForDebug.setHours(0, 0, 0, 0);
-            uniqueDates.forEach(dateStr => {
-                const date = new Date(dateStr);
-                date.setHours(0, 0, 0, 0);
-                const daysDiff = Math.floor((date - todayForDebug) / (24 * 60 * 60 * 1000));
-                const zone = daysDiff >= -7 ? 'STATIC' : 'DYNAMIC';
-                console.log(`  ${dateStr.split('T')[0]} → ${zone} zone (day ${daysDiff})`);
-            });
             return { notes: data, dateMap: mapping };
         } catch (error) {
             console.error('❌ Error loading notes:', error);
@@ -306,11 +298,14 @@ export default function SyncedProductionApp() {
         // Use provided map or fall back to state
         const mapToUse = customDateMap || dateColumnMap;
         
+        // Normalize the date to day (remove time)
+        const noteDate = new Date(dateStr);
+        noteDate.setHours(0, 0, 0, 0);
+        const normalizedDateStr = noteDate.toISOString();
+        
         // Calculate days difference from today
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const noteDate = new Date(dateStr);
-        noteDate.setHours(0, 0, 0, 0);
         const daysDiff = Math.floor((noteDate - today) / (24 * 60 * 60 * 1000));
         
         // Static zone: last 7 days (including today)
@@ -332,7 +327,8 @@ export default function SyncedProductionApp() {
             .sort()
             .reverse(); // Most recent old dates first
         
-        const oldDateIndex = oldDates.indexOf(dateStr);
+        // Use normalized date for lookup
+        const oldDateIndex = oldDates.indexOf(normalizedDateStr);
         if (oldDateIndex !== -1) {
             const x = OLD_DATES_START_X - (oldDateIndex * COLUMN_SPACING);
             // console.log(`📚 Dynamic zone: ${dateStr.split('T')[0]} → X=${x} (index ${oldDateIndex})`);
@@ -480,7 +476,6 @@ export default function SyncedProductionApp() {
         const newNoteIdMap = new Map();
         
         // Create shapes for each note
-        console.log('🎨 Creating shapes for notes...');
         notesData.forEach(note => {
             const shapeId = createShapeId();
             newNoteIdMap.set(note.id, shapeId);
@@ -489,11 +484,9 @@ export default function SyncedProductionApp() {
             let x;
             if (note.manuallyPositioned) {
                 x = note.x;
-                console.log(`  📌 Manual note at X=${x}: ${note.title}`);
             } else {
                 // Always use calculateColumnX for non-manual notes
                 x = calculateColumnX(note.date, customDateMap);
-                console.log(`  📍 Auto note "${note.title}" date=${note.date.split('T')[0]} → X=${x}`);
             }
             
             const shapeData = {
