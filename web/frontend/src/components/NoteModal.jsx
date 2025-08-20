@@ -1931,11 +1931,31 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                         ))
                                     ) : (
                                         <div
+                                            onClick={() => {
+                                                setShowTagChat(true);
+                                                // Закрываем другие панели как в toggleTagChat
+                                                setShowHistory(false);
+                                                setShowPrompt(false);
+                                                setShowTagHistory(false);
+                                                setShowObsidianTags(false);
+                                                // Генерируем default теги
+                                                setTimeout(() => generateAITags(), 100);
+                                            }}
                                             style={{
                                                 color: '#666',
                                                 fontSize: '13px',
                                                 fontStyle: 'italic',
-                                                marginLeft : '2px'
+                                                marginLeft : '2px',
+                                                cursor: 'pointer',
+                                                transition: 'color 0.2s',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.color = '#888';
+                                                e.currentTarget.style.textDecoration = 'underline';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.color = '#666';
+                                                e.currentTarget.style.textDecoration = 'none';
                                             }}
                                         >
                                             Используйте чат ✨ для генерации предложений
