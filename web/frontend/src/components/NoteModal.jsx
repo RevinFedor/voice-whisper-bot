@@ -1,6 +1,7 @@
 import React, { useState, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 import { useScrollPreservingTextarea } from '../hooks/useScrollPreservingTextarea';
 import { useModalEscape, MODAL_PRIORITIES } from '../contexts/ModalStackContext';
+import { useClickOutside } from '../hooks/useClickOutside';
 import obsidianIcon from '../assets/obsidian-icon.svg';
 
 // API configuration
@@ -102,6 +103,70 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // === СОСТОЯНИЕ ЭКСПОРТА ===
     const [isExporting, setIsExporting] = useState(false);
     
+    // === REFS ДЛЯ ПАНЕЛЕЙ (для click outside) ===
+    const titleHistoryPanelRef = useClickOutside(() => {
+        if (showHistory) {
+            setShowHistory(false);
+        }
+    }, showHistory && !isExpanded);
+    
+    const titlePromptPanelRef = useClickOutside(() => {
+        if (showPrompt) {
+            setShowPrompt(false);
+            setPromptInput('');
+        }
+    }, showPrompt && !isExpanded);
+    
+    const tagChatPanelRef = useClickOutside(() => {
+        if (showTagChat) {
+            setShowTagChat(false);
+            setTagPromptInput('');
+        }
+    }, showTagChat);
+    
+    const tagHistoryPanelRef = useClickOutside(() => {
+        if (showTagHistory) {
+            setShowTagHistory(false);
+        }
+    }, showTagHistory);
+    
+    const obsidianTagsPanelRef = useClickOutside(() => {
+        if (showObsidianTags) {
+            setShowObsidianTags(false);
+            setTagSearchInput('');
+        }
+    }, showObsidianTags);
+    
+    const addTagInputRef = useClickOutside(() => {
+        if (showAddTagInput) {
+            setShowAddTagInput(false);
+            setNewTagInput('');
+        }
+    }, showAddTagInput);
+    
+    // === ФУНКЦИЯ СБРОСА ВСЕХ ПАНЕЛЕЙ ===
+    const resetAllPanels = useCallback(() => {
+        setIsExpanded(false);
+        setShowHistory(false);
+        setShowPrompt(false);
+        setPromptInput('');
+        setShowTagChat(false);
+        setShowTagHistory(false);
+        setShowObsidianTags(false);
+        setTagPromptInput('');
+        setShowAddTagInput(false);
+        setNewTagInput('');
+        setTagSearchInput('');
+        setIsTitleFocused(false);
+        setIsContentFocused(false);
+    }, []);
+    
+    // === ОБРАБОТЧИК ЗАКРЫТИЯ МОДАЛКИ ===
+    const handleModalClose = useCallback(() => {
+        resetAllPanels();
+        onClose();
+    }, [onClose, resetAllPanels]);
+    
     // === ESCAPE ОБРАБОТКА ===
     // Основная модалка
     useModalEscape(
@@ -111,7 +176,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             if (isExpanded || showHistory || showPrompt || showTagChat || showAddTagInput || showTagHistory || showObsidianTags) {
                 return false; // Не закрываем основную модалку, есть вложенные элементы
             }
-            onClose();
+            handleModalClose();
             return true;
         },
         isOpen ? MODAL_PRIORITIES.NOTE_MODAL : -1 // Активно только когда модалка открыта
@@ -228,6 +293,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             setTagPromptInput('');
             setTagHistory([]);
             prevNoteIdRef.current = note?.id;
+            
+            // Сбрасываем все панели при смене заметки
+            resetAllPanels();
         }
     }, [note]);
     
@@ -995,7 +1063,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     zIndex: 9998,
                     cursor: 'pointer',
                 }}
-                onClick={onClose}
+                onClick={handleModalClose}
             />
 
             {/* Modal */}
@@ -1265,6 +1333,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                             {/* История генераций */}
                             {showHistory && !isExpanded && (
                                 <div
+                                    ref={titleHistoryPanelRef}
+                                    onMouseDown={(e) => e.stopPropagation()}
                                     style={{
                                         marginTop: '10px',
                                         padding: '12px',
@@ -1347,6 +1417,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                             {/* Промпт панель */}
                             {showPrompt && !isExpanded && (
                                 <div
+                                    ref={titlePromptPanelRef}
                                     style={{
                                         marginTop: '10px',
                                         padding: '12px',
@@ -1771,6 +1842,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                         </button>
                                     ) : (
                                         <input
+                                            ref={addTagInputRef}
                                             type="text"
                                             value={newTagInput}
                                             onChange={(e) => setNewTagInput(e.target.value)}
@@ -1874,6 +1946,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         {/* AI Chat панель */}
                         {showTagChat && (
                             <div
+                                ref={tagChatPanelRef}
                                 style={{
                                     marginTop: '12px',
                                     padding: '12px',
@@ -1948,6 +2021,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         {/* История тегов */}
                         {showTagHistory && (
                             <div
+                                ref={tagHistoryPanelRef}
                                 style={{
                                     marginTop: '12px',
                                     maxHeight: '250px',
@@ -2077,6 +2151,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         {/* Панель тегов Obsidian */}
                         {showObsidianTags && (
                             <div
+                                ref={obsidianTagsPanelRef}
                                 style={{
                                     marginTop: '12px',
                                     padding: '12px',

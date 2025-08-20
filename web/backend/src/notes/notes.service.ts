@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, MessageEvent } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Note, NoteType, Prisma } from '@prisma/client';
+import { Observable, fromEvent } from 'rxjs';
+import { map, filter } from 'rxjs/operators';
+import { EventEmitter } from 'events';
 
 // Layout configuration constants
 const LAYOUT_CONFIG = {
@@ -15,6 +18,8 @@ const LAYOUT_CONFIG = {
 
 @Injectable()
 export class NotesService {
+  private eventEmitter = new EventEmitter();
+  
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -159,8 +164,16 @@ export class NotesService {
     console.log('   Date:', noteDate.toISOString());
     console.log('   Tags:', createdNote.tags);
     
+    // Emit event for real-time updates
+    const serializedNote = this.serializeNote(createdNote);
+    this.eventEmitter.emit('noteUpdate', {
+      type: 'new-note',
+      userId,
+      payload: serializedNote,
+    });
+    
     // Convert BigInt to string for JSON serialization
-    return this.serializeNote(createdNote);
+    return serializedNote;
   }
 
   /**
@@ -293,7 +306,15 @@ export class NotesService {
       },
     });
     
-    return this.serializeNote(updatedNote);
+    // Emit event for real-time updates
+    const serializedNote = this.serializeNote(updatedNote);
+    this.eventEmitter.emit('noteUpdate', {
+      type: 'update-note',
+      userId: updatedNote.userId,
+      payload: serializedNote,
+    });
+    
+    return serializedNote;
   }
 
   /**
@@ -381,9 +402,23 @@ export class NotesService {
    * Delete a note
    */
   async deleteNote(noteId: string): Promise<void> {
-    await this.prisma.note.delete({
+    // Get note info before deletion for event
+    const note = await this.prisma.note.findUnique({
       where: { id: noteId },
     });
+    
+    if (note) {
+      await this.prisma.note.delete({
+        where: { id: noteId },
+      });
+      
+      // Emit event for real-time updates
+      this.eventEmitter.emit('noteUpdate', {
+        type: 'delete-note',
+        userId: note.userId,
+        payload: { id: noteId },
+      });
+    }
   }
 
   /**
@@ -455,5 +490,29 @@ export class NotesService {
         date,
       });
     }
+  }
+
+  /**
+   * Get SSE stream for real-time note updates
+   */
+  getNotesStream(userId: string): Observable<MessageEvent> {
+    return fromEvent(this.eventEmitter, 'noteUpdate').pipe(
+      map((data: any) => {
+        // Filter events by userId if needed
+        if (data.userId && data.userId !== userId) {
+          return null;
+        }
+        // NestJS SSE expects object with 'data' field
+        // We'll send both type and payload in the data field
+        return {
+          data: JSON.stringify({
+            type: data.type,
+            payload: data.payload,
+          }),
+        } as MessageEvent;
+      }),
+      // Filter out null events for other users
+      filter((event) => event !== null),
+    );
   }
 }

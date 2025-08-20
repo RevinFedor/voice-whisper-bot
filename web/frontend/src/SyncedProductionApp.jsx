@@ -2009,6 +2009,79 @@ export default function SyncedProductionApp() {
         console.log(`✨ Added single note shape without full reload`);
     }, [calculateColumnX]);
     
+    // Setup SSE for real-time updates
+    useEffect(() => {
+        if (!API_URL || !editor) return;
+        
+        console.log('🔌 Setting up SSE connection...');
+        const eventSource = new EventSource(`${API_URL}/notes/stream`, {
+            withCredentials: false,
+        });
+        
+        eventSource.onopen = () => {
+            console.log('✅ SSE connection established');
+        };
+        
+        eventSource.onerror = (error) => {
+            console.error('❌ SSE connection error:', error);
+        };
+        
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('📨 SSE message received:', data);
+                
+                switch (data.type) {
+                    case 'new-note':
+                        // Add new note shape
+                        console.log('➕ Adding new note from SSE:', data.payload);
+                        addSingleNoteShape(data.payload, editor);
+                        break;
+                        
+                    case 'update-note':
+                        // Update existing note
+                        console.log('✏️ Updating note from SSE:', data.payload);
+                        const shapeIdToUpdate = noteIdMap.get(data.payload.id);
+                        if (shapeIdToUpdate) {
+                            const shape = editor.getShape(shapeIdToUpdate);
+                            if (shape) {
+                                editor.updateShape({
+                                    ...shape,
+                                    props: {
+                                        ...shape.props,
+                                        title: data.payload.title,
+                                        text: data.payload.content || '',
+                                        tags: data.payload.tags || [],
+                                    },
+                                });
+                            }
+                        }
+                        break;
+                        
+                    case 'delete-note':
+                        // Delete note shape
+                        console.log('🗑️ Deleting note from SSE:', data.payload);
+                        const shapeIdToDelete = noteIdMap.get(data.payload.id);
+                        if (shapeIdToDelete) {
+                            editor.deleteShape(shapeIdToDelete);
+                            noteIdMap.delete(data.payload.id);
+                        }
+                        break;
+                        
+                    default:
+                        console.warn('Unknown SSE event type:', data.type);
+                }
+            } catch (error) {
+                console.error('Error processing SSE message:', error);
+            }
+        };
+        
+        return () => {
+            console.log('🔌 Closing SSE connection');
+            eventSource.close();
+        };
+    }, [editor, noteIdMap, addSingleNoteShape]);
+    
     // Add note with selected date
     const handleAddNote = async (selectedDate) => {
         setIsSyncing(true);

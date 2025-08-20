@@ -8,6 +8,8 @@ import {
   Param,
   Query,
   Headers,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { NotesService } from './notes.service';
@@ -15,6 +17,7 @@ import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdatePositionDto } from './dto/update-position.dto';
 import { UpdateDateDto } from './dto/update-date.dto';
 import { Note } from '@prisma/client';
+import { Observable } from 'rxjs';
 
 @ApiTags('notes')
 @Controller('api/notes')
@@ -42,6 +45,14 @@ export class NotesController {
     @Headers('user-id') userId: string = 'test-user-id',
   ): Promise<Note> {
     return this.notesService.getNoteByTelegramId(messageId, userId);
+  }
+
+  @Sse('stream')
+  @ApiOperation({ summary: 'Stream real-time note updates' })
+  stream(
+    @Headers('user-id') userId: string = 'test-user-id',
+  ): Observable<MessageEvent> {
+    return this.notesService.getNotesStream(userId);
   }
 
   @Get(':id')
