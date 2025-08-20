@@ -272,9 +272,7 @@ export default function SyncedProductionApp() {
             });
             setDateColumnMap(mapping);
             
-            console.log('📊 Loaded notes:', data.length, 'Unique dates:', uniqueDates.length);
-            console.log('📅 Date mapping:', mapping);
-            console.log('📝 Sample note dates:', data.slice(0, 3).map(n => n.date));
+            console.log(`📊 Loaded ${data.length} notes with ${uniqueDates.length} unique dates`);
             return { notes: data, dateMap: mapping };
         } catch (error) {
             console.error('❌ Error loading notes:', error);
@@ -284,63 +282,86 @@ export default function SyncedProductionApp() {
         }
     }, []);
     
-    // Calculate X position based on date column map
+    // Calculate X position with hybrid approach: static 7 days + dynamic old dates
     const calculateColumnX = useCallback((dateStr) => {
         const TODAY_X = 5000;
         const COLUMN_SPACING = 230;
+        const STATIC_DAYS = 7; // Show 7 days back statically
+        const SEPARATOR_X = 3300; // Position of visual separator
+        const OLD_DATES_START_X = 3070; // Where old dates start
         
-        // Use the column index from the map
-        const columnIndex = dateColumnMap[dateStr];
-        console.log('🔍 calculateColumnX:', {
-            dateStr,
-            columnIndex,
-            dateColumnMapKeys: Object.keys(dateColumnMap),
-            found: columnIndex !== undefined
-        });
+        // Calculate days difference from today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const noteDate = new Date(dateStr);
+        noteDate.setHours(0, 0, 0, 0);
+        const daysDiff = Math.floor((noteDate - today) / (24 * 60 * 60 * 1000));
         
-        if (columnIndex === undefined) {
-            // If date not in map (shouldn't happen), fallback to old calculation
-            console.warn('⚠️ Date not found in map, using fallback calculation for:', dateStr);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const noteDate = new Date(dateStr);
-            noteDate.setHours(0, 0, 0, 0);
-            const daysDiff = Math.floor((noteDate - today) / (24 * 60 * 60 * 1000));
-            return TODAY_X + (daysDiff * COLUMN_SPACING);
+        // Static zone: last 7 days (including today)
+        if (daysDiff >= -STATIC_DAYS && daysDiff <= 0) {
+            const x = TODAY_X + (daysDiff * COLUMN_SPACING);
+            console.log(`📍 Static zone: ${dateStr.split('T')[0]} → X=${x} (day ${daysDiff})`);
+            return x;
         }
         
-        return TODAY_X + (columnIndex * COLUMN_SPACING);
+        // Dynamic zone: older dates
+        // Get all old dates from the map and sort them
+        const oldDates = Object.keys(dateColumnMap)
+            .filter(d => {
+                const date = new Date(d);
+                date.setHours(0, 0, 0, 0);
+                const diff = Math.floor((date - today) / (24 * 60 * 60 * 1000));
+                return diff < -STATIC_DAYS;
+            })
+            .sort()
+            .reverse(); // Most recent old dates first
+        
+        const oldDateIndex = oldDates.indexOf(dateStr);
+        if (oldDateIndex !== -1) {
+            const x = OLD_DATES_START_X - (oldDateIndex * COLUMN_SPACING);
+            console.log(`📚 Dynamic zone: ${dateStr.split('T')[0]} → X=${x} (index ${oldDateIndex})`);
+            return x;
+        }
+        
+        // Fallback (shouldn't happen)
+        console.warn(`⚠️ Date ${dateStr} not properly categorized, using fallback`);
+        return TODAY_X + (daysDiff * COLUMN_SPACING);
     }, [dateColumnMap]);
     
-    // Generate date headers for existing dates only
+    // Generate date headers with hybrid approach
     const generateDateHeaders = useCallback((editor) => {
-        if (!editor || !dateColumnMap) return;
+        if (!editor) return;
         
-        // Remove existing date headers (both text and static-date-header types)
+        // Remove existing date headers and separators
         const existingHeaders = editor.getCurrentPageShapes().filter(s => 
-            s.type === 'text' || s.type === 'static-date-header'
+            s.type === 'text' || s.type === 'static-date-header' || 
+            (s.type === 'geo' && s.props?.w === 2 && s.props?.h === 800) // Our separator
         );
         editor.deleteShapes(existingHeaders.map(s => s.id));
         
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().split('T')[0];
+        const STATIC_DAYS = 7;
         
-        // Create headers for all dates in the map
-        Object.entries(dateColumnMap).forEach(([dateStr, columnIndex]) => {
-            const date = new Date(dateStr);
-            const x = calculateColumnX(dateStr);
+        console.log('🎯 Generating hybrid date headers...');
+        
+        // 1. Generate static 7 days headers (always visible)
+        for (let i = -STATIC_DAYS; i <= 0; i++) {
+            const date = new Date(today);
+            date.setDate(date.getDate() + i);
+            const dateStr = date.toISOString();
+            const x = 5000 + (i * 230);
             const day = date.getDate().toString().padStart(2, '0');
             const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase().replace('.', '');
-            const isToday = dateStr.split('T')[0] === todayStr;
+            const isToday = i === 0;
             
-            // Use StaticDateHeaderShapeUtil
             editor.createShape({
                 id: createShapeId(),
                 type: 'static-date-header',
-                x: x - 14, // Position to the left of notes
-                y: 60, // Small offset from top
-                isLocked: true, // Lock the shape
+                x: x - 14,
+                y: 60,
+                isLocked: true,
                 props: {
                     w: 70,
                     h: 55,
@@ -349,20 +370,80 @@ export default function SyncedProductionApp() {
                     isToday: isToday,
                 },
             });
-        });
+        }
+        console.log(`✅ Created ${STATIC_DAYS + 1} static day headers`);
         
-        console.log(`📅 Generated ${Object.keys(dateColumnMap).length} date headers for existing notes`);
-    }, [dateColumnMap, calculateColumnX]);
+        // 2. Generate dynamic old dates headers (only for existing dates)
+        if (dateColumnMap) {
+            const oldDates = Object.keys(dateColumnMap)
+                .filter(d => {
+                    const date = new Date(d);
+                    date.setHours(0, 0, 0, 0);
+                    const diff = Math.floor((date - today) / (24 * 60 * 60 * 1000));
+                    return diff < -STATIC_DAYS;
+                })
+                .sort()
+                .reverse(); // Most recent first
+            
+            oldDates.forEach((dateStr, index) => {
+                const date = new Date(dateStr);
+                const x = 3070 - (index * 230);
+                const day = date.getDate().toString().padStart(2, '0');
+                const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase().replace('.', '');
+                
+                editor.createShape({
+                    id: createShapeId(),
+                    type: 'static-date-header',
+                    x: x - 14,
+                    y: 60,
+                    isLocked: true,
+                    props: {
+                        w: 70,
+                        h: 55,
+                        day: day,
+                        month: month,
+                        isToday: false,
+                    },
+                });
+            });
+            
+            console.log(`✅ Created ${oldDates.length} dynamic old date headers`);
+            
+            // 3. Add visual separator if there are old dates  
+            if (oldDates.length > 0) {
+                // Create a vertical line using geo shape (more reliable than line)
+                editor.createShape({
+                    id: createShapeId(),
+                    type: 'geo',
+                    x: 3300,
+                    y: 40,
+                    isLocked: true,
+                    opacity: 0.3, // opacity on shape level, not in props
+                    props: {
+                        geo: 'rectangle',
+                        w: 2, // Very thin rectangle to look like a line
+                        h: 800,
+                        color: 'grey',
+                        fill: 'none', // transparent fill
+                        dash: 'dashed',
+                        size: 's',
+                    },
+                });
+                console.log('✅ Added separator between zones');
+            }
+        }
+    }, [dateColumnMap]);
     
     // Generate date headers when dateColumnMap updates
     useEffect(() => {
-        if (editor && Object.keys(dateColumnMap).length > 0) {
+        if (editor) {
+            // Always generate static headers, dynamic headers will be added if dateColumnMap has old dates
             generateDateHeaders(editor);
         }
     }, [editor, dateColumnMap, generateDateHeaders]);
     
     // Create shapes from notes
-    const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false, customDateMap = null) => {
+    const createShapesFromNotes = useCallback((notesData, editor, preserveCamera = false) => {
         if (!editor) return;
         
         // console.log('🎨 Creating shapes from notes:', notesData.length);
@@ -390,11 +471,8 @@ export default function SyncedProductionApp() {
             let x;
             if (note.manuallyPositioned) {
                 x = note.x;
-            } else if (customDateMap) {
-                // Use provided dateMap directly
-                const columnIndex = customDateMap[note.date];
-                x = columnIndex !== undefined ? 5000 + (columnIndex * 230) : calculateColumnX(note.date);
             } else {
+                // Always use calculateColumnX for non-manual notes
                 x = calculateColumnX(note.date);
             }
             
@@ -644,7 +722,7 @@ export default function SyncedProductionApp() {
             const result = await loadNotes();
             const allNotes = result.notes || result;
             const dateMap = result.dateMap || null;
-            createShapesFromNotes(allNotes, editor, true, dateMap);
+            createShapesFromNotes(allNotes, editor, true);
             
             console.log('✨ Merge completed successfully');
             
@@ -1033,10 +1111,33 @@ export default function SyncedProductionApp() {
     // Save handleNoteClick to window for ShapeUtil access
     useEffect(() => {
         window.handleNoteClick = handleNoteClick;
+        
+        // Debug helper for hybrid zones
+        window.debugZones = () => {
+            console.log('🎯 Hybrid Zones Debug:');
+            console.log('  Static zone: X from 3390 to 5000 (7 days)');
+            console.log('  Separator: X = 3300');
+            console.log('  Dynamic zone: X < 3070 (old dates)');
+            console.log('  Date map:', dateColumnMap);
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            Object.entries(dateColumnMap).forEach(([dateStr, _]) => {
+                const x = calculateColumnX(dateStr);
+                const date = new Date(dateStr);
+                date.setHours(0, 0, 0, 0);
+                const daysDiff = Math.floor((date - today) / (24 * 60 * 60 * 1000));
+                const zone = daysDiff >= -7 ? 'STATIC' : 'DYNAMIC';
+                console.log(`  ${dateStr.split('T')[0]} → X=${x} (${zone}, day ${daysDiff})`);
+            });
+        };
+        
         return () => {
             delete window.handleNoteClick;
+            delete window.debugZones;
         };
-    }, [handleNoteClick]);
+    }, [handleNoteClick, dateColumnMap, calculateColumnX]);
     
     
     // Handle editor mount
@@ -1654,45 +1755,12 @@ export default function SyncedProductionApp() {
         
         // Wait a bit for dateColumnMap to be set by React state update
         setTimeout(() => {
-            // Generate date headers with the dateMap
-            if (dateMap && Object.keys(dateMap).length > 0) {
-                // Manually generate headers for the dateMap
-                const existingHeaders = editor.getCurrentPageShapes().filter(s => 
-                    s.type === 'text' || s.type === 'static-date-header'
-                );
-                editor.deleteShapes(existingHeaders.map(s => s.id));
-                
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                const todayStr = today.toISOString().split('T')[0];
-                
-                Object.entries(dateMap).forEach(([dateStr, columnIndex]) => {
-                    const date = new Date(dateStr);
-                    const x = 5000 + (columnIndex * 230);
-                    const day = date.getDate().toString().padStart(2, '0');
-                    const month = date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase().replace('.', '');
-                    const isToday = dateStr.split('T')[0] === todayStr;
-                    
-                    editor.createShape({
-                        id: createShapeId(),
-                        type: 'static-date-header',
-                        x: x - 14,
-                        y: 60,
-                        isLocked: true,
-                        props: {
-                            w: 70,
-                            h: 55,
-                            day: day,
-                            month: month,
-                            isToday: isToday,
-                        },
-                    });
-                });
-            }
+            // Always generate static headers first
+            generateDateHeaders(editor);
             
-            // Then load existing notes if any
+            // Then create notes if any
             if (notesData.length > 0) {
-                createShapesFromNotes(notesData, editor, false, dateMap); // Pass dateMap directly
+                createShapesFromNotes(notesData, editor, false);
             } else {
                 // No notes - still need to center camera on TODAY
                 const TODAY_X = 5000;
@@ -1815,7 +1883,7 @@ export default function SyncedProductionApp() {
                 const result = await loadNotes();
                 const allNotes = result.notes || result;
                 const dateMap = result.dateMap || null;
-                createShapesFromNotes(allNotes, editor, true, dateMap);
+                createShapesFromNotes(allNotes, editor, true);
             }, 5000); // Sync after 5 seconds
             
         } catch (error) {

@@ -5,7 +5,8 @@
   "scripts": {
     "dev:all": "dotenv -e .env.dev -- concurrently -n \"BOT,BACKEND,FRONTEND\" -c \"green,yellow,cyan\" \"cd telegram-bot && node index.js\" \"cd web/backend && npm run start:dev\" \"cd web/frontend && npm run dev\"",
     "prod:build": "dotenv -e .env.prod -- bash -c 'cd web/backend && npm run build && cd ../frontend && npm run build'",
-    "prod:all": "npm run prod:build && dotenv -e .env.prod -- concurrently -n \"BOT,BACKEND,FRONTEND\" -c \"red,magenta,blue\" \"cd telegram-bot && node index.js\" \"cd web/backend && npm run start:prod\" \"cd web/frontend && npm run preview\""
+    "prod:all": "npm run prod:build && dotenv -e .env.prod -- concurrently -n \"BOT,BACKEND,FRONTEND\" -c \"red,magenta,blue\" \"cd telegram-bot && node index.js\" \"cd web/backend && npm run start:prod\" \"cd web/frontend && npm run preview\"",
+    "db:dev:reset": "docker stop postgres-dev && docker rm postgres-dev && docker volume rm voice-notes-dev-data && cd web/backend && docker-compose up -d postgres-dev && sleep 3 && DATABASE_URL='postgresql://postgres:postgres@localhost:5433/voice_notes_db?schema=public' npx prisma migrate deploy"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
