@@ -533,15 +533,45 @@ export default function SyncedProductionApp() {
             // console.log('📸 Restoring camera position:', savedCamera);
             editor.setCamera(savedCamera);
         } else {
-            // Set camera to TODAY column (center on it)
-            const TODAY_X = 5000;
-            const COLUMN_WIDTH = 180;
-            // Use centerOnPoint for proper centering
-            editor.centerOnPoint({ 
-                x: TODAY_X + (COLUMN_WIDTH / 2), // Center of the column
-                y: 200 // Approximate vertical center of content
-            });
-            // console.log('📸 Centered camera on TODAY column');
+            // Try to restore from localStorage first
+            const storedCameraStr = localStorage.getItem('tldraw-camera-position');
+            if (storedCameraStr) {
+                try {
+                    const storedCamera = JSON.parse(storedCameraStr);
+                    // Check if position is not too old (24 hours)
+                    if (storedCamera.timestamp && Date.now() - storedCamera.timestamp < 24 * 60 * 60 * 1000) {
+                        editor.setCamera({ x: storedCamera.x, y: storedCamera.y, z: storedCamera.z });
+                        console.log('📸 Restored camera position from localStorage:', storedCamera);
+                    } else {
+                        // Position too old, center on TODAY
+                        const TODAY_X = 5000;
+                        const COLUMN_WIDTH = 180;
+                        editor.centerOnPoint({ 
+                            x: TODAY_X + (COLUMN_WIDTH / 2),
+                            y: 200
+                        });
+                        console.log('📸 Camera position too old, centered on TODAY');
+                    }
+                } catch (e) {
+                    // Invalid stored data, center on TODAY
+                    const TODAY_X = 5000;
+                    const COLUMN_WIDTH = 180;
+                    editor.centerOnPoint({ 
+                        x: TODAY_X + (COLUMN_WIDTH / 2),
+                        y: 200
+                    });
+                    console.log('📸 Invalid stored camera position, centered on TODAY');
+                }
+            } else {
+                // No stored position, center on TODAY
+                const TODAY_X = 5000;
+                const COLUMN_WIDTH = 180;
+                editor.centerOnPoint({ 
+                    x: TODAY_X + (COLUMN_WIDTH / 2),
+                    y: 200
+                });
+                console.log('📸 No stored camera position, centered on TODAY');
+            }
         }
     }, [generateDateHeaders, calculateColumnX]);
     
@@ -1144,6 +1174,69 @@ export default function SyncedProductionApp() {
         } catch (error) {
             console.error('❌ Error fetching note for modal:', error);
         }
+    }, [editor]);
+    
+    // Save camera position to localStorage only when camera stops moving
+    useEffect(() => {
+        if (!editor) return;
+        
+        let isDragging = false;
+        let lastCamera = null;
+        
+        const saveCameraPosition = () => {
+            const camera = editor.getCamera();
+            localStorage.setItem('tldraw-camera-position', JSON.stringify({
+                x: camera.x,
+                y: camera.y,
+                z: camera.z,
+                timestamp: Date.now()
+            }));
+            console.log('📸 Camera position saved on stop:', camera);
+        };
+        
+        // Handle pointer/wheel events to detect when user stops interacting
+        const handlePointerDown = () => {
+            isDragging = true;
+            lastCamera = editor.getCamera();
+        };
+        
+        const handlePointerUp = () => {
+            if (isDragging) {
+                isDragging = false;
+                const currentCamera = editor.getCamera();
+                // Only save if camera actually moved
+                if (lastCamera && (lastCamera.x !== currentCamera.x || lastCamera.y !== currentCamera.y || lastCamera.z !== currentCamera.z)) {
+                    saveCameraPosition();
+                }
+            }
+        };
+        
+        const handleWheel = () => {
+            // For wheel events, use a small debounce since wheel events fire rapidly
+            clearTimeout(handleWheel.timeoutId);
+            handleWheel.timeoutId = setTimeout(() => {
+                saveCameraPosition();
+            }, 150); // Small debounce just for wheel events to stop
+        };
+        
+        // Listen to pointer events
+        document.addEventListener('pointerdown', handlePointerDown);
+        document.addEventListener('pointerup', handlePointerUp);
+        document.addEventListener('wheel', handleWheel, { passive: true });
+        
+        // Also save on page unload
+        const handleBeforeUnload = () => {
+            saveCameraPosition();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown);
+            document.removeEventListener('pointerup', handlePointerUp);
+            document.removeEventListener('wheel', handleWheel);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            clearTimeout(handleWheel.timeoutId);
+        };
     }, [editor]);
     
     // Save handleNoteClick to window for ShapeUtil access
@@ -1800,14 +1893,45 @@ export default function SyncedProductionApp() {
             if (notesData.length > 0) {
                 createShapesFromNotes(notesData, editor, false, dateMap);
             } else {
-                // No notes - still need to center camera on TODAY
-                const TODAY_X = 5000;
-                const COLUMN_WIDTH = 180;
-                editor.centerOnPoint({ 
-                    x: TODAY_X + (COLUMN_WIDTH / 2),
-                    y: 200 
-                });
-                console.log('📸 No notes found, centered on TODAY column');
+                // No notes - try to restore camera position or center on TODAY
+                const storedCameraStr = localStorage.getItem('tldraw-camera-position');
+                if (storedCameraStr) {
+                    try {
+                        const storedCamera = JSON.parse(storedCameraStr);
+                        // Check if position is not too old (24 hours)
+                        if (storedCamera.timestamp && Date.now() - storedCamera.timestamp < 24 * 60 * 60 * 1000) {
+                            editor.setCamera({ x: storedCamera.x, y: storedCamera.y, z: storedCamera.z });
+                            console.log('📸 No notes, but restored camera position from localStorage');
+                        } else {
+                            // Position too old
+                            const TODAY_X = 5000;
+                            const COLUMN_WIDTH = 180;
+                            editor.centerOnPoint({ 
+                                x: TODAY_X + (COLUMN_WIDTH / 2),
+                                y: 200 
+                            });
+                            console.log('📸 No notes, camera position too old, centered on TODAY');
+                        }
+                    } catch (e) {
+                        // Invalid stored data
+                        const TODAY_X = 5000;
+                        const COLUMN_WIDTH = 180;
+                        editor.centerOnPoint({ 
+                            x: TODAY_X + (COLUMN_WIDTH / 2),
+                            y: 200 
+                        });
+                        console.log('📸 No notes, invalid stored position, centered on TODAY');
+                    }
+                } else {
+                    // No stored position
+                    const TODAY_X = 5000;
+                    const COLUMN_WIDTH = 180;
+                    editor.centerOnPoint({ 
+                        x: TODAY_X + (COLUMN_WIDTH / 2),
+                        y: 200 
+                    });
+                    console.log('📸 No notes found, centered on TODAY column');
+                }
             }
         }, 100);
     }, [loadNotes, createShapesFromNotes, generateDateHeaders, handleNoteClick, calculateColumnX]);
