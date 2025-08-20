@@ -139,6 +139,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     
     const addTagInputRef = useClickOutside(() => {
         if (showAddTagInput) {
+            // Если тег не пустой - сохраняем его перед закрытием
+            if (newTagInput.trim()) {
+                addManualTag(newTagInput);
+            }
             setShowAddTagInput(false);
             setNewTagInput('');
         }
@@ -821,10 +825,11 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         let cleanTag = tagText.trim();
         if (!cleanTag) return;
         
-        // Добавляем # если его нет
-        if (!cleanTag.startsWith('#')) {
-            cleanTag = cleanTag;
-        } else {
+        // Заменяем пробелы на подчеркивания
+        cleanTag = cleanTag.replace(/\s+/g, '_');
+        
+        // Убираем # если есть в начале
+        if (cleanTag.startsWith('#')) {
             cleanTag = cleanTag.replace(/^#/, '');
         }
         
@@ -1418,6 +1423,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                             {showPrompt && !isExpanded && (
                                 <div
                                     ref={titlePromptPanelRef}
+                                    onMouseDown={(e) => e.stopPropagation()}
                                     style={{
                                         marginTop: '10px',
                                         padding: '12px',
@@ -1852,11 +1858,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                 }
                                                 // Убрали обработку Escape - теперь это делает useModalEscape
                                             }}
-                                            onBlur={() => {
-                                                if (!newTagInput) {
-                                                    setShowAddTagInput(false);
-                                                }
-                                            }}
+                                            // onBlur убрали - теперь обработка через useClickOutside
                                             placeholder="Введите тег..."
                                             autoFocus
                                             style={{
@@ -1947,6 +1949,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         {showTagChat && (
                             <div
                                 ref={tagChatPanelRef}
+                                onMouseDown={(e) => e.stopPropagation()}
                                 style={{
                                     marginTop: '12px',
                                     padding: '12px',
@@ -2022,6 +2025,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         {showTagHistory && (
                             <div
                                 ref={tagHistoryPanelRef}
+                                onMouseDown={(e) => e.stopPropagation()}
                                 style={{
                                     marginTop: '12px',
                                     maxHeight: '250px',
@@ -2152,6 +2156,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         {showObsidianTags && (
                             <div
                                 ref={obsidianTagsPanelRef}
+                                onMouseDown={(e) => e.stopPropagation()}
                                 style={{
                                     marginTop: '12px',
                                     padding: '12px',
