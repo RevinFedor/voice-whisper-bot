@@ -24,7 +24,7 @@ let NotesController = class NotesController {
         this.notesService = notesService;
     }
     async getNotes(userId = 'test-user-id', days) {
-        const daysNumber = days ? parseInt(days, 10) : 14;
+        const daysNumber = days ? parseInt(days, 10) : undefined;
         return this.notesService.getNotes(userId, daysNumber);
     }
     async getNoteByTelegramId(messageId, userId = 'test-user-id') {
@@ -80,7 +80,7 @@ exports.NotesController = NotesController;
 __decorate([
     (0, common_1.Get)(),
     (0, swagger_1.ApiOperation)({ summary: 'Get all notes for a user' }),
-    (0, swagger_1.ApiQuery)({ name: 'days', required: false, description: 'Number of days to fetch' }),
+    (0, swagger_1.ApiQuery)({ name: 'days', required: false, description: 'Number of days to fetch (if not specified, returns ALL notes)' }),
     (0, swagger_1.ApiResponse)({ status: 200, description: 'Returns all notes' }),
     __param(0, (0, common_1.Headers)('user-id')),
     __param(1, (0, common_1.Query)('days')),

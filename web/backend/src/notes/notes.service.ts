@@ -206,16 +206,21 @@ export class NotesService {
   /**
    * Get all notes for a user
    */
-  async getNotes(userId: string, days: number = 14): Promise<Note[]> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+  async getNotes(userId: string, days?: number): Promise<Note[]> {
+    // If days specified, filter by date. Otherwise return ALL notes
+    const whereClause: any = {
+      userId,
+      isArchived: false,
+    };
+    
+    if (days && days > 0) {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      whereClause.date = { gte: startDate };
+    }
     
     const notes = await this.prisma.note.findMany({
-      where: {
-        userId,
-        date: { gte: startDate },
-        isArchived: false,
-      },
+      where: whereClause,
       orderBy: [
         { date: 'desc' },
         { y: 'asc' },

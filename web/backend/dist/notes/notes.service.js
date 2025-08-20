@@ -147,15 +147,18 @@ let NotesService = class NotesService {
             date,
         });
     }
-    async getNotes(userId, days = 14) {
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+    async getNotes(userId, days) {
+        const whereClause = {
+            userId,
+            isArchived: false,
+        };
+        if (days && days > 0) {
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
+            whereClause.date = { gte: startDate };
+        }
         const notes = await this.prisma.note.findMany({
-            where: {
-                userId,
-                date: { gte: startDate },
-                isArchived: false,
-            },
+            where: whereClause,
             orderBy: [
                 { date: 'desc' },
                 { y: 'asc' },

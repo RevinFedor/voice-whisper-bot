@@ -23,13 +23,13 @@ export class NotesController {
 
   @Get()
   @ApiOperation({ summary: 'Get all notes for a user' })
-  @ApiQuery({ name: 'days', required: false, description: 'Number of days to fetch' })
+  @ApiQuery({ name: 'days', required: false, description: 'Number of days to fetch (if not specified, returns ALL notes)' })
   @ApiResponse({ status: 200, description: 'Returns all notes' })
   async getNotes(
     @Headers('user-id') userId: string = 'test-user-id',
     @Query('days') days?: string,
   ): Promise<Note[]> {
-    const daysNumber = days ? parseInt(days, 10) : 14;
+    const daysNumber = days ? parseInt(days, 10) : undefined;
     return this.notesService.getNotes(userId, daysNumber);
   }
 
