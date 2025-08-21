@@ -1069,7 +1069,7 @@ export default function SyncedProductionApp() {
         
         // Вариант 1: Подписка на document pointerup
         const handlePointerUp = (e) => {
-            console.log(`⏱ T+${Date.now() % 100000}: DOC_POINTER_UP wasDrag=${wasDragging}`);
+            // console.log(`⏱ T+${Date.now() % 100000}: DOC_POINTER_UP wasDrag=${wasDragging}`);
             
             if (wasDragging) {
                 wasDragging = false;
@@ -1218,7 +1218,6 @@ export default function SyncedProductionApp() {
                 z: camera.z,
                 timestamp: Date.now()
             }));
-            console.log('📸 Camera position saved on stop:', camera);
         };
         
         // Handle pointer/wheel events to detect when user stops interacting
@@ -1887,7 +1886,6 @@ export default function SyncedProductionApp() {
                 if (dbId) {
                     // Extract title for logging
                     const title = shape.props.richText?.content?.[0]?.content?.[0]?.text || 'Untitled';
-                    console.log(`🖾️ Click on note: "${title}" → Opening modal`);
                     handleNoteModalOpen(dbId, shape);
                 }
                 

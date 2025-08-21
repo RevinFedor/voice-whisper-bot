@@ -2,7 +2,7 @@ import React, { useState, useRef, useLayoutEffect, useCallback, useEffect } from
 import { useScrollPreservingTextarea } from '../hooks/useScrollPreservingTextarea';
 import { useModalEscape, MODAL_PRIORITIES } from '../contexts/ModalStackContext';
 import { useClickOutside } from '../hooks/useClickOutside';
-import TagDropdown from './ux/TagDropdown';
+import TagDropdownPortal from './ux/TagDropdownPortal';
 import obsidianIcon from '../assets/obsidian-icon.svg';
 
 // API configuration
@@ -76,6 +76,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     const textareaRef = useRef(null);
     const modalRef = useRef(null);
     const prevNoteIdRef = useRef(note?.id); // Для отслеживания смены заметки
+    const tagInputElementRef = useRef(null); // Ref для самого input элемента тегов
     
     // === ХУКИ ДЛЯ TEXTAREA ===
     const contentTextarea = useScrollPreservingTextarea();
@@ -101,6 +102,17 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     
     // === СОСТОЯНИЕ ЭКСПОРТА ===
     const [isExporting, setIsExporting] = useState(false);
+    
+    // Логирование изменения состояния dropdown
+    useEffect(() => {
+        console.log('📍 Dropdown state changed:', {
+            showTagDropdown,
+            showAddTagInput,
+            hasTagInputElement: !!tagInputElementRef?.current,
+            tagInputElement: tagInputElementRef?.current,
+            obsidianTagsCount: obsidianTags.length
+        });
+    }, [showTagDropdown, showAddTagInput, obsidianTags.length]);
     
     // === REFS ДЛЯ ПАНЕЛЕЙ (для click outside) ===
     const titleHistoryPanelRef = useClickOutside(() => {
@@ -1800,7 +1812,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                     ) : (
                                         <div style={{ position: 'relative' }}>
                                             <input
-                                                ref={addTagInputRef}
+                                                ref={(el) => {
+                                                    tagInputElementRef.current = el;
+                                                    if (addTagInputRef) addTagInputRef.current = el;
+                                                }}
                                                 type="text"
                                                 value={newTagInput}
                                                 onChange={(e) => {
@@ -1812,8 +1827,11 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                 }}
                                                 onFocus={(e) => {
                                                     // Показываем dropdown при фокусе
+                                                    console.log('📍 Input focused, element:', e.target);
+                                                    console.log('📍 Obsidian tags count:', obsidianTags.length);
                                                     if (obsidianTags.length > 0) {
                                                         setShowTagDropdown(true);
+                                                        console.log('📍 Showing dropdown');
                                                     }
                                                 }}
                                                 onKeyDown={(e) => {
@@ -1846,9 +1864,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                             />
                                             
                                             {/* Dropdown с тегами Obsidian */}
-                                            <TagDropdown
+                                            <TagDropdownPortal
                                                 ref={tagDropdownRef}
                                                 isOpen={showTagDropdown && showAddTagInput}
+                                                anchorEl={tagInputElementRef.current}
                                                 tags={obsidianTags}
                                                 usedTags={localTags}
                                                 searchValue={newTagInput}
@@ -1856,9 +1875,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                     addManualTag(tag.replace(/^#/, ''));
                                                     setShowTagDropdown(false);
                                                 }}
-                                                verticalPosition={'top'}
-                                                horizontalPosition="center"
-                                                maxHeight={200}
+                                                verticalPosition="auto"
+                                                horizontalPosition="left"
+                                                maxHeight={250}
                                                 width={400}
                                                 noResultsText="Теги не найдены"
                                                 allUsedText="Все подходящие теги уже добавлены"

@@ -73,19 +73,10 @@ export function SelectionContextMenu({ onAfterDelete }) {
         const isBrushing = currentPath.includes('select.brushing');
         const isIdle = currentPath.includes('select.idle');
         
-        console.log('📊 Selection change:', {
-            selectedCount: selectedNotes.length,
-            currentPath,
-            isPointingShape,
-            isBrushing,
-            isIdle,
-            wasBrushUsed: wasBrushUsedRef.current
-        });
         
         // Сбрасываем флаг ТОЛЬКО когда:
         // 1. Нет выделения И не идет brushing И в idle состоянии
         if (selectedNotes.length === 0 && !isBrushing && !hasBrush && isIdle) {
-            console.log('🔄 No selection and idle, resetting wasBrushUsedRef');
             wasBrushUsedRef.current = false;
             prevSelectedCountRef.current = 0;
         }
