@@ -1875,7 +1875,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                                     addManualTag(tag.replace(/^#/, ''));
                                                     setShowTagDropdown(false);
                                                 }}
-                                                verticalPosition="auto"
+                                                verticalPosition="top"
                                                 horizontalPosition="left"
                                                 maxHeight={250}
                                                 width={400}

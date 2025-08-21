@@ -37,12 +37,17 @@ const TagDropdownPortal = forwardRef(({
     ...props
 }, ref) => {
     
-    const [position, setPosition] = useState({ top: 0, left: 0 });
+    const [position, setPosition] = useState({ top: -9999, left: -9999 }); // Начальная позиция за экраном
+    const [positionReady, setPositionReady] = useState(false);
     const dropdownRef = useRef(null);
     
     // Вычисляем позицию dropdown относительно anchorEl
     useEffect(() => {
-        if (!isOpen || !anchorEl) return;
+        if (!isOpen || !anchorEl) {
+            setPositionReady(false);
+            setPosition({ top: -9999, left: -9999 });
+            return;
+        }
         
         const calculatePosition = () => {
             const rect = anchorEl.getBoundingClientRect();
@@ -91,6 +96,7 @@ const TagDropdownPortal = forwardRef(({
             
             console.log('📍 TagDropdown position calculated:', { top, left, rect, windowHeight: window.innerHeight });
             setPosition({ top, left });
+            setPositionReady(true);
         };
         
         calculatePosition();
@@ -122,7 +128,8 @@ const TagDropdownPortal = forwardRef(({
         tagsCount: tags.length, 
         filteredCount: filtered.length,
         availableCount: availableTags.length,
-        searchValue 
+        searchValue,
+        positionReady
     });
     
     // Рендерим через Portal в body
@@ -148,6 +155,9 @@ const TagDropdownPortal = forwardRef(({
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
                 padding: '10px',
                 zIndex: 10000, // Выше чем модалка (9999)
+                opacity: positionReady ? 1 : 0,
+                visibility: positionReady ? 'visible' : 'hidden',
+                transition: 'opacity 0.15s ease-in-out, visibility 0.15s ease-in-out',
                 ...style,
             }}
             onMouseDown={(e) => e.stopPropagation()}
