@@ -72,7 +72,7 @@ const TagDropdownPortal = forwardRef(({
                     console.log('📍 TagDropdown: auto positioning - showing above', { spaceBelow, spaceAbove });
                 }
             } else if (verticalPosition === 'top') {
-                top = rect.top - dropdownHeight - 4;
+                top = rect.top - dropdownHeight - 4 - 22; // Добавил -80px костыль для подъема вверх
                 console.log('📍 TagDropdown: fixed top positioning');
             } else if (verticalPosition === 'bottom') {
                 top = rect.bottom + 4;
