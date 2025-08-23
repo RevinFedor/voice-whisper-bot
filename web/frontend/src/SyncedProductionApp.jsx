@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Tldraw, createShapeId } from 'tldraw';
+import { Tldraw, createShapeId, defaultShapeUtils, defaultTools } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { CustomNoteShapeUtil } from './components/CustomNoteShape';
 import { StaticDateHeaderShapeUtil } from './components/StaticDateHeaderShape';
@@ -8,6 +8,14 @@ import { ModalStackProvider } from './contexts/ModalStackContext';
 import DatePickerModal from './components/DatePickerModal';
 import NoteModal from './components/NoteModal';
 import ExportToast from './components/ExportToast';
+import CopyToast from './components/CopyToast';
+import { 
+    copyToClipboard, 
+    formatMultipleNotesForClipboard, 
+    extractNoteDataFromShape,
+    loadMultipleNotes,
+    richTextToPlainText 
+} from './utils/clipboardHelpers';
 import './utils/debugHelpers';
 import './utils/debugShapes';
 import './utils/quickTest';
@@ -234,6 +242,19 @@ export default function SyncedProductionApp() {
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
     const [showExportToast, setShowExportToast] = useState(false);
     const [exportToastData, setExportToastData] = useState(null);
+    const [showCopyToast, setShowCopyToast] = useState(false);
+    const [copyToastData, setCopyToastData] = useState(null);
+    
+    // Stable callbacks for toast components
+    const handleCloseExportToast = useCallback(() => {
+        console.log('🔴 Closing ExportToast');
+        setShowExportToast(false);
+    }, []);
+    
+    const handleCloseCopyToast = useCallback(() => {
+        console.log('🔴 Closing CopyToast');
+        setShowCopyToast(false);
+    }, []);
     
     // Load notes from backend
     const loadNotes = useCallback(async () => {
@@ -1269,6 +1290,143 @@ export default function SyncedProductionApp() {
     useEffect(() => {
         window.handleNoteClick = handleNoteClick;
         
+        // Debug copy function
+        window.debugCopy = async () => {
+            console.log('🔍 DEBUG COPY STARTED');
+            if (!editor) {
+                console.error('❌ No editor available');
+                return;
+            }
+            
+            const selectedShapes = editor.getSelectedShapes();
+            console.log('📋 Selected shapes:', selectedShapes);
+            
+            const customNotes = selectedShapes.filter(shape => shape.type === 'custom-note');
+            console.log('📝 Custom notes:', customNotes);
+            
+            if (customNotes.length === 0) {
+                console.log('⚠️ No custom notes selected');
+                return;
+            }
+            
+            // Focus document first
+            document.body.focus();
+            window.focus();
+            
+            // Test clipboard write
+            try {
+                const testText = `Test copy: ${customNotes.length} notes selected`;
+                await navigator.clipboard.writeText(testText);
+                console.log('✅ Clipboard test successful!');
+                console.log('📋 Copied text:', testText);
+            } catch (err) {
+                console.error('❌ Clipboard error:', err);
+                // Try fallback method
+                const textarea = document.createElement('textarea');
+                textarea.value = testText;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                const success = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                console.log(success ? '✅ Fallback copy successful!' : '❌ Fallback copy failed');
+            }
+        };
+        
+        // Create copy function with all dependencies
+        const executeCopy = async () => {
+            console.log('🎯 Executing copy...');
+            if (!editor) {
+                console.error('❌ No editor available');
+                return;
+            }
+            
+            try {
+                const selectedShapes = editor.getSelectedShapes();
+                const customNotes = selectedShapes.filter(shape => shape.type === 'custom-note');
+                
+                if (customNotes.length === 0) {
+                    console.log('⚠️ No custom notes selected');
+                    return;
+                }
+                
+                console.log(`📋 Copying ${customNotes.length} notes...`);
+                
+                // Extract note IDs from shapes
+                const noteIds = customNotes
+                    .map(shape => shape.props.dbId)
+                    .filter(id => id);
+                
+                console.log('📝 Note IDs:', noteIds);
+                
+                // Load full note data from backend
+                const fullNotes = await loadMultipleNotes(noteIds, API_URL);
+                console.log(`✅ Loaded ${fullNotes.length} notes from backend`);
+                
+                // If we couldn't load from backend, use shape data as fallback
+                let notesToFormat = fullNotes;
+                if (fullNotes.length === 0) {
+                    console.log('⚠️ Using fallback: extracting from shapes');
+                    notesToFormat = customNotes.map(shape => ({
+                        title: richTextToPlainText(shape.props.richText),
+                        content: richTextToPlainText(shape.props.richText),
+                        date: shape.props.date || new Date().toISOString(),
+                        time: shape.props.time,
+                        duration: shape.props.duration,
+                        tags: shape.props.tags || [],
+                        y: shape.y
+                    }));
+                }
+                
+                // Format notes for clipboard
+                const formattedText = formatMultipleNotesForClipboard(notesToFormat);
+                console.log('📄 Formatted text:', formattedText.substring(0, 200) + '...');
+                
+                // Focus and copy to clipboard
+                document.body.focus();
+                window.focus();
+                
+                const success = await copyToClipboard(formattedText);
+                
+                if (success) {
+                    // Show toast notification
+                    setCopyToastData({ noteCount: customNotes.length });
+                    setShowCopyToast(true);
+                    console.log(`✅ Successfully copied ${customNotes.length} notes`);
+                } else {
+                    console.error('❌ Failed to copy to clipboard');
+                }
+            } catch (err) {
+                console.error('❌ Error during copy:', err);
+            }
+        };
+        
+        // Expose as global function
+        window.triggerCopy = executeCopy;
+        window.executeCopy = executeCopy;
+        
+        // Check keyboard shortcuts
+        window.checkShortcuts = () => {
+            console.log('🔍 Checking tldraw configuration...');
+            if (!editor) {
+                console.error('❌ No editor available');
+                return;
+            }
+            
+            // Check if our overrides are registered
+            console.log('📋 Editor instance:', editor);
+            console.log('📋 Editor methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(editor)));
+            
+            // Try to find UI info
+            const container = document.querySelector('.tl-container');
+            console.log('📋 TLDraw container:', container);
+            
+            // Check for keyboard event listeners
+            const hasKeyboardListener = !!window._keyboardListenerAdded;
+            console.log('📋 Keyboard listener added:', hasKeyboardListener);
+        };
+        
         // Debug helper for hybrid zones
         window.debugZones = () => {
             console.log('🎯 Hybrid Zones Debug:');
@@ -1290,11 +1448,20 @@ export default function SyncedProductionApp() {
             });
         };
         
+        console.log('✅ Debug functions added to window:');
+        console.log('  - debugCopy() - test clipboard write');
+        console.log('  - triggerCopy() - manually trigger copy action');
+        console.log('  - checkShortcuts() - check copy action details');
+        console.log('  - debugZones() - debug date zones');
+        
         return () => {
             delete window.handleNoteClick;
             delete window.debugZones;
+            delete window.debugCopy;
+            delete window.triggerCopy;
+            delete window.checkShortcuts;
         };
-    }, [handleNoteClick, dateColumnMap, calculateColumnX]);
+    }, [handleNoteClick, dateColumnMap, calculateColumnX, editor]);
     
     
     // Handle editor mount
@@ -1303,6 +1470,95 @@ export default function SyncedProductionApp() {
         setEditor(editor);
         window.editor = editor;
         window.saveEditor(editor);
+        
+        // Create local copy handler
+        const executeCopyHandler = async () => {
+            console.log('🎯 Executing copy from keyboard shortcut...');
+            
+            try {
+                const selectedShapes = editor.getSelectedShapes();
+                const customNotes = selectedShapes.filter(shape => shape.type === 'custom-note');
+                
+                if (customNotes.length === 0) {
+                    console.log('⚠️ No custom notes selected');
+                    return;
+                }
+                
+                console.log(`📋 Copying ${customNotes.length} notes...`);
+                
+                // Extract note IDs from shapes
+                const noteIds = customNotes
+                    .map(shape => shape.props.dbId)
+                    .filter(id => id);
+                
+                console.log('📝 Note IDs:', noteIds);
+                
+                // Load full note data from backend
+                const fullNotes = await loadMultipleNotes(noteIds, API_URL);
+                console.log(`✅ Loaded ${fullNotes.length} notes from backend`);
+                
+                // If we couldn't load from backend, use shape data as fallback
+                let notesToFormat = fullNotes;
+                if (fullNotes.length === 0) {
+                    console.log('⚠️ Using fallback: extracting from shapes');
+                    notesToFormat = customNotes.map(shape => ({
+                        title: richTextToPlainText(shape.props.richText),
+                        content: richTextToPlainText(shape.props.richText),
+                        date: shape.props.date || new Date().toISOString(),
+                        time: shape.props.time,
+                        duration: shape.props.duration,
+                        tags: shape.props.tags || [],
+                        y: shape.y
+                    }));
+                }
+                
+                // Format notes for clipboard
+                const formattedText = formatMultipleNotesForClipboard(notesToFormat);
+                console.log('📄 Formatted text (first 200 chars):', formattedText.substring(0, 200) + '...');
+                
+                // Focus and copy to clipboard
+                document.body.focus();
+                window.focus();
+                
+                const success = await copyToClipboard(formattedText);
+                
+                if (success) {
+                    // Show toast notification
+                    setCopyToastData({ noteCount: customNotes.length });
+                    setShowCopyToast(true);
+                    console.log(`✅ Successfully copied ${customNotes.length} notes to clipboard`);
+                } else {
+                    console.error('❌ Failed to copy to clipboard');
+                }
+            } catch (err) {
+                console.error('❌ Error during copy:', err);
+            }
+        };
+        
+        // Add manual keyboard listener for copy
+        const handleKeyDown = async (e) => {
+            // Check for Cmd+C (Mac) or Ctrl+C (Windows/Linux)
+            if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+                console.log('🎯 Copy shortcut detected!');
+                
+                const selectedShapes = editor.getSelectedShapes();
+                const customNotes = selectedShapes.filter(shape => shape.type === 'custom-note');
+                
+                if (customNotes.length > 0) {
+                    console.log(`📋 Intercepting copy for ${customNotes.length} custom notes`);
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Call our custom copy logic
+                    await executeCopyHandler();
+                    return false;
+                }
+            }
+        };
+        
+        // Add listener with capture to intercept before tldraw
+        document.addEventListener('keydown', handleKeyDown, true);
+        console.log('✅ Manual copy keyboard listener added');
         
         // Автоматически исключать static-date-header из выделения
         const unsubscribeSelection = editor.on('change', ({ changes }) => {
@@ -1957,7 +2213,7 @@ export default function SyncedProductionApp() {
                 console.log('📸 No notes found, centered on TODAY column');
             }
         }
-    }, [loadNotes, createShapesFromNotes, generateDateHeaders, handleNoteClick, calculateColumnX]);
+    }, [loadNotes, createShapesFromNotes, generateDateHeaders, handleNoteClick, calculateColumnX, setCopyToastData, setShowCopyToast]);
     
     // Add single note shape without full reload
     const addSingleNoteShape = useCallback((note, editor) => {
@@ -2178,8 +2434,80 @@ export default function SyncedProductionApp() {
                 overflow: 'hidden'
             }}>
                 <Tldraw
-                    shapeUtils={[CustomNoteShapeUtil, StaticDateHeaderShapeUtil]}
+                    shapeUtils={[...defaultShapeUtils, CustomNoteShapeUtil, StaticDateHeaderShapeUtil]}
+                    tools={defaultTools}
                     onMount={handleMount}
+                    overrides={{
+                        actions(editor, actions, helpers) {
+                            return {
+                                ...actions,
+                                'copy': {
+                                    ...actions['copy'],
+                                    kbd: 'cmd+c,ctrl+c',
+                                    onSelect: async (source) => {
+                                        
+                                        // Get selected shapes
+                                        const selectedShapes = editor.getSelectedShapes();
+                                        const customNotes = selectedShapes.filter(shape => shape.type === 'custom-note');
+                                        
+                                        // If no custom notes selected, use default behavior
+                                        if (customNotes.length === 0) {
+                                            return helpers.copy(source);
+                                        }
+                                        
+                                        try {
+                                            // Extract note IDs from shapes
+                                            const noteIds = customNotes
+                                                .map(shape => shape.props.dbId)
+                                                .filter(id => id);
+                                            
+                                            // Load full note data from backend
+                                            const fullNotes = await loadMultipleNotes(noteIds, API_URL);
+                                            
+                                            // If we couldn't load from backend, use shape data as fallback
+                                            let notesToFormat = fullNotes;
+                                            if (fullNotes.length === 0) {
+                                                notesToFormat = customNotes.map(shape => ({
+                                                    title: richTextToPlainText(shape.props.richText),
+                                                    content: richTextToPlainText(shape.props.richText),
+                                                    date: shape.props.date || new Date().toISOString(),
+                                                    time: shape.props.time,
+                                                    duration: shape.props.duration,
+                                                    tags: shape.props.tags || [],
+                                                    y: shape.y
+                                                }));
+                                            }
+                                            
+                                            // Format notes for clipboard
+                                            const formattedText = formatMultipleNotesForClipboard(notesToFormat);
+                                            
+                                            // Copy to clipboard
+                                            const success = await copyToClipboard(formattedText);
+                                            
+                                            if (success) {
+                                                // Show toast notification
+                                                setCopyToastData({ noteCount: customNotes.length });
+                                                setShowCopyToast(true);
+                                            }
+                                            
+                                        } catch (error) {
+                                            console.error('❌ Error during copy operation:', error);
+                                            // Try fallback copy with just the shape data
+                                            const fallbackText = customNotes
+                                                .map(shape => richTextToPlainText(shape.props.richText))
+                                                .join('\n\n---\n\n');
+                                            
+                                            const success = await copyToClipboard(fallbackText);
+                                            if (success) {
+                                                setCopyToastData({ noteCount: customNotes.length });
+                                                setShowCopyToast(true);
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                    }}
                 >
                     <SyncedControls 
                         onAddNote={handleOpenDatePicker}
@@ -2308,10 +2636,17 @@ export default function SyncedProductionApp() {
                 {/* Export Toast Notification */}
                 <ExportToast
                     show={showExportToast}
-                    onClose={() => setShowExportToast(false)}
+                    onClose={handleCloseExportToast}
                     noteTitle={exportToastData?.noteTitle}
                     folderPath={exportToastData?.folderPath}
                     obsidianUrl={exportToastData?.obsidianUrl}
+                />
+                
+                {/* Copy Toast Notification */}
+                <CopyToast
+                    show={showCopyToast}
+                    onClose={handleCloseCopyToast}
+                    noteCount={copyToastData?.noteCount || 0}
                 />
             </div>
         </ModalStackProvider>
