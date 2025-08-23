@@ -28,6 +28,29 @@ npm run prod:all  # PROD: порты 3002/8080, БД 5434
 - **Конфиг:** `web/backend/docker-compose.yml`
 - **DEV и PROD БД не связаны** - разные данные
 
+## Работа с миграциями БД
+
+### Применение новых миграций на DEV
+```bash
+# 1. Убедитесь что запущен контейнер БД для DEV
+docker ps | grep postgres-dev  # Должен быть запущен
+
+# 2. Создайте и примените миграцию
+cd web/backend
+npx dotenv -e ../../.env.dev -- prisma migrate dev --name описание_изменений
+
+# Миграция автоматически:
+# - Создаст файл в prisma/migrations/
+# - Применит изменения к DEV БД
+# - Обновит Prisma Client
+```
+
+### Проверка статуса миграций
+```bash
+cd web/backend
+npx dotenv -e ../../.env.dev -- prisma migrate status  # Для DEV
+```
+
 ## Миграция DEV → PROD
 
 ### Код
