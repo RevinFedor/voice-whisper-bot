@@ -1,48 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import obsidianIcon from '../assets/obsidian-icon.svg';
+import { useToastTimer } from '../hooks/useToastTimer';
 
 const ExportToast = ({ show, onClose, noteTitle, folderPath, obsidianUrl }) => {
     const [progress, setProgress] = useState(100);
     const [isHoveringButton, setIsHoveringButton] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);
-    const intervalRef = useRef(null);
     const TOAST_DURATION = 5000; // 5 seconds
     
-    useEffect(() => {
-        console.log('🟢 ExportToast useEffect triggered, show:', show);
-        
-        if (show) {
-            // Clear any existing interval
-            if (intervalRef.current) {
-                console.log('⚠️ Clearing existing interval');
-                clearInterval(intervalRef.current);
-            }
-            
-            setProgress(100);
-            setIsHoveringButton(false); // Сбрасываем состояние hover
-            intervalRef.current = setInterval(() => {
-                setProgress(prev => {
-                    if (prev <= 0) {
-                        clearInterval(intervalRef.current);
-                        intervalRef.current = null;
-                        onClose();
-                        return 0;
-                    }
-                    return prev - (100 / (TOAST_DURATION / 100));
-                });
-            }, 100);
-            
-            console.log('✅ ExportToast interval started');
-            
-            return () => {
-                if (intervalRef.current) {
-                    console.log('🛑 ExportToast cleanup: clearing interval');
-                    clearInterval(intervalRef.current);
-                    intervalRef.current = null;
-                }
-            };
+    // Use custom hook for timer management with tab visibility support
+    useToastTimer(show, TOAST_DURATION, onClose, (newProgress) => {
+        setProgress(newProgress);
+        if (show && newProgress === 100) {
+            setIsHoveringButton(false); // Reset hover state on new toast
         }
-    }, [show]); // Remove onClose from dependencies to prevent re-runs
+    });
     
     const handleOpenInObsidian = () => {
         window.location.href = obsidianUrl;
@@ -254,14 +226,16 @@ const ExportToast = ({ show, onClose, noteTitle, folderPath, obsidianUrl }) => {
                         right: 0,
                         height: '2px',
                         background: 'rgba(255, 255, 255, 0.05)',
+                        overflow: 'hidden',
                     }}
                 >
                     <div
                         style={{
-                            width: `${progress}%`,
+                            width: '100%',
                             height: '100%',
                             background: '#22c55e',
-                            transition: 'width 0.1s linear',
+                            transform: `translateX(${progress - 100}%)`,
+                            transition: 'transform 0.1s linear',
                         }}
                     />
                 </div>

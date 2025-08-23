@@ -36,6 +36,7 @@ const formatDateForInput = (dateString) => {
 };
 
 const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => {
+    
     // Уникальный ID для этого экземпляра модалки
     const modalId = useRef(`note-modal-${Date.now()}`).current;
     

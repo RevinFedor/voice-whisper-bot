@@ -247,12 +247,10 @@ export default function SyncedProductionApp() {
     
     // Stable callbacks for toast components
     const handleCloseExportToast = useCallback(() => {
-        console.log('🔴 Closing ExportToast');
         setShowExportToast(false);
     }, []);
     
     const handleCloseCopyToast = useCallback(() => {
-        console.log('🔴 Closing CopyToast');
         setShowCopyToast(false);
     }, []);
     

@@ -86,7 +86,6 @@ export async function copyToClipboard(text) {
         // Try modern Clipboard API first
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            console.log('✅ Copied to clipboard using Clipboard API');
             return true;
         }
         
@@ -106,15 +105,9 @@ export async function copyToClipboard(text) {
         const success = document.execCommand('copy');
         document.body.removeChild(textarea);
         
-        if (success) {
-            console.log('✅ Copied to clipboard using execCommand');
-        } else {
-            console.error('❌ Failed to copy using execCommand');
-        }
-        
         return success;
     } catch (err) {
-        console.error('❌ Error copying to clipboard:', err);
+        console.error('Error copying to clipboard:', err);
         return false;
     }
 }
@@ -158,7 +151,6 @@ export async function loadFullNoteData(noteId, apiUrl) {
         
         return await response.json();
     } catch (error) {
-        console.error(`Failed to load note ${noteId}:`, error);
         return null;
     }
 }

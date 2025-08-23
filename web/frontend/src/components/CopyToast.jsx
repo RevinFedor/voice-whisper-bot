@@ -1,44 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
+import { useToastTimer } from '../hooks/useToastTimer';
 
 const CopyToast = ({ show, onClose, noteCount = 0 }) => {
     const [progress, setProgress] = useState(100);
-    const intervalRef = useRef(null);
     const TOAST_DURATION = 3000; // 3 seconds for copy notification
     
-    useEffect(() => {
-        console.log('🔵 CopyToast useEffect triggered, show:', show);
-        
-        if (show) {
-            // Clear any existing interval
-            if (intervalRef.current) {
-                console.log('⚠️ Clearing existing interval');
-                clearInterval(intervalRef.current);
-            }
-            
-            setProgress(100);
-            intervalRef.current = setInterval(() => {
-                setProgress(prev => {
-                    if (prev <= 0) {
-                        clearInterval(intervalRef.current);
-                        intervalRef.current = null;
-                        onClose();
-                        return 0;
-                    }
-                    return prev - (100 / (TOAST_DURATION / 100));
-                });
-            }, 100);
-            
-            console.log('✅ CopyToast interval started');
-            
-            return () => {
-                if (intervalRef.current) {
-                    console.log('🛑 CopyToast cleanup: clearing interval');
-                    clearInterval(intervalRef.current);
-                    intervalRef.current = null;
-                }
-            };
-        }
-    }, [show]); // Remove onClose from dependencies to prevent re-runs
+    // Use custom hook for timer management with tab visibility support
+    useToastTimer(show, TOAST_DURATION, onClose, setProgress);
     
     if (!show) return null;
     
@@ -150,14 +118,16 @@ const CopyToast = ({ show, onClose, noteCount = 0 }) => {
                         right: 0,
                         height: '2px',
                         background: 'rgba(255, 255, 255, 0.05)',
+                        overflow: 'hidden',
                     }}
                 >
                     <div
                         style={{
-                            width: `${progress}%`,
+                            width: '100%',
                             height: '100%',
                             background: '#4a9eff',
-                            transition: 'width 0.1s linear',
+                            transform: `translateX(${progress - 100}%)`,
+                            transition: 'transform 0.1s linear',
                         }}
                     />
                 </div>
