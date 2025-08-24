@@ -2297,13 +2297,28 @@ export default function SyncedProductionApp() {
                         if (shapeIdToUpdate) {
                             const shape = editor.getShape(shapeIdToUpdate);
                             if (shape) {
+                                // Создаем richText формат из title и content
+                                const richText = {
+                                    type: 'doc',
+                                    content: [
+                                        {
+                                            type: 'paragraph',
+                                            content: [{ type: 'text', text: data.payload.title || '' }]
+                                        },
+                                        {
+                                            type: 'paragraph',
+                                            content: [{ type: 'text', text: data.payload.content || '' }]
+                                        }
+                                    ]
+                                };
+                                
                                 editor.updateShape({
                                     ...shape,
                                     props: {
                                         ...shape.props,
-                                        title: data.payload.title,
-                                        text: data.payload.content || '',
+                                        richText: richText,
                                         tags: data.payload.tags || [],
+                                        aiSuggestedTags: data.payload.aiSuggestedTags || shape.props.aiSuggestedTags || []
                                     },
                                 });
                             }
@@ -2577,13 +2592,16 @@ export default function SyncedProductionApp() {
                                 
                                 // Use mergeRemoteChanges for all programmatic updates
                                 editor.store.mergeRemoteChanges(() => {
-                                    // Обновляем props карточки
+                                    // Обновляем props карточки - сохраняем все существующие поля
                                     editor.updateShape({
                                         id: shape.id,
                                         type: 'custom-note',
                                         props: { 
+                                            ...shape.props, // Сохраняем все существующие props
                                             richText,
-                                            time // Обновляем время на карточке
+                                            time, // Обновляем время на карточке
+                                            tags: updatedNote.tags || shape.props.tags || [],
+                                            aiSuggestedTags: updatedNote.aiSuggestedTags || shape.props.aiSuggestedTags || []
                                         }
                                     });
                                     
