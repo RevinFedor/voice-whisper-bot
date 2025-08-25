@@ -14,9 +14,9 @@ const API_URL = import.meta.env.VITE_API_URL;
 // Конфигурация размеров раскрытого контента
 const EXPANDED_CONTENT_CONFIG = {
     minHeight: '500px',  // Минимальная высота раскрытого контента
-    maxHeight: '70vh',   // Максимальная высота (70% от высоты экрана)
-    width: '70%',        // Ширина раскрытого контента (в % от экрана)
-    maxWidth: '900px',   // Максимальная ширина в пикселях
+    maxHeight: '70vh',   // Максимальная высота (70% от высоты viewport)
+    width: '70vw',       // Ширина раскрытого контента (70% от ширины viewport)
+    maxWidth: '760px',   // Максимальная ширина в пикселях
 };
 
 // Вспомогательная функция для конвертации даты в формат для datetime-local input
@@ -1740,7 +1740,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                         {/* Раскрытый textarea */}
                         {isContentExpanded && (
                             <>
-                                {/* Затемнение фона */}
+                                {/* Невидимый overlay для закрытия по клику */}
                                 <div
                                     style={{
                                         position: 'fixed',
@@ -1748,7 +1748,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                         left: 0,
                                         right: 0,
                                         bottom: 0,
-                                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                                        backgroundColor: 'transparent',
                                         zIndex: 10000,
                                     }}
                                     onClick={() => setIsContentExpanded(false)}
@@ -1798,7 +1798,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                         backgroundColor: '#1a1a1a',
                                         border: '2px solid #ff9500',
                                         boxShadow: '0 0 20px rgba(255, 149, 0, 0.3), 0 10px 40px rgba(0, 0, 0, 0.5)',
-                                        fontSize: '17px',
+                                        fontSize: '16px',
                                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
                                         resize: 'none',
                                         outline: 'none',
