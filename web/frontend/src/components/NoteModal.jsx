@@ -69,6 +69,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
     const [isGenerating, setIsGenerating] = useState(false);
     const [newlyGeneratedId, setNewlyGeneratedId] = useState(null);
     const [contentCursorPos, setContentCursorPos] = useState(0);
+    const [scrollPercent, setScrollPercent] = useState(0);
     
     // === СОСТОЯНИЕ ФОКУСА ===
     const [isTitleFocused, setIsTitleFocused] = useState(false);
@@ -175,23 +176,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
         }
     }, showTagDropdown, [addTagInputRef]); // Исключаем клик по самому input
     
-    // === ФУНКЦИЯ СИНХРОНИЗАЦИИ СКРОЛЛА ===
-    const syncScrollPosition = useCallback((fromElement, toElement) => {
-        if (!fromElement || !toElement) return;
-        
-        const fromHeight = fromElement.scrollHeight - fromElement.clientHeight;
-        if (fromHeight <= 0) return; // Нечего скроллить
-        
-        const scrollPercent = fromElement.scrollTop / fromHeight;
-        
-        setTimeout(() => {
-            const toHeight = toElement.scrollHeight - toElement.clientHeight;
-            if (toHeight > 0) {
-                toElement.scrollTop = scrollPercent * toHeight;
-            }
-        }, 0);
-    }, []);
-    
     // === ФУНКЦИЯ СБРОСА ВСЕХ ПАНЕЛЕЙ ===
     const resetAllPanels = useCallback(() => {
         setIsExpanded(false);
@@ -264,8 +248,12 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
         
         // 2. Затем закрываем раскрытый контент
         if (isContentExpanded) {
-            // Синхронизируем скролл перед закрытием
-            syncScrollPosition(expandedContentRef.current, contentTextarea.textAreaRef?.current);
+            // Сохраняем процент скролла перед закрытием
+            if (expandedContentRef.current) {
+                const expanded = expandedContentRef.current;
+                const maxScroll = expanded.scrollHeight - expanded.clientHeight;
+                setScrollPercent(maxScroll > 0 ? expanded.scrollTop / maxScroll : 0);
+            }
             setIsContentExpanded(false);
             setIsContentFocused(false);
             return;
@@ -286,7 +274,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
         handleModalClose, setShowTagChat, setShowTagHistory, setShowTagDropdown,
         setTagPromptInput, setShowHistory, setShowPrompt, setPromptInput,
         setShowAddTagInput, setNewTagInput, setIsContentExpanded, setIsContentFocused,
-        setIsExpanded, setIsTitleFocused, syncScrollPosition
+        setIsExpanded, setIsTitleFocused, expandedContentRef, setScrollPercent
     ]);
     
     // === ESCAPE ОБРАБОТКА ===
@@ -327,8 +315,12 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
         `${modalId}-expanded-content`,
         () => {
             if (isContentExpanded) {
-                // Синхронизируем скролл перед закрытием
-                syncScrollPosition(expandedContentRef.current, contentTextarea.textAreaRef?.current);
+                // Сохраняем процент скролла перед закрытием
+                if (expandedContentRef.current) {
+                    const expanded = expandedContentRef.current;
+                    const maxScroll = expanded.scrollHeight - expanded.clientHeight;
+                    setScrollPercent(maxScroll > 0 ? expanded.scrollTop / maxScroll : 0);
+                }
                 setIsContentExpanded(false);
                 setIsContentFocused(false);
                 // Сохраняем при закрытии раскрытого контента
@@ -581,13 +573,15 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
     const handleContentExpand = () => {
         if (!isContentExpanded && contentTextarea.textAreaRef?.current) {
             setContentCursorPos(contentTextarea.textAreaRef.current.selectionStart);
-            // Синхронизируем скролл обычного textarea с раскрытым
-            setTimeout(() => {
-                syncScrollPosition(contentTextarea.textAreaRef.current, expandedContentRef.current);
-            }, 0);
+            // Сохраняем процент скролла обычного textarea
+            const textarea = contentTextarea.textAreaRef.current;
+            const maxScroll = textarea.scrollHeight - textarea.clientHeight;
+            setScrollPercent(maxScroll > 0 ? textarea.scrollTop / maxScroll : 0);
         } else if (isContentExpanded && expandedContentRef.current) {
-            // При закрытии синхронизируем скролл раскрытого с обычным
-            syncScrollPosition(expandedContentRef.current, contentTextarea.textAreaRef?.current);
+            // Сохраняем процент скролла раскрытого textarea
+            const expanded = expandedContentRef.current;
+            const maxScroll = expanded.scrollHeight - expanded.clientHeight;
+            setScrollPercent(maxScroll > 0 ? expanded.scrollTop / maxScroll : 0);
         }
         setIsContentExpanded(!isContentExpanded);
     };
@@ -602,14 +596,26 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
         }
     }, [isExpanded, titleCursorPos]);
     
-    // Восстанавливаем позицию курсора после раскрытия контента
+    // Восстанавливаем позицию курсора и скролла после раскрытия контента
     useEffect(() => {
         if (isContentExpanded && expandedContentRef.current) {
             expandedContentRef.current.focus();
             expandedContentRef.current.setSelectionRange(contentCursorPos, contentCursorPos);
             setIsContentFocused(true);
+            // Применяем сохраненный скролл
+            const maxScroll = expandedContentRef.current.scrollHeight - expandedContentRef.current.clientHeight;
+            if (maxScroll > 0) {
+                expandedContentRef.current.scrollTop = scrollPercent * maxScroll;
+            }
+        } else if (!isContentExpanded && contentTextarea.textAreaRef?.current) {
+            // Применяем сохраненный скролл к обычному textarea
+            const textarea = contentTextarea.textAreaRef.current;
+            const maxScroll = textarea.scrollHeight - textarea.clientHeight;
+            if (maxScroll > 0) {
+                textarea.scrollTop = scrollPercent * maxScroll;
+            }
         }
-    }, [isContentExpanded, contentCursorPos]);
+    }, [isContentExpanded, contentCursorPos, scrollPercent]);
     
    
     // === ОБРАБОТЧИКИ ===
@@ -1237,7 +1243,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                     transform: 'translate(-50%, -50%)',
                     width: '60%',
                     maxWidth: '800px',
-                    maxHeight: '80vh',
+                    maxHeight: '95vh',
                     backgroundColor: '#1a1a1a',
                     borderRadius: '16px',
                     border: '1px solid #333',
@@ -1295,7 +1301,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                 }}
                             >
                                 <span style={{ opacity: navigationInfo.canGoUp ? 1 : 0.3 }}>↑</span>
-                                <span>{navigationInfo.currentIndex}/{navigationInfo.totalNotes}</span>
+                                <span>
+                                    {navigationInfo.currentIndex}/{navigationInfo.totalNotes}
+                                </span>
                                 <span style={{ opacity: navigationInfo.canGoDown ? 1 : 0.3 }}>↓</span>
                             </span>
                         )}
@@ -1739,7 +1747,15 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
 
                     {/* СОДЕРЖИМОЕ */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <div
+                            style={{
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                marginBottom: '8px',
+                            }}
+                        >
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                                 {/* Индикатор состояния */}
                                 <div
@@ -1773,7 +1789,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                     Содержимое
                                 </label>
                             </div>
-                            
+
                             {/* Кнопка раскрытия контента */}
                             <button
                                 onClick={handleContentExpand}
@@ -1799,61 +1815,61 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
 
                         {/* Обычный textarea - всегда видим */}
                         <textarea
-                                ref={contentTextarea.textAreaRef}
-                                value={localContent}
-                                onChange={(e) => {
-                                    // Сначала обновляем позицию через хук
-                                    contentTextarea.handlers.onChange(e);
-                                    // Затем обновляем состояние и триггерим сохранение
-                                    handleContentChange(e);
-                                }}
-                                onFocus={(e) => {
-                                    contentTextarea.handlers.onFocus(e);
-                                    setIsContentFocused(true);
-                                }}
-                                onBlur={handleContentBlur}
-                                onClick={contentTextarea.handlers.onClick}
-                                onScroll={contentTextarea.handlers.onScroll}
-                                onSelect={contentTextarea.handlers.onSelect}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        const pos = e.target.selectionStart;
-                                        const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
-                                        // Используем handleContentChange для правильного обновления всех состояний
-                                        handleContentChange({ target: { value: newValue } });
+                            ref={contentTextarea.textAreaRef}
+                            value={localContent}
+                            onChange={(e) => {
+                                // Сначала обновляем позицию через хук
+                                contentTextarea.handlers.onChange(e);
+                                // Затем обновляем состояние и триггерим сохранение
+                                handleContentChange(e);
+                            }}
+                            onFocus={(e) => {
+                                contentTextarea.handlers.onFocus(e);
+                                setIsContentFocused(true);
+                            }}
+                            onBlur={handleContentBlur}
+                            onClick={contentTextarea.handlers.onClick}
+                            onScroll={contentTextarea.handlers.onScroll}
+                            onSelect={contentTextarea.handlers.onSelect}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const pos = e.target.selectionStart;
+                                    const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
+                                    // Используем handleContentChange для правильного обновления всех состояний
+                                    handleContentChange({ target: { value: newValue } });
 
-                                        requestAnimationFrame(() => {
-                                            e.target.setSelectionRange(pos + 1, pos + 1);
-                                            e.target.scrollTop = e.target.scrollTop;
-                                        });
-                                    } else {
-                                        contentTextarea.handlers.onKeyDown(e, localContent, setLocalContent);
-                                    }
-                                }}
-                                style={{
-                                    width: '100%',
-                                    padding: '16px',
-                                    borderRadius: '8px',
-                                    color: 'white',
-                                    backgroundColor: '#222',
-                                    border: isContentFocused && !isContentExpanded ? '2px solid #ff9500' : '1px solid #444',
-                                    boxShadow: isContentFocused && !isContentExpanded ? '0 0 12px rgba(255, 149, 0, 0.2)' : 'none',
-                                    fontSize: '16px',
-                                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-                                    minHeight: '300px',
-                                    resize: 'none',
-                                    outline: 'none',
-                                    lineHeight: '1.5',
-                                    transition: 'all 0.2s ease',
-                                    boxSizing: 'border-box',
-                                    pointerEvents: isContentExpanded ? 'none' : 'auto',
-                                }}
-                                rows={12}
-                                placeholder="Содержимое заметки..."
-                                disabled={isContentExpanded}
-                            />
-                        
+                                    requestAnimationFrame(() => {
+                                        e.target.setSelectionRange(pos + 1, pos + 1);
+                                        e.target.scrollTop = e.target.scrollTop;
+                                    });
+                                } else {
+                                    contentTextarea.handlers.onKeyDown(e, localContent, setLocalContent);
+                                }
+                            }}
+                            style={{
+                                width: '100%',
+                                padding: '16px',
+                                borderRadius: '8px',
+                                color: 'white',
+                                backgroundColor: '#222',
+                                border: isContentFocused && !isContentExpanded ? '2px solid #ff9500' : '1px solid #444',
+                                boxShadow: isContentFocused && !isContentExpanded ? '0 0 12px rgba(255, 149, 0, 0.2)' : 'none',
+                                fontSize: '16px',
+                                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                                minHeight: '30px',
+                                resize: 'none',
+                                outline: 'none',
+                                lineHeight: '1.5',
+                                transition: 'all 0.2s ease',
+                                boxSizing: 'border-box',
+                                pointerEvents: isContentExpanded ? 'none' : 'auto',
+                            }}
+                            rows={12}
+                            placeholder="Содержимое заметки..."
+                            disabled={isContentExpanded}
+                        />
+
                         {/* Раскрытый textarea */}
                         {isContentExpanded && (
                             <>
@@ -1871,8 +1887,12 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                     onClick={(e) => {
                                         console.log('🟢 Content overlay clicked');
                                         e.stopPropagation();
-                                        // Синхронизируем скролл перед закрытием
-                                        syncScrollPosition(expandedContentRef.current, contentTextarea.textAreaRef?.current);
+                                        // Сохраняем процент скролла перед закрытием
+                                        if (expandedContentRef.current) {
+                                            const expanded = expandedContentRef.current;
+                                            const maxScroll = expanded.scrollHeight - expanded.clientHeight;
+                                            setScrollPercent(maxScroll > 0 ? expanded.scrollTop / maxScroll : 0);
+                                        }
                                         setIsContentExpanded(false);
                                         setIsContentFocused(false);
                                         // Сохраняем при закрытии если есть изменения
@@ -1881,7 +1901,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                         }
                                     }}
                                 />
-                                
+
                                 {/* Контейнер с textarea */}
                                 <div
                                     onClick={(e) => e.stopPropagation()}
@@ -1896,61 +1916,61 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                     }}
                                 >
                                     <textarea
-                                    ref={expandedContentRef}
-                                    value={localContent}
-                                    onChange={handleContentChange}
-                                    onFocus={() => setIsContentFocused(true)}
-                                    onBlur={() => {
-                                        setIsContentFocused(false);
-                                        if (localContent !== serverContent) {
-                                            saveToServer('content', localContent);
-                                        }
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const pos = e.target.selectionStart;
-                                            const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
-                                            handleContentChange({ target: { value: newValue } });
-                                            requestAnimationFrame(() => {
-                                                e.target.setSelectionRange(pos + 1, pos + 1);
-                                            });
-                                        }
-                                    }}
-                                    style={{
-                                        width: '100%',
-                                        minHeight: EXPANDED_CONTENT_CONFIG.minHeight,
-                                        maxHeight: EXPANDED_CONTENT_CONFIG.maxHeight,
-                                        padding: '20px',
-                                        borderRadius: '12px',
-                                        color: 'white',
-                                        backgroundColor: '#1a1a1a',
-                                        border: '2px solid #ff9500',
-                                        boxShadow: '0 0 20px rgba(255, 149, 0, 0.3), 0 10px 40px rgba(0, 0, 0, 0.5)',
-                                        fontSize: '16px',
-                                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-                                        resize: 'none',
-                                        outline: 'none',
-                                        lineHeight: '1.6',
-                                        overflowY: 'auto',
-                                        scrollbarWidth: 'thin',
-                                        scrollbarColor: '#444 #222',
-                                        boxSizing: 'border-box',
-                                    }}
-                                    placeholder="Esc - свернуть | Enter - новая строка"
-                                />
-                                {/* Подсказка под textarea */}
-                                <div
-                                    style={{
-                                        marginTop: '8px',
-                                        fontSize: '11px',
-                                        color: '#666',
-                                        textAlign: 'right',
-                                    }}
-                                >
-                                    {localContent.length} символов | Esc для сворачивания
+                                        ref={expandedContentRef}
+                                        value={localContent}
+                                        onChange={handleContentChange}
+                                        onFocus={() => setIsContentFocused(true)}
+                                        onBlur={() => {
+                                            setIsContentFocused(false);
+                                            if (localContent !== serverContent) {
+                                                saveToServer('content', localContent);
+                                            }
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const pos = e.target.selectionStart;
+                                                const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
+                                                handleContentChange({ target: { value: newValue } });
+                                                requestAnimationFrame(() => {
+                                                    e.target.setSelectionRange(pos + 1, pos + 1);
+                                                });
+                                            }
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            minHeight: EXPANDED_CONTENT_CONFIG.minHeight,
+                                            maxHeight: EXPANDED_CONTENT_CONFIG.maxHeight,
+                                            padding: '20px',
+                                            borderRadius: '12px',
+                                            color: 'white',
+                                            backgroundColor: '#1a1a1a',
+                                            border: '2px solid #ff9500',
+                                            boxShadow: '0 0 20px rgba(255, 149, 0, 0.3), 0 10px 40px rgba(0, 0, 0, 0.5)',
+                                            fontSize: '16px',
+                                            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                                            resize: 'none',
+                                            outline: 'none',
+                                            lineHeight: '1.6',
+                                            overflowY: 'auto',
+                                            scrollbarWidth: 'thin',
+                                            scrollbarColor: '#444 #222',
+                                            boxSizing: 'border-box',
+                                        }}
+                                        placeholder="Esc - свернуть | Enter - новая строка"
+                                    />
+                                    {/* Подсказка под textarea */}
+                                    <div
+                                        style={{
+                                            marginTop: '8px',
+                                            fontSize: '11px',
+                                            color: '#666',
+                                            textAlign: 'right',
+                                        }}
+                                    >
+                                        {localContent.length} символов | Esc для сворачивания
+                                    </div>
                                 </div>
-                            </div>
                             </>
                         )}
                     </div>
@@ -2154,7 +2174,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {
                                                         // Если есть отфильтрованные теги, берем первый
-                                                        const filtered = obsidianTags.filter(tag => 
+                                                        const filtered = obsidianTags.filter((tag) =>
                                                             tag.toLowerCase().includes(newTagInput.toLowerCase())
                                                         );
                                                         if (filtered.length > 0 && newTagInput) {
@@ -2179,7 +2199,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                                     width: '150px',
                                                 }}
                                             />
-                                            
+
                                             {/* Dropdown с тегами Obsidian */}
                                             <TagDropdownPortal
                                                 ref={tagDropdownRef}
@@ -2215,7 +2235,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                         letterSpacing: '0.5px',
                                     }}
                                 >
-                                  AI предложения
+                                    AI предложения
                                 </div>
                                 <div
                                     style={{
@@ -2273,7 +2293,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                                 color: '#666',
                                                 fontSize: '13px',
                                                 fontStyle: 'italic',
-                                                marginLeft : '2px',
+                                                marginLeft: '2px',
                                                 cursor: 'pointer',
                                                 transition: 'color 0.2s',
                                             }}
@@ -2499,7 +2519,6 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                 )}
                             </div>
                         )}
-
                     </div>
                 </div>
 
@@ -2517,7 +2536,8 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                     }}
                 >
                     <div>
-                        <span style={{ color: '#555' }}>ID:</span> <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{note?.id || 'N/A'}</span>
+                        <span style={{ color: '#555' }}>ID:</span>{' '}
+                        <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{note?.id || 'N/A'}</span>
                     </div>
                     <div>
                         <span style={{ color: '#555' }}>Тип:</span> <span style={{ color: '#888' }}>{getTypeLabel(note?.type)}</span>
@@ -2539,18 +2559,10 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                 outline: 'none',
                             }}
                         />
-                        {dateSaveStatus === 'saving' && (
-                            <span style={{ color: '#ff9500', fontSize: '12px' }}>💾</span>
-                        )}
-                        {dateSaveStatus === 'success' && (
-                            <span style={{ color: '#4aff4a', fontSize: '12px' }}>✅</span>
-                        )}
-                        {dateSaveStatus === 'error' && (
-                            <span style={{ color: '#ff4444', fontSize: '12px' }}>❌</span>
-                        )}
-                        {dateChanged && dateSaveStatus === 'idle' && (
-                            <span style={{ color: '#888', fontSize: '12px' }}>●</span>
-                        )}
+                        {dateSaveStatus === 'saving' && <span style={{ color: '#ff9500', fontSize: '12px' }}>💾</span>}
+                        {dateSaveStatus === 'success' && <span style={{ color: '#4aff4a', fontSize: '12px' }}>✅</span>}
+                        {dateSaveStatus === 'error' && <span style={{ color: '#ff4444', fontSize: '12px' }}>❌</span>}
+                        {dateChanged && dateSaveStatus === 'idle' && <span style={{ color: '#888', fontSize: '12px' }}>●</span>}
                     </div>
                     <div>
                         <span style={{ color: '#555' }}>Создано:</span> {formatDateTime(note?.createdAt)}
