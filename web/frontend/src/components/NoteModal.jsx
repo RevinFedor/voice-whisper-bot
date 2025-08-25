@@ -11,6 +11,14 @@ if (!import.meta.env.VITE_API_URL) {
 }
 const API_URL = import.meta.env.VITE_API_URL;
 
+// Конфигурация размеров раскрытого контента
+const EXPANDED_CONTENT_CONFIG = {
+    minHeight: '500px',  // Минимальная высота раскрытого контента
+    maxHeight: '70vh',   // Максимальная высота (70% от высоты экрана)
+    width: '70%',        // Ширина раскрытого контента (в % от экрана)
+    maxWidth: '900px',   // Максимальная ширина в пикселях
+};
+
 // Вспомогательная функция для конвертации даты в формат для datetime-local input
 // ВАЖНО: Показываем ЛОКАЛЬНОЕ время (как в колонках)
 const formatDateForInput = (dateString) => {
@@ -52,6 +60,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     
     // === СОСТОЯНИЕ UI ===
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isContentExpanded, setIsContentExpanded] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [showPrompt, setShowPrompt] = useState(false);
     const [promptInput, setPromptInput] = useState('');
@@ -59,6 +68,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     const [titleHeight, setTitleHeight] = useState(44);
     const [isGenerating, setIsGenerating] = useState(false);
     const [newlyGeneratedId, setNewlyGeneratedId] = useState(null);
+    const [contentCursorPos, setContentCursorPos] = useState(0);
     
     // === СОСТОЯНИЕ ФОКУСА ===
     const [isTitleFocused, setIsTitleFocused] = useState(false);
@@ -75,6 +85,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // === REFS ===
     const inputRef = useRef(null);
     const textareaRef = useRef(null);
+    const expandedContentRef = useRef(null);
     const modalRef = useRef(null);
     const prevNoteIdRef = useRef(note?.id); // Для отслеживания смены заметки
     const tagInputElementRef = useRef(null); // Ref для самого input элемента тегов
@@ -167,6 +178,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // === ФУНКЦИЯ СБРОСА ВСЕХ ПАНЕЛЕЙ ===
     const resetAllPanels = useCallback(() => {
         setIsExpanded(false);
+        setIsContentExpanded(false);
         setShowHistory(false);
         setShowPrompt(false);
         setPromptInput('');
@@ -183,8 +195,16 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     // === ОБРАБОТЧИК ЗАКРЫТИЯ МОДАЛКИ ===
     const handleModalClose = useCallback(() => {
         resetAllPanels();
+        // Сбрасываем скролл контента при закрытии
+        if (contentTextarea.textAreaRef?.current) {
+            contentTextarea.textAreaRef.current.scrollTop = 0;
+        }
+        // Сбрасываем скролл основного контейнера модалки
+        if (modalRef.current) {
+            modalRef.current.scrollTop = 0;
+        }
         onClose();
-    }, [onClose, resetAllPanels]);
+    }, [onClose, resetAllPanels, contentTextarea.textAreaRef]);
     
     // === ESCAPE ОБРАБОТКА ===
     // Основная модалка
@@ -192,7 +212,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         modalId,
         () => {
             // Проверяем, нет ли открытых вложенных элементов
-            if (isExpanded || showHistory || showPrompt || showTagChat || showAddTagInput || showTagHistory) {
+            if (isExpanded || isContentExpanded || showHistory || showPrompt || showTagChat || showAddTagInput || showTagHistory) {
                 return false; // Не закрываем основную модалку, есть вложенные элементы
             }
             handleModalClose();
@@ -217,6 +237,24 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             return false;
         },
         isExpanded ? MODAL_PRIORITIES.EXPANDED_INPUT : -1
+    );
+    
+    // Раскрытое содержимое
+    useModalEscape(
+        `${modalId}-expanded-content`,
+        () => {
+            if (isContentExpanded) {
+                setIsContentExpanded(false);
+                setIsContentFocused(false);
+                // Сохраняем при закрытии раскрытого контента
+                if (localContent !== serverContent) {
+                    saveToServer('content', localContent);
+                }
+                return true;
+            }
+            return false;
+        },
+        isContentExpanded ? MODAL_PRIORITIES.EXPANDED_INPUT : -1
     );
     
     // Input для тегов
@@ -455,7 +493,14 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         setShowPrompt(false);
     };
     
-    // Восстанавливаем позицию курсора после раскрытия
+    const handleContentExpand = () => {
+        if (!isContentExpanded && contentTextarea.textAreaRef?.current) {
+            setContentCursorPos(contentTextarea.textAreaRef.current.selectionStart);
+        }
+        setIsContentExpanded(!isContentExpanded);
+    };
+    
+    // Восстанавливаем позицию курсора после раскрытия заголовка
     useEffect(() => {
         if (isExpanded && textareaRef.current) {
             textareaRef.current.focus();
@@ -464,6 +509,15 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             setIsTitleFocused(true); // Устанавливаем фокус для раскрытого textarea
         }
     }, [isExpanded, titleCursorPos]);
+    
+    // Восстанавливаем позицию курсора после раскрытия контента
+    useEffect(() => {
+        if (isContentExpanded && expandedContentRef.current) {
+            expandedContentRef.current.focus();
+            expandedContentRef.current.setSelectionRange(contentCursorPos, contentCursorPos);
+            setIsContentFocused(true);
+        }
+    }, [isContentExpanded, contentCursorPos]);
     
     // Закрытие раскрытого заголовка при клике вне
     useEffect(() => {
@@ -484,6 +538,24 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
             return () => document.removeEventListener('mousedown', handleClickOutside);
         }
     }, [isExpanded, saveToServer, localTitle, serverTitle]);
+    
+    // Закрытие раскрытого контента при клике вне
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (isContentExpanded && expandedContentRef.current && !expandedContentRef.current.contains(e.target)) {
+                setIsContentExpanded(false);
+                setIsContentFocused(false);
+                if (localContent !== serverContent) {
+                    saveToServer('content', localContent);
+                }
+            }
+        };
+        
+        if (isContentExpanded) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [isContentExpanded, saveToServer, localContent, serverContent]);
     
     // === ОБРАБОТЧИКИ ===
     const handleTitleChange = (e) => {
@@ -1076,7 +1148,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     zIndex: 9999,
                     display: 'flex',
                     flexDirection: 'column',
-                    overflow: 'auto',
+                    overflow: isExpanded || isContentExpanded ? 'visible' : 'auto',
                 }}
             >
                 {/* Header */}
@@ -1178,7 +1250,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     style={{
                         flex: 1,
                         padding: '24px 32px',
-                        overflowY: 'visible',
+                        overflowY: isExpanded || isContentExpanded ? 'visible' : 'auto',
                         color: '#e0e0e0',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1491,7 +1563,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                         top: '-8px',
                                         left: '-8px',
                                         right: '-8px',
-                                        zIndex: 10,
+                                        zIndex: 1000,
                                     }}
                                 >
                                     <textarea
@@ -1549,94 +1621,209 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     </div>
 
                     {/* СОДЕРЖИМОЕ */}
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                            {/* Индикатор состояния */}
-                            <div
-                                style={{
-                                    position: 'absolute',
-                                    left: '-20px',
-                                    width: '8px',
-                                    height: '8px',
-                                    borderRadius: '50%',
-                                    backgroundColor: isContentFocused
-                                        ? '#ff9500'
-                                        : contentSaveStatus === 'saving'
-                                        ? '#ff9500'
-                                        : contentSaveStatus === 'success'
-                                        ? '#30d158'
-                                        : 'transparent',
-                                    animation: contentSaveStatus === 'saving' ? 'pulse 1s infinite' : 'none',
-                                    transition: 'all 0.3s ease',
-                                }}
-                            />
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                {/* Индикатор состояния */}
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        left: '-20px',
+                                        width: '8px',
+                                        height: '8px',
+                                        borderRadius: '50%',
+                                        backgroundColor: isContentFocused
+                                            ? '#ff9500'
+                                            : contentSaveStatus === 'saving'
+                                            ? '#ff9500'
+                                            : contentSaveStatus === 'success'
+                                            ? '#30d158'
+                                            : 'transparent',
+                                        animation: contentSaveStatus === 'saving' ? 'pulse 1s infinite' : 'none',
+                                        transition: 'all 0.3s ease',
+                                    }}
+                                />
 
-                            <label
+                                <label
+                                    style={{
+                                        fontSize: '13px',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1px',
+                                        color: '#888',
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    Содержимое
+                                </label>
+                            </div>
+                            
+                            {/* Кнопка раскрытия контента */}
+                            <button
+                                onClick={handleContentExpand}
                                 style={{
-                                    fontSize: '13px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '1px',
-                                    color: '#888',
-                                    fontWeight: '600',
+                                    width: '40px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: '6px',
+                                    backgroundColor: isContentExpanded ? '#ff9500' : '#2a2a2a',
+                                    border: isContentExpanded ? '1px solid #ff9500' : '1px solid #444',
+                                    color: isContentExpanded ? 'white' : '#888',
+                                    cursor: 'pointer',
+                                    fontSize: '16px',
+                                    transition: 'all 0.2s',
                                 }}
+                                title={isContentExpanded ? 'Свернуть' : 'Развернуть'}
                             >
-                                Содержимое
-                            </label>
+                                ↕
+                            </button>
                         </div>
 
+                        {/* Обычный textarea - всегда видим */}
                         <textarea
-                            ref={contentTextarea.textAreaRef}
-                            value={localContent}
-                            onChange={(e) => {
-                                // Сначала обновляем позицию через хук
-                                contentTextarea.handlers.onChange(e);
-                                // Затем обновляем состояние и триггерим сохранение
-                                handleContentChange(e);
-                            }}
-                            onFocus={(e) => {
-                                contentTextarea.handlers.onFocus(e);
-                                setIsContentFocused(true);
-                            }}
-                            onBlur={handleContentBlur}
-                            onClick={contentTextarea.handlers.onClick}
-                            onScroll={contentTextarea.handlers.onScroll}
-                            onSelect={contentTextarea.handlers.onSelect}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    const pos = e.target.selectionStart;
-                                    const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
-                                    // Используем handleContentChange для правильного обновления всех состояний
-                                    handleContentChange({ target: { value: newValue } });
+                                ref={contentTextarea.textAreaRef}
+                                value={localContent}
+                                onChange={(e) => {
+                                    // Сначала обновляем позицию через хук
+                                    contentTextarea.handlers.onChange(e);
+                                    // Затем обновляем состояние и триггерим сохранение
+                                    handleContentChange(e);
+                                }}
+                                onFocus={(e) => {
+                                    contentTextarea.handlers.onFocus(e);
+                                    setIsContentFocused(true);
+                                }}
+                                onBlur={handleContentBlur}
+                                onClick={contentTextarea.handlers.onClick}
+                                onScroll={contentTextarea.handlers.onScroll}
+                                onSelect={contentTextarea.handlers.onSelect}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const pos = e.target.selectionStart;
+                                        const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
+                                        // Используем handleContentChange для правильного обновления всех состояний
+                                        handleContentChange({ target: { value: newValue } });
 
-                                    requestAnimationFrame(() => {
-                                        e.target.setSelectionRange(pos + 1, pos + 1);
-                                        e.target.scrollTop = e.target.scrollTop;
-                                    });
-                                } else {
-                                    contentTextarea.handlers.onKeyDown(e, localContent, setLocalContent);
-                                }
-                            }}
-                            style={{
-                                width: '100%',
-                                padding: '16px',
-                                borderRadius: '8px',
-                                color: 'white',
-                                backgroundColor: '#222',
-                                border: isContentFocused ? '2px solid #ff9500' : '1px solid #444',
-                                boxShadow: isContentFocused ? '0 0 12px rgba(255, 149, 0, 0.2)' : 'none',
-                                fontSize: '16px',
-                                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-                                minHeight: '300px',
-                                resize: 'none',
-                                outline: 'none',
-                                lineHeight: '1.5',
-                                transition: 'all 0.2s ease',
-                                boxSizing: 'border-box',
-                            }}
-                            rows={12}
-                            placeholder="Содержимое заметки..."
-                        />
+                                        requestAnimationFrame(() => {
+                                            e.target.setSelectionRange(pos + 1, pos + 1);
+                                            e.target.scrollTop = e.target.scrollTop;
+                                        });
+                                    } else {
+                                        contentTextarea.handlers.onKeyDown(e, localContent, setLocalContent);
+                                    }
+                                }}
+                                style={{
+                                    width: '100%',
+                                    padding: '16px',
+                                    borderRadius: '8px',
+                                    color: 'white',
+                                    backgroundColor: '#222',
+                                    border: isContentFocused && !isContentExpanded ? '2px solid #ff9500' : '1px solid #444',
+                                    boxShadow: isContentFocused && !isContentExpanded ? '0 0 12px rgba(255, 149, 0, 0.2)' : 'none',
+                                    fontSize: '16px',
+                                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                                    minHeight: '300px',
+                                    resize: 'none',
+                                    outline: 'none',
+                                    lineHeight: '1.5',
+                                    transition: 'all 0.2s ease',
+                                    boxSizing: 'border-box',
+                                    pointerEvents: isContentExpanded ? 'none' : 'auto',
+                                }}
+                                rows={12}
+                                placeholder="Содержимое заметки..."
+                                disabled={isContentExpanded}
+                            />
+                        
+                        {/* Раскрытый textarea */}
+                        {isContentExpanded && (
+                            <>
+                                {/* Затемнение фона */}
+                                <div
+                                    style={{
+                                        position: 'fixed',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                                        zIndex: 10000,
+                                    }}
+                                    onClick={() => setIsContentExpanded(false)}
+                                />
+                                
+                                {/* Контейнер с textarea */}
+                                <div
+                                    style={{
+                                        position: 'fixed',
+                                        top: '50%',
+                                        left: '50%',
+                                        transform: 'translate(-50%, -50%)',
+                                        width: EXPANDED_CONTENT_CONFIG.width,
+                                        maxWidth: EXPANDED_CONTENT_CONFIG.maxWidth,
+                                        zIndex: 10001,
+                                    }}
+                                >
+                                    <textarea
+                                    ref={expandedContentRef}
+                                    value={localContent}
+                                    onChange={handleContentChange}
+                                    onFocus={() => setIsContentFocused(true)}
+                                    onBlur={() => {
+                                        setIsContentFocused(false);
+                                        if (localContent !== serverContent) {
+                                            saveToServer('content', localContent);
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const pos = e.target.selectionStart;
+                                            const newValue = localContent.slice(0, pos) + '\n' + localContent.slice(pos);
+                                            handleContentChange({ target: { value: newValue } });
+                                            requestAnimationFrame(() => {
+                                                e.target.setSelectionRange(pos + 1, pos + 1);
+                                            });
+                                        }
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        minHeight: EXPANDED_CONTENT_CONFIG.minHeight,
+                                        maxHeight: EXPANDED_CONTENT_CONFIG.maxHeight,
+                                        padding: '20px',
+                                        borderRadius: '12px',
+                                        color: 'white',
+                                        backgroundColor: '#1a1a1a',
+                                        border: '2px solid #ff9500',
+                                        boxShadow: '0 0 20px rgba(255, 149, 0, 0.3), 0 10px 40px rgba(0, 0, 0, 0.5)',
+                                        fontSize: '17px',
+                                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                                        resize: 'none',
+                                        outline: 'none',
+                                        lineHeight: '1.6',
+                                        overflowY: 'auto',
+                                        scrollbarWidth: 'thin',
+                                        scrollbarColor: '#444 #222',
+                                        boxSizing: 'border-box',
+                                    }}
+                                    placeholder="Esc - свернуть | Enter - новая строка"
+                                />
+                                {/* Подсказка под textarea */}
+                                <div
+                                    style={{
+                                        marginTop: '8px',
+                                        fontSize: '11px',
+                                        color: '#666',
+                                        textAlign: 'right',
+                                    }}
+                                >
+                                    {localContent.length} символов | Esc для сворачивания
+                                </div>
+                            </div>
+                            </>
+                        )}
                     </div>
 
                     {/* Теги */}
