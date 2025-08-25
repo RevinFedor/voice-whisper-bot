@@ -13,10 +13,10 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 // Конфигурация размеров раскрытого контента
 const EXPANDED_CONTENT_CONFIG = {
-    minHeight: '50vh', // Минимальная высота раскрытого контента
-    maxHeight: '70vh', // Максимальная высота (70% от высоты viewport)
-    width: '70vw', // Ширина раскрытого контента (70% от ширины viewport)
-    maxWidth: '760px', // Максимальная ширина в пикселях
+    minHeight: '50vh',  // Минимальная высота раскрытого контента
+    maxHeight: '70vh',  // Максимальная высота (70% от высоты viewport)
+    width: '50vw',      // Ширина раскрытого контента (50% от ширины viewport)
+    maxWidth: '900px',  // Максимальная ширина в ПИКСЕЛЯХ (не vw!)
 };
 
 // Вспомогательная функция для конвертации даты в формат для datetime-local input
@@ -1282,6 +1282,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                         )}
                         {navigationInfo && navigationInfo.totalNotes > 1 && (
                             <span
+                                className="navigation-indicator"
                                 style={{
                                     fontSize: '14px',
                                     color: '#888',
@@ -1289,8 +1290,9 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '4px',
+                                    position: 'relative',
+                                    cursor: 'help',
                                 }}
-                                title="Используйте стрелки ↑↓ или W/S для навигации"
                             >
                                 <span style={{ opacity: navigationInfo.canGoUp ? 1 : 0.3 }}>↑</span>
                                 <span>{navigationInfo.currentIndex}/{navigationInfo.totalNotes}</span>
@@ -2605,6 +2607,54 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                 
                 .delete-btn {
                     transition: opacity 0.2s ease;
+                }
+                
+                /* Tooltip для навигации */
+                .navigation-indicator::after {
+                    content: '↑/W - вверх • ↓/S - вниз';
+                    position: absolute;
+                    bottom: calc(100% + 8px);
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(0, 0, 0, 0.95);
+                    color: #fff;
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    white-space: nowrap;
+                    pointer-events: none;
+                    opacity: 0;
+                    transition: opacity 0.2s ease;
+                    z-index: 10000;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                    font-weight: 500;
+                    letter-spacing: 0.3px;
+                }
+                
+                .navigation-indicator:hover::after {
+                    opacity: 1;
+                }
+                
+                /* Треугольник для tooltip */
+                .navigation-indicator::before {
+                    content: '';
+                    position: absolute;
+                    bottom: calc(100% + 3px);
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 0;
+                    height: 0;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 5px solid rgba(0, 0, 0, 0.95);
+                    pointer-events: none;
+                    opacity: 0;
+                    transition: opacity 0.2s ease;
+                    z-index: 10001;
+                }
+                
+                .navigation-indicator:hover::before {
+                    opacity: 1;
                 }
                 
                 /* Скроллбар для истории */
