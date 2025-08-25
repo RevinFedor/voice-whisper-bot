@@ -247,6 +247,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         
         // 2. Затем закрываем раскрытый контент
         if (isContentExpanded) {
+            // Сохраняем процент скролла перед закрытием
+            if (expandedContentRef.current && contentTextarea.textAreaRef?.current) {
+                const expanded = expandedContentRef.current;
+                const scrollPercent = expanded.scrollTop / (expanded.scrollHeight - expanded.clientHeight);
+                setTimeout(() => {
+                    if (contentTextarea.textAreaRef?.current) {
+                        const textarea = contentTextarea.textAreaRef.current;
+                        const maxScroll = textarea.scrollHeight - textarea.clientHeight;
+                        textarea.scrollTop = scrollPercent * maxScroll;
+                    }
+                }, 0);
+            }
             setIsContentExpanded(false);
             setIsContentFocused(false);
             return;
@@ -267,7 +279,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         handleModalClose, setShowTagChat, setShowTagHistory, setShowTagDropdown,
         setTagPromptInput, setShowHistory, setShowPrompt, setPromptInput,
         setShowAddTagInput, setNewTagInput, setIsContentExpanded, setIsContentFocused,
-        setIsExpanded, setIsTitleFocused
+        setIsExpanded, setIsTitleFocused, expandedContentRef, contentTextarea.textAreaRef
     ]);
     
     // === ESCAPE ОБРАБОТКА ===
@@ -308,6 +320,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         `${modalId}-expanded-content`,
         () => {
             if (isContentExpanded) {
+                // Сохраняем процент скролла перед закрытием
+                if (expandedContentRef.current && contentTextarea.textAreaRef?.current) {
+                    const expanded = expandedContentRef.current;
+                    const scrollPercent = expanded.scrollTop / (expanded.scrollHeight - expanded.clientHeight);
+                    setTimeout(() => {
+                        if (contentTextarea.textAreaRef?.current) {
+                            const textarea = contentTextarea.textAreaRef.current;
+                            const maxScroll = textarea.scrollHeight - textarea.clientHeight;
+                            textarea.scrollTop = scrollPercent * maxScroll;
+                        }
+                    }, 0);
+                }
                 setIsContentExpanded(false);
                 setIsContentFocused(false);
                 // Сохраняем при закрытии раскрытого контента
@@ -560,6 +584,29 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
     const handleContentExpand = () => {
         if (!isContentExpanded && contentTextarea.textAreaRef?.current) {
             setContentCursorPos(contentTextarea.textAreaRef.current.selectionStart);
+            // Сохраняем процент скролла обычного textarea
+            const textarea = contentTextarea.textAreaRef.current;
+            const scrollPercent = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
+            // Применим к раскрытому textarea после рендера
+            setTimeout(() => {
+                if (expandedContentRef.current) {
+                    const expanded = expandedContentRef.current;
+                    const maxScroll = expanded.scrollHeight - expanded.clientHeight;
+                    expanded.scrollTop = scrollPercent * maxScroll;
+                }
+            }, 0);
+        } else if (isContentExpanded && expandedContentRef.current) {
+            // При закрытии сохраняем процент скролла раскрытого textarea
+            const expanded = expandedContentRef.current;
+            const scrollPercent = expanded.scrollTop / (expanded.scrollHeight - expanded.clientHeight);
+            // Применим к обычному textarea после рендера
+            setTimeout(() => {
+                if (contentTextarea.textAreaRef?.current) {
+                    const textarea = contentTextarea.textAreaRef.current;
+                    const maxScroll = textarea.scrollHeight - textarea.clientHeight;
+                    textarea.scrollTop = scrollPercent * maxScroll;
+                }
+            }, 0);
         }
         setIsContentExpanded(!isContentExpanded);
     };
@@ -1783,6 +1830,18 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                     onClick={(e) => {
                                         console.log('🟢 Content overlay clicked');
                                         e.stopPropagation();
+                                        // Сохраняем процент скролла перед закрытием
+                                        if (expandedContentRef.current && contentTextarea.textAreaRef?.current) {
+                                            const expanded = expandedContentRef.current;
+                                            const scrollPercent = expanded.scrollTop / (expanded.scrollHeight - expanded.clientHeight);
+                                            setTimeout(() => {
+                                                if (contentTextarea.textAreaRef?.current) {
+                                                    const textarea = contentTextarea.textAreaRef.current;
+                                                    const maxScroll = textarea.scrollHeight - textarea.clientHeight;
+                                                    textarea.scrollTop = scrollPercent * maxScroll;
+                                                }
+                                            }, 0);
+                                        }
                                         setIsContentExpanded(false);
                                         setIsContentFocused(false);
                                         // Сохраняем при закрытии если есть изменения
