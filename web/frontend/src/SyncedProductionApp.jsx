@@ -1345,6 +1345,7 @@ export default function SyncedProductionApp() {
             // Optional: Visual feedback or animation
             console.log(`📍 Navigated ${direction} to note:`, nextNote.title);
             console.log(`   Position in column: ${nextIndex + 1} of ${columnNotes.length}`);
+            console.log(`   Navigation keys: ↑/W (up) | ↓/S (down)`);
         }
     }, [selectedNote, getColumnNotes]);
     

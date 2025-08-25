@@ -13,10 +13,10 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 // Конфигурация размеров раскрытого контента
 const EXPANDED_CONTENT_CONFIG = {
-    minHeight: '500px',  // Минимальная высота раскрытого контента
-    maxHeight: '70vh',   // Максимальная высота (70% от высоты viewport)
-    width: '70vw',       // Ширина раскрытого контента (70% от ширины viewport)
-    maxWidth: '760px',   // Максимальная ширина в пикселях
+    minHeight: '50vh', // Минимальная высота раскрытого контента
+    maxHeight: '70vh', // Максимальная высота (70% от высоты viewport)
+    width: '70vw', // Ширина раскрытого контента (70% от ширины viewport)
+    maxWidth: '760px', // Максимальная ширина в пикселях
 };
 
 // Вспомогательная функция для конвертации даты в формат для datetime-local input
@@ -1088,13 +1088,13 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                 return;
             }
             
-            // Обрабатываем стрелки
-            if (e.key === 'ArrowUp') {
+            // Обрабатываем стрелки и W/S клавиши
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
                 e.preventDefault();
                 if (onNavigate) {
                     onNavigate('up');
                 }
-            } else if (e.key === 'ArrowDown') {
+            } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
                 e.preventDefault();
                 if (onNavigate) {
                     onNavigate('down');
@@ -1290,7 +1290,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNav
                                     alignItems: 'center',
                                     gap: '4px',
                                 }}
-                                title="Используйте стрелки ↑↓ для навигации"
+                                title="Используйте стрелки ↑↓ или W/S для навигации"
                             >
                                 <span style={{ opacity: navigationInfo.canGoUp ? 1 : 0.3 }}>↑</span>
                                 <span>{navigationInfo.currentIndex}/{navigationInfo.totalNotes}</span>
