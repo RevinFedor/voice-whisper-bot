@@ -43,7 +43,7 @@ const formatDateForInput = (dateString) => {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => {
+const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess, onNavigate }) => {
     
     // Уникальный ID для этого экземпляра модалки
     const modalId = useRef(`note-modal-${Date.now()}`).current;
@@ -1066,6 +1066,47 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         }
     }, [isOpen, loadObsidianTags]);
     
+    // Получаем информацию о позиции в столбце
+    const navigationInfo = onNavigate ? onNavigate('info') : null;
+    
+    // Обработка навигации стрелками вверх/вниз между заметками в столбце
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Проверяем что фокус не в input/textarea (чтобы можно было редактировать текст)
+            const activeElement = document.activeElement;
+            const isEditing = activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.contentEditable === 'true'
+            );
+            
+            // Если редактируем текст - не перехватываем стрелки
+            if (isEditing) return;
+            
+            // Проверяем что нет открытых панелей (история, промпт и т.д.)
+            if (isExpanded || isContentExpanded || showHistory || showPrompt || showTagChat || showTagHistory || showAddTagInput) {
+                return;
+            }
+            
+            // Обрабатываем стрелки
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (onNavigate) {
+                    onNavigate('up');
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (onNavigate) {
+                    onNavigate('down');
+                }
+            }
+        };
+        
+        if (isOpen) {
+            document.addEventListener('keydown', handleKeyDown);
+            return () => document.removeEventListener('keydown', handleKeyDown);
+        }
+    }, [isOpen, onNavigate, isExpanded, isContentExpanded, showHistory, showPrompt, showTagChat, showTagHistory, showAddTagInput]);
     
     
     // Экспорт заметки в Obsidian
@@ -1237,6 +1278,23 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                 }}
                             >
                                 📍
+                            </span>
+                        )}
+                        {navigationInfo && navigationInfo.totalNotes > 1 && (
+                            <span
+                                style={{
+                                    fontSize: '14px',
+                                    color: '#888',
+                                    marginLeft: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                }}
+                                title="Используйте стрелки ↑↓ для навигации"
+                            >
+                                <span style={{ opacity: navigationInfo.canGoUp ? 1 : 0.3 }}>↑</span>
+                                <span>{navigationInfo.currentIndex}/{navigationInfo.totalNotes}</span>
+                                <span style={{ opacity: navigationInfo.canGoDown ? 1 : 0.3 }}>↓</span>
                             </span>
                         )}
                     </div>

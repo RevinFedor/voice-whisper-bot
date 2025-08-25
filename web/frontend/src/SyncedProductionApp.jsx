@@ -21,6 +21,7 @@ import './utils/debugShapes';
 import './utils/quickTest';
 import './utils/finalTest';
 import './utils/debugModalStack';
+import './utils/debugNavigation';
 
 // API configuration
 if (!import.meta.env.VITE_API_URL) {
@@ -1283,6 +1284,69 @@ export default function SyncedProductionApp() {
             clearTimeout(handleWheel.timeoutId);
         };
     }, [editor]);
+    
+    // Get notes from the same column (date) sorted by Y position
+    const getColumnNotes = useCallback((currentNoteId) => {
+        // Find current note
+        const currentNote = notes.find(n => n.id === currentNoteId);
+        if (!currentNote) return { notes: [], currentIndex: -1 };
+        
+        // Normalize date of current note
+        const noteDate = new Date(currentNote.date);
+        noteDate.setHours(0, 0, 0, 0);
+        const normalizedDate = noteDate.toISOString();
+        
+        // Find all notes in this column
+        const columnNotes = notes
+            .filter(note => {
+                const d = new Date(note.date);
+                d.setHours(0, 0, 0, 0);
+                return d.toISOString() === normalizedDate;
+            })
+            .sort((a, b) => a.y - b.y); // Sort by Y position
+        
+        // Find index of current note
+        const currentIndex = columnNotes.findIndex(n => n.id === currentNoteId);
+        
+        return { notes: columnNotes, currentIndex };
+    }, [notes]);
+    
+    // Navigate to previous/next note in the same column
+    const navigateNote = useCallback((direction) => {
+        if (!selectedNote) return;
+        
+        const { notes: columnNotes, currentIndex } = getColumnNotes(selectedNote.id);
+        
+        if (columnNotes.length === 0 || currentIndex === -1) return;
+        
+        let nextIndex;
+        if (direction === 'up') {
+            // Up = previous note (lower Y position)
+            nextIndex = currentIndex > 0 ? currentIndex - 1 : currentIndex;
+        } else if (direction === 'down') {
+            // Down = next note (higher Y position)
+            nextIndex = currentIndex < columnNotes.length - 1 ? currentIndex + 1 : currentIndex;
+        } else if (direction === 'info') {
+            // Special case: just return position info
+            return {
+                currentIndex: currentIndex + 1,
+                totalNotes: columnNotes.length,
+                canGoUp: currentIndex > 0,
+                canGoDown: currentIndex < columnNotes.length - 1
+            };
+        } else {
+            return;
+        }
+        
+        if (nextIndex !== currentIndex) {
+            const nextNote = columnNotes[nextIndex];
+            setSelectedNote(nextNote);
+            
+            // Optional: Visual feedback or animation
+            console.log(`📍 Navigated ${direction} to note:`, nextNote.title);
+            console.log(`   Position in column: ${nextIndex + 1} of ${columnNotes.length}`);
+        }
+    }, [selectedNote, getColumnNotes]);
     
     // Save handleNoteClick to window for ShapeUtil access
     useEffect(() => {
@@ -2553,6 +2617,7 @@ export default function SyncedProductionApp() {
                         setSelectedNote(null);
                     }}
                     note={selectedNote}
+                    onNavigate={navigateNote}
                     onNoteUpdate={(updatedNote) => {
                         // Обновляем shape в canvas после редактирования
                         if (editor && updatedNote) {
