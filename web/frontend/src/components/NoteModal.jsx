@@ -206,6 +206,70 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         onClose();
     }, [onClose, resetAllPanels, contentTextarea.textAreaRef]);
     
+    // === ОБРАБОТЧИК КЛИКА ПО BACKDROP (поэтапное закрытие) ===
+    const handleBackdropClick = useCallback((e) => {
+        console.log('🔴 handleBackdropClick triggered', {
+            target: e.target,
+            currentTarget: e.currentTarget,
+            isContentExpanded,
+            isExpanded,
+            showHistory,
+            showPrompt,
+            showTagChat,
+            showAddTagInput
+        });
+        // Предотвращаем всплытие события
+        e.stopPropagation();
+        
+        // Проверяем открытые вложенные элементы и закрываем их по приоритету
+        // 1. Сначала закрываем панели AI и другие выпадающие элементы
+        if (showTagChat || showTagHistory || showTagDropdown) {
+            setShowTagChat(false);
+            setShowTagHistory(false);
+            setShowTagDropdown(false);
+            setTagPromptInput('');
+            return;
+        }
+        
+        if (showHistory || showPrompt) {
+            setShowHistory(false);
+            setShowPrompt(false);
+            setPromptInput('');
+            return;
+        }
+        
+        if (showAddTagInput) {
+            // Просто закрываем input тегов
+            setShowAddTagInput(false);
+            setNewTagInput('');
+            return;
+        }
+        
+        // 2. Затем закрываем раскрытый контент
+        if (isContentExpanded) {
+            setIsContentExpanded(false);
+            setIsContentFocused(false);
+            return;
+        }
+        
+        // 3. Затем закрываем раскрытый заголовок
+        if (isExpanded) {
+            setIsExpanded(false);
+            setIsTitleFocused(false);
+            return;
+        }
+        
+        // 4. Если нет открытых вложенных элементов - закрываем основную модалку
+        handleModalClose();
+    }, [
+        showTagChat, showTagHistory, showTagDropdown, showHistory, showPrompt, 
+        showAddTagInput, isContentExpanded, isExpanded,
+        handleModalClose, setShowTagChat, setShowTagHistory, setShowTagDropdown,
+        setTagPromptInput, setShowHistory, setShowPrompt, setPromptInput,
+        setShowAddTagInput, setNewTagInput, setIsContentExpanded, setIsContentFocused,
+        setIsExpanded, setIsTitleFocused
+    ]);
+    
     // === ESCAPE ОБРАБОТКА ===
     // Основная модалка
     useModalEscape(
@@ -519,44 +583,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
         }
     }, [isContentExpanded, contentCursorPos]);
     
-    // Закрытие раскрытого заголовка при клике вне
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (isExpanded && textareaRef.current && !textareaRef.current.contains(e.target)) {
-                setIsExpanded(false);
-                setIsTitleFocused(false);
-                // Не вызываем blur на скрытом input - он и так скрыт
-                // Сохраняем при закрытии раскрывающегося заголовка
-                if (localTitle !== serverTitle) {
-                    saveToServer('title', localTitle);
-                }
-            }
-        };
-        
-        if (isExpanded) {
-            document.addEventListener('mousedown', handleClickOutside);
-            return () => document.removeEventListener('mousedown', handleClickOutside);
-        }
-    }, [isExpanded, saveToServer, localTitle, serverTitle]);
-    
-    // Закрытие раскрытого контента при клике вне
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (isContentExpanded && expandedContentRef.current && !expandedContentRef.current.contains(e.target)) {
-                setIsContentExpanded(false);
-                setIsContentFocused(false);
-                if (localContent !== serverContent) {
-                    saveToServer('content', localContent);
-                }
-            }
-        };
-        
-        if (isContentExpanded) {
-            document.addEventListener('mousedown', handleClickOutside);
-            return () => document.removeEventListener('mousedown', handleClickOutside);
-        }
-    }, [isContentExpanded, saveToServer, localContent, serverContent]);
-    
+   
     // === ОБРАБОТЧИКИ ===
     const handleTitleChange = (e) => {
         const newValue = sanitizeForObsidian(e.target.value);
@@ -1127,12 +1154,13 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                     zIndex: 9998,
                     cursor: 'pointer',
                 }}
-                onClick={handleModalClose}
+                onClick={handleBackdropClick}
             />
 
             {/* Modal */}
             <div
                 ref={modalRef}
+                onClick={(e) => e.stopPropagation()}
                 style={{
                     position: 'fixed',
                     top: '50%',
@@ -1558,6 +1586,7 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                             {/* Textarea для expanded режима */}
                             {isExpanded && (
                                 <div
+                                    onClick={(e) => e.stopPropagation()}
                                     style={{
                                         position: 'absolute',
                                         top: '-8px',
@@ -1751,11 +1780,21 @@ const NoteModal = ({ isOpen, onClose, note, onNoteUpdate, onExportSuccess }) => 
                                         backgroundColor: 'transparent',
                                         zIndex: 10000,
                                     }}
-                                    onClick={() => setIsContentExpanded(false)}
+                                    onClick={(e) => {
+                                        console.log('🟢 Content overlay clicked');
+                                        e.stopPropagation();
+                                        setIsContentExpanded(false);
+                                        setIsContentFocused(false);
+                                        // Сохраняем при закрытии если есть изменения
+                                        if (localContent !== serverContent) {
+                                            saveToServer('content', localContent);
+                                        }
+                                    }}
                                 />
                                 
                                 {/* Контейнер с textarea */}
                                 <div
+                                    onClick={(e) => e.stopPropagation()}
                                     style={{
                                         position: 'fixed',
                                         top: '50%',
